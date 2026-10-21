@@ -565,8 +565,11 @@ function renderStatusStrip(snapshot) {
   const activeRole = state.activeWorker ? inferSessionRole(state.activeWorker) : "Worker";
   const workerNumStr =
     state.activeWorker?.workerNumber != null ? ` #${state.activeWorker.workerNumber}` : "";
+  const isDispatchPending = Boolean(state.activeWorker?.dispatchPending === true);
   const activeWorkerSummary = state.activeWorker
-    ? ` \u00b7 ${activeRole}${workerNumStr} (${state.activeWorker.status || status})`
+    ? isDispatchPending
+      ? ` \u00b7 ${activeRole}${workerNumStr} (Approved \u2014 waiting for Orchestrator to dispatch)`
+      : ` \u00b7 ${activeRole}${workerNumStr} (${state.activeWorker.status || status})`
     : "";
   const activeError = status !== "completed" ? hudState.lastActionError : null;
   if (subEl) {
@@ -805,6 +808,30 @@ function renderFeaturesAndAssertions(snapshot) {
         const icon =
           st === "completed" ? "\u2713" : st === "running" ? "\u25cf" : st === "paused" ? "||" : "\u2022";
         const kindLabel = f.kind || f.role || "implementation";
+        const rawTargetOverride =
+          f.target ?? f.workerTarget ?? f.slotConfig ?? f.model ?? null;
+        const overrideModelLabel =
+          typeof rawTargetOverride === "string"
+            ? rawTargetOverride.trim()
+            : rawTargetOverride && typeof rawTargetOverride === "object"
+              ? String(
+                  rawTargetOverride.model ||
+                    rawTargetOverride.id ||
+                    rawTargetOverride.label ||
+                    ""
+                ).trim()
+              : "";
+        const modelBadgeHtml = overrideModelLabel
+          ? `<span class="feature-model-pill feature-kind-pill mono" data-feature-model="${escapeHtml(overrideModelLabel)}">${escapeHtml(overrideModelLabel)}</span>`
+          : "";
+        const isFeatureDispatchPending = Boolean(
+          f.dispatchPending === true ||
+            (state.activeWorker?.featureId === f.id &&
+              state.activeWorker?.dispatchPending === true)
+        );
+        const dispatchPendingPillHtml = isFeatureDispatchPending
+          ? `<span class="status-pill awaiting-dispatch" data-dispatch-pending="true">Awaiting Orchestrator Dispatch</span>`
+          : "";
         const linkedIds = Array.isArray(f.fulfills)
           ? f.fulfills
           : Array.isArray(f.assertions)
@@ -828,11 +855,13 @@ function renderFeaturesAndAssertions(snapshot) {
                 <div class="feature-title-row">
                   <span class="feature-title">${escapeHtml(f.title || f.id)}</span>
                   <span class="feature-kind-pill mono">${escapeHtml(kindLabel)}</span>
+                  ${modelBadgeHtml}
                 </div>
                 ${valPillsHtml}
               </div>
             </div>
             <div class="feature-row-right">
+              ${dispatchPendingPillHtml}
               <span class="status-pill ${escapeHtml(st)}">${escapeHtml(st)}</span>
             </div>
           </div>
@@ -1098,6 +1127,7 @@ function renderCenterColumn(snapshot) {
           Boolean(state.activeWorker?.featureId) &&
           String(state.lastResumeDiagnostic).includes(state.activeWorker.featureId)));
 
+    const isDispatchPending = Boolean(state.activeWorker?.dispatchPending === true);
     const resumeDiagnostic = activeError
       ? activeError
       : isCompleted
@@ -1105,7 +1135,9 @@ function renderCenterColumn(snapshot) {
         : showResumeDiagnostic
           ? state.lastResumeDiagnostic
           : state.activeWorker
-            ? `${activeRole}${activeWorkerNum} (${activeWorkerTitle}) is currently ${state.activeWorker.status || state.status}.`
+            ? isDispatchPending
+              ? `Approved \u2014 waiting for Orchestrator to dispatch ${activeRole}${activeWorkerNum} (${activeWorkerTitle}).`
+              : `${activeRole}${activeWorkerNum} (${activeWorkerTitle}) is currently ${state.activeWorker.status || state.status}.`
             : `Mission status is ${state.status || "planning"}.`;
 
     const filteredEvents = filterOrchestratorStreamEvents(progressLog);
@@ -1114,8 +1146,8 @@ function renderCenterColumn(snapshot) {
     streamEl.innerHTML = `
       <div class="stream-card diagnostic-card ${activeError ? "error" : ""}" id="resume-diagnostic-card">
         <div class="stream-card-header">
-          <span class="stream-tag">${activeError ? "Action Blocked" : "Execution Status"}</span>
-          <span class="stream-time mono">${escapeHtml(state.status || "planning")}</span>
+          <span class="stream-tag">${activeError ? "Action Blocked" : isDispatchPending ? "Awaiting Orchestrator Dispatch" : "Execution Status"}</span>
+          <span class="stream-time mono">${escapeHtml(isDispatchPending ? "Approved — waiting for Orchestrator to dispatch" : state.status || "planning")}</span>
         </div>
         <div class="stream-body">${escapeHtml(resumeDiagnostic)}</div>
       </div>

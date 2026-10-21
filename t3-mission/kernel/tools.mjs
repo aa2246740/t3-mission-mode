@@ -19,6 +19,7 @@ import {
   loadFeaturesDoc,
   loadModelSettings,
   loadState,
+  readProgressLog,
   saveFeaturesDoc,
   saveModelSettings,
   saveState,
@@ -30,6 +31,7 @@ export function proposeMission(missionDir, input = {}) {
   const paths = ensureMissionDir(missionDir);
   const existingState = tryLoadState(missionDir);
   const existingSettings = loadModelSettings(missionDir);
+  const existingLogs = readProgressLog(missionDir);
 
   const state = createInitialState(
     {
@@ -44,10 +46,67 @@ export function proposeMission(missionDir, input = {}) {
     ? input.features.map((f, i) => normalizeFeature(f, i))
     : [];
 
+  const userModifiedSet = new Set(
+    Array.isArray(existingSettings?.userModifiedSlots)
+      ? existingSettings.userModifiedSlots
+      : []
+  );
+  for (const log of existingLogs) {
+    if (log && log.type === "model_slots_updated") {
+      if (Array.isArray(log.details?.changedRoles)) {
+        for (const role of log.details.changedRoles) {
+          userModifiedSet.add(String(role));
+        }
+      }
+      if (Array.isArray(log.details?.userModifiedSlots)) {
+        for (const role of log.details.userModifiedSlots) {
+          userModifiedSet.add(String(role));
+        }
+      }
+    }
+  }
+
+  const rawInputSettings =
+    input.modelSettings?.slots && typeof input.modelSettings.slots === "object"
+      ? { ...input.modelSettings, ...input.modelSettings.slots }
+      : input.modelSettings && typeof input.modelSettings === "object"
+        ? { ...input.modelSettings }
+        : {};
+  const forceModelSettings = Boolean(
+    input.forceModelSettings === true ||
+      rawInputSettings.forceModelSettings === true
+  );
+
+  const effectiveInputSettings = { ...rawInputSettings };
+  const preservedSlots = [];
+
+  if (!forceModelSettings && userModifiedSet.size > 0) {
+    for (const key of [
+      "orchestrator",
+      "worker",
+      "validator",
+      "skipScrutiny",
+      "skipUserTesting",
+    ]) {
+      if (userModifiedSet.has(key)) {
+        if (effectiveInputSettings[key] !== undefined) {
+          preservedSlots.push(key);
+        }
+        effectiveInputSettings[key] = existingSettings[key];
+      }
+    }
+    effectiveInputSettings.userModifiedSlots = Array.from(userModifiedSet);
+  } else if (forceModelSettings) {
+    effectiveInputSettings.userModifiedSlots = [];
+  }
+
   const modelSettings = normalizeModelSettings(
-    input.modelSettings || {},
+    effectiveInputSettings,
     existingSettings
   );
+  if (forceModelSettings) {
+    delete modelSettings.userModifiedSlots;
+  }
 
   saveState(missionDir, state);
   const featuresDoc = saveFeaturesDoc(missionDir, {
@@ -56,9 +115,25 @@ export function proposeMission(missionDir, input = {}) {
   });
   saveModelSettings(missionDir, modelSettings);
 
-  // Initialize progress_log.jsonl if it does not exist yet
-  if (!existingState) {
+  // Initialize progress_log.jsonl only if it does not exist or has empty content
+  const hasExistingLogContent =
+    fs.existsSync(paths.progressLogPath) &&
+    fs.readFileSync(paths.progressLogPath, "utf8").trim().length > 0;
+  if (!existingState && !hasExistingLogContent) {
     writeFileAtomicSync(paths.progressLogPath, "");
+  }
+
+  if (preservedSlots.length > 0) {
+    appendProgressLog(missionDir, {
+      type: "model_slots_preserved",
+      message: `Preserved user HUD model slots: ${preservedSlots.join(", ")}`,
+      featureId: null,
+      workerNumber: null,
+      details: {
+        preservedSlots,
+        userModifiedSlots: Array.from(userModifiedSet),
+      },
+    });
   }
 
   appendProgressLog(missionDir, {

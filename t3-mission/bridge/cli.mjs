@@ -125,6 +125,46 @@ export function parseCliArgs(argv = process.argv.slice(2)) {
       continue;
     }
 
+    if (token === "--local-worker-daemon" || token === "--allow-local-daemon") {
+      extraFlags.allowLocalDaemon = true;
+      continue;
+    }
+    if (token.startsWith("--local-worker-daemon=")) {
+      const val = token.slice("--local-worker-daemon=".length).trim().toLowerCase();
+      extraFlags.allowLocalDaemon = val !== "false" && val !== "0";
+      continue;
+    }
+
+    if (token === "--timeout-ms" || token === "--timeout") {
+      const parsed = Number(args[++i]);
+      if (Number.isFinite(parsed)) {
+        extraFlags.timeoutMs = parsed;
+      }
+      continue;
+    }
+    if (token.startsWith("--timeout-ms=")) {
+      const parsed = Number(token.slice("--timeout-ms=".length).trim());
+      if (Number.isFinite(parsed)) {
+        extraFlags.timeoutMs = parsed;
+      }
+      continue;
+    }
+
+    if (token === "--poll-ms" || token === "--poll") {
+      const parsed = Number(args[++i]);
+      if (Number.isFinite(parsed)) {
+        extraFlags.pollMs = parsed;
+      }
+      continue;
+    }
+    if (token.startsWith("--poll-ms=")) {
+      const parsed = Number(token.slice("--poll-ms=".length).trim());
+      if (Number.isFinite(parsed)) {
+        extraFlags.pollMs = parsed;
+      }
+      continue;
+    }
+
     if (!token.startsWith("-") && !command) {
       command = token.trim();
       continue;
@@ -344,6 +384,24 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
           ...delegated,
           workerPid: process.pid,
           runtimeTransport: "t3-acp-mcp"
+        };
+        stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        return { exitCode: 0, result };
+      }
+
+      const allowLocalDaemon = Boolean(
+        process.env.T3_MISSION_LOCAL_WORKER_DAEMON === "1" ||
+          payload.allowLocalDaemon === true
+      );
+
+      if (!allowLocalDaemon) {
+        const result = {
+          ok: true,
+          dispatched: false,
+          dispatchPending: true,
+          code: "NO_T3_TRANSPORT",
+          runtimeTransport: "orchestrator-pending",
+          worktreePath: repoPath
         };
         stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         return { exitCode: 0, result };
@@ -679,6 +737,9 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
     });
 
     stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (canonicalTool === "WaitForApproval" && result && result.timedOut === true) {
+      return { exitCode: 1, result };
+    }
     return { exitCode: 0, result };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

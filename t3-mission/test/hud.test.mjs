@@ -815,7 +815,7 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
     ) + "\n"
   );
 
-  const srv14 = await createMissionHudServer({ missionDir: p14Dir, port: 0 });
+  const srv14 = await createMissionHudServer({ missionDir: p14Dir, port: 0, allowLocalDaemon: true });
   t.after(async () => {
     await srv14.close();
     fs.rmSync(p14Dir, { recursive: true, force: true });
@@ -1478,7 +1478,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     return origExecFile.apply(this, args);
   };
 
-  const srvDefault = await createMissionHudServer({ missionDir: r4DefaultDir, port: 0 });
+  const srvDefault = await createMissionHudServer({ missionDir: r4DefaultDir, port: 0, allowLocalDaemon: true });
   try {
     const appRes = await fetch(`${srvDefault.url}/api/mission/approve`, { method: "POST" });
     assert.equal(appRes.status, 200);
@@ -1756,7 +1756,7 @@ test("Round 6 Scrutiny Fix (F03-dead-worker-control-success): Killing default HU
     progressLog: fs.readFileSync(path.join(r6DotM, "progress_log.jsonl"), "utf8"),
   });
 
-  const srv = await createMissionHudServer({ missionDir: r6Dir, port: 0 });
+  const srv = await createMissionHudServer({ missionDir: r6Dir, port: 0, allowLocalDaemon: true });
   t.after(async () => {
     await srv.close();
     fs.rmSync(r6Dir, { recursive: true, force: true });
@@ -2114,13 +2114,16 @@ test("HUD Effort Capability Fix (t3m-m1-w3-hud-effort-cap-fix-v1): Fixed-tier / 
   assert.equal(normalized.worker.supportsEffort, true);
   assert.equal(normalized.worker.effort, 4);
   assert.equal(normalized.worker.reasoningEffort, "high");
-  assert.equal(normalized.worker.options.effort, 4);
+  assert.equal("effort" in normalized.worker.options, false);
   assert.equal(normalized.worker.options.reasoningEffort, "high");
 
   assert.equal(normalized.validator.model, "claude-opus-5-5");
   assert.equal(normalized.validator.supportsEffort, true);
   assert.equal(normalized.validator.effort, 5);
   assert.equal(normalized.validator.reasoningEffort, "max");
+  assert.equal("effort" in normalized.validator.options, true);
+  assert.equal(normalized.validator.options.effort, 5);
+  assert.equal(normalized.validator.options.reasoningEffort, "max");
 
   // 3. Verify HUD DOM hides #effort-bars-<slot> for gemini-4-argon-high and shows interactive bars for gpt-6.1-sol / claude-opus-5-5
   const appSrc = fs
@@ -3049,4 +3052,264 @@ test("Validator #8 Round 2 Fix (HUD-V8-005): SSE snapshot convergence when featu
   const convergedIds = convergedSnap.features.map((f) => f.id);
   assert.ok(convergedIds.includes("scrutiny-validator-m2"));
   assert.ok(convergedIds.includes("user-testing-validator-m2"));
+});
+
+test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve sets dispatchPending without fake daemon/IDs, notifyUrl webhook POST, uninitialized slot edits, and HUD UI badges", async (t) => {
+  const workspaceDir = createTempMissionWorkspace();
+  const dotMission = path.join(workspaceDir, ".mission");
+  fs.mkdirSync(dotMission, { recursive: true });
+
+  // Set up a mock webhook server for --notify-url / options.notifyUrl
+  const webhookEvents = [];
+  const webhookServer = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", () => {
+      try {
+        webhookEvents.push(JSON.parse(raw));
+      } catch {}
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  await new Promise((resolve) => webhookServer.listen(0, "127.0.0.1", resolve));
+  const webhookPort = webhookServer.address().port;
+  const notifyUrl = `http://127.0.0.1:${webhookPort}/webhook`;
+
+  const hud = await createMissionHudServer({
+    missionDir: workspaceDir,
+    port: 0,
+    notifyUrl,
+  });
+
+  t.after(async () => {
+    await hud.close();
+    await new Promise((resolve) => webhookServer.close(resolve));
+    fs.rmSync(workspaceDir, { recursive: true, force: true });
+  });
+
+  // 1. DISPATCH-FIX-003 & DISPATCH-FIX-004: Edit model slots in HUD BEFORE ProposeMission
+  const preSlotRes = await fetch(`${hud.url}/api/mission/model-slots`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      slot: "validator",
+      model: "gpt-6.1-sol",
+      providerInstanceId: "codex",
+      effort: 5,
+    }),
+  });
+  assert.equal(preSlotRes.status, 200);
+  const preSlotBody = await preSlotRes.json();
+  assert.equal(preSlotBody.state.initialized, false);
+  assert.equal(preSlotBody.state.missionId, "mission-uninitialized");
+  assert.equal(preSlotBody.snapshot.initialized, false);
+  assert.deepEqual(preSlotBody.modelSettings.userModifiedSlots, ["validator"]);
+  assert.equal("effort" in preSlotBody.modelSettings.validator.options, false);
+  assert.equal(preSlotBody.modelSettings.validator.options.reasoningEffort, "max");
+
+  // Verify notifyUrl received model-slots event
+  assert.equal(webhookEvents.length, 1);
+  assert.equal(webhookEvents[0].type, "model-slots");
+
+  // 2. ProposeMission via kernel: replaces mission-uninitialized with real missionId, preserves user validator slot, and normalizes per-feature target
+  const { proposeMission } = await import("../kernel/index.mjs");
+  const proposed = proposeMission(workspaceDir, {
+    repoPath: workspaceDir,
+    milestones: [{ id: "m1", title: "Milestone 1" }],
+    assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Check 1" }],
+    features: [
+      {
+        id: "f1-ui",
+        milestoneId: "m1",
+        title: "UI Feature",
+        target: {
+          providerInstanceId: "claudeAgent",
+          model: "claude-opus-5-5",
+          effort: 5,
+        },
+        fulfills: ["VAL-1"],
+      },
+      {
+        id: "f2-logic",
+        milestoneId: "m1",
+        title: "Logic Feature",
+        workerTarget: "gpt-6.1-sol",
+        fulfills: ["VAL-1"],
+      },
+    ],
+    modelSettings: {
+      validator: {
+        providerInstanceId: "cpa",
+        model: "grok-4.7",
+        effort: 3,
+      },
+    },
+  });
+
+  assert.notEqual(proposed.state.missionId, "mission-uninitialized");
+  assert.match(proposed.state.missionId, /^mission-/);
+  assert.equal(proposed.state.initialized, true);
+  assert.equal(proposed.modelSettings.validator.model, "gpt-6.1-sol");
+  assert.equal(proposed.modelSettings.validator.effort, 5);
+
+  // 3. DISPATCH-FIX-001 & DISPATCH-FIX-006: Approve in HUD without T3_ACP_MCP_NODE and without allowLocalDaemon
+  const approveRes = await fetch(`${hud.url}/api/mission/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  assert.equal(approveRes.status, 200);
+  const approveBody = await approveRes.json();
+
+  const stateAfterApprove = JSON.parse(
+    fs.readFileSync(path.join(dotMission, "state.json"), "utf8")
+  );
+  const featuresAfterApprove = JSON.parse(
+    fs.readFileSync(path.join(dotMission, "features.json"), "utf8")
+  ).features;
+
+  assert.equal(stateAfterApprove.planAccepted, true);
+  assert.equal(stateAfterApprove.status, "running");
+  assert.ok(stateAfterApprove.activeWorker);
+  assert.equal(stateAfterApprove.activeWorker.featureId, "f1-ui");
+  // Per-feature model override was applied on handleApprove
+  assert.equal(stateAfterApprove.activeWorker.model, "claude-opus-5-5");
+  assert.equal(stateAfterApprove.activeWorker.providerInstanceId, "claudeAgent");
+  assert.equal(stateAfterApprove.activeWorker.options.effort, 5);
+
+  // No fake daemon or invented IDs
+  assert.equal(stateAfterApprove.activeWorker.dispatchPending, true);
+  assert.equal(stateAfterApprove.activeWorker.runtimeTransport, "orchestrator-pending");
+  assert.equal(stateAfterApprove.activeWorker.workerPid, undefined);
+  assert.equal(stateAfterApprove.activeWorker.daemonStateFile, undefined);
+  assert.equal(stateAfterApprove.activeWorker.taskId, undefined);
+  assert.equal(stateAfterApprove.activeWorker.childThreadId, undefined);
+  assert.equal(stateAfterApprove.activeWorker.childRunId, undefined);
+
+  assert.equal(featuresAfterApprove[0].dispatchPending, true);
+  assert.equal(featuresAfterApprove[0].runtimeTransport, "orchestrator-pending");
+  assert.equal(featuresAfterApprove[0].workerPid, undefined);
+  assert.equal(featuresAfterApprove[0].taskId, undefined);
+  assert.equal(featuresAfterApprove[0].childThreadId, undefined);
+
+  // Verify notifyUrl received approve event
+  assert.equal(webhookEvents.length, 2);
+  assert.equal(webhookEvents[1].type, "approve");
+  assert.equal(webhookEvents[1].state.planAccepted, true);
+
+  // 4. Verify app.js renders "Approved — waiting for Orchestrator to dispatch" and per-feature model badges
+  const appSrc = fs
+    .readFileSync(APP_JS_PATH, "utf8")
+    .replace("export function applySnapshot", "function applySnapshot")
+    .replace(/initHud\(\);\s*$/, "");
+
+  const elements = new Map();
+  function makeEl(id) {
+    return {
+      id,
+      textContent: "",
+      innerHTML: "",
+      dataset: {},
+      style: {},
+      classList: {
+        add() {},
+        remove() {},
+        toggle() {},
+        contains() { return false; },
+      },
+      setAttribute() {},
+      removeAttribute() {},
+      addEventListener() {},
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    };
+  }
+  for (const id of [
+    "mission-repo-path",
+    "mission-title",
+    "metric-time",
+    "metric-progress",
+    "metric-progress-bar",
+    "metric-contract",
+    "metric-contract-bar",
+    "status-strip",
+    "status-strip-label",
+    "status-strip-subtext",
+    "strip-approve-btn",
+    "btn-pause",
+    "btn-resume",
+    "milestone-stepper-track",
+    "pipeline-text",
+    "sessions-list",
+    "sessions-count",
+    "onboarding-card",
+    "plan-approval-card",
+    "session-inspector",
+    "session-handoff-view",
+    "orchestrator-stream",
+    "features-count",
+    "features-list",
+    "assertions-count",
+    "assertions-list",
+    "progress-log-count",
+    "progress-log-list",
+  ]) {
+    elements.set(id, makeEl(id));
+  }
+
+  const sandbox = {
+    document: {
+      getElementById(id) {
+        return elements.get(id) || null;
+      },
+    },
+    window: {},
+    navigator: {},
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    EventSource: class { addEventListener() {} },
+    setInterval() {},
+    clearInterval() {},
+    setTimeout() {},
+    clearTimeout() {},
+    Date,
+    Math,
+    JSON,
+    Number,
+    String,
+    Boolean,
+    Array,
+    Object,
+    Map,
+    Set,
+    RegExp,
+    Error,
+    encodeURIComponent,
+  };
+
+  vm.runInNewContext(`${appSrc}\nthis.__applySnapshot = applySnapshot;`, sandbox);
+  sandbox.__applySnapshot(approveBody.snapshot);
+
+  assert.match(
+    elements.get("status-strip-subtext").textContent,
+    /Approved — waiting for Orchestrator to dispatch/
+  );
+  assert.match(
+    elements.get("orchestrator-stream").innerHTML,
+    /Approved — waiting for Orchestrator to dispatch/
+  );
+  assert.match(
+    elements.get("features-list").innerHTML,
+    /data-feature-model="claude-opus-5-5"/
+  );
+  assert.match(
+    elements.get("features-list").innerHTML,
+    /data-feature-model="gpt-6.1-sol"/
+  );
+  assert.match(
+    elements.get("features-list").innerHTML,
+    /Awaiting Orchestrator Dispatch/
+  );
 });

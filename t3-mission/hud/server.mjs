@@ -117,6 +117,16 @@ export function effortToReasoningEffort(effort, fallback = "high") {
   return fallback;
 }
 
+export function doesProviderDeclareEffortOption(providerInstanceId) {
+  const norm = String(providerInstanceId || "").trim().toLowerCase();
+  return (
+    norm === "claudeagent" ||
+    norm === "claude-code" ||
+    norm === "claude-agent-acp" ||
+    norm === "acpregistry_cursor"
+  );
+}
+
 export const DEFAULT_HUD_MODEL_SETTINGS = {
   orchestrator: {
     providerInstanceId: "claude-code",
@@ -136,7 +146,7 @@ export const DEFAULT_HUD_MODEL_SETTINGS = {
     effortLevels: ["low", "medium", "high", "xhigh", "max"],
     effort: 5,
     reasoningEffort: "max",
-    options: { reasoningEffort: "max", effort: 5 },
+    options: { reasoningEffort: "max" },
   },
   validator: {
     providerInstanceId: "cpa",
@@ -146,7 +156,7 @@ export const DEFAULT_HUD_MODEL_SETTINGS = {
     effortLevels: ["low", "medium", "high", "xhigh"],
     effort: 3,
     reasoningEffort: "medium",
-    options: { reasoningEffort: "medium", effort: 3 },
+    options: { reasoningEffort: "medium" },
   },
   skipScrutiny: false,
   skipUserTesting: false,
@@ -258,6 +268,15 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
       entry?.reasoningEffort,
       base.effort || 4
     );
+    const slotOptions = {
+      ...(base.options || {}),
+      reasoningEffort,
+    };
+    if (doesProviderDeclareEffortOption(providerInstanceId)) {
+      slotOptions.effort = effort;
+    } else {
+      delete slotOptions.effort;
+    }
     return {
       providerInstanceId,
       model,
@@ -266,11 +285,7 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
       effortLevels: entry?.effortLevels || ["minimal", "low", "medium", "high", "max"],
       effort,
       reasoningEffort,
-      options: {
-        ...(base.options || {}),
-        reasoningEffort,
-        effort,
-      },
+      options: slotOptions,
     };
   }
 
@@ -332,6 +347,17 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
     entry?.effort ?? base.effort ?? 4
   );
 
+  const slotOptions = {
+    ...(base.options || {}),
+    ...(rawSlot.options || {}),
+    reasoningEffort,
+  };
+  if (doesProviderDeclareEffortOption(providerInstanceId)) {
+    slotOptions.effort = effort;
+  } else {
+    delete slotOptions.effort;
+  }
+
   return {
     providerInstanceId,
     model,
@@ -340,29 +366,46 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
     effortLevels: entry?.effortLevels || ["minimal", "low", "medium", "high", "max"],
     effort,
     reasoningEffort,
-    options: {
-      ...(base.options || {}),
-      ...(rawSlot.options || {}),
-      reasoningEffort,
-      effort,
-    },
+    options: slotOptions,
   };
 }
 
 export function normalizeHudModelSettings(partial = {}, base = DEFAULT_HUD_MODEL_SETTINGS) {
-  return {
-    orchestrator: normalizeSlotConfig(partial?.orchestrator, base.orchestrator),
-    worker: normalizeSlotConfig(partial?.worker, base.worker),
-    validator: normalizeSlotConfig(partial?.validator, base.validator),
+  const source =
+    partial?.slots && typeof partial.slots === "object"
+      ? { ...partial, ...partial.slots }
+      : partial || {};
+  const baseSource =
+    base?.slots && typeof base.slots === "object"
+      ? { ...base, ...base.slots }
+      : base || DEFAULT_HUD_MODEL_SETTINGS;
+
+  const rawModified = Array.isArray(source?.userModifiedSlots)
+    ? source.userModifiedSlots
+    : Array.isArray(baseSource?.userModifiedSlots)
+      ? baseSource.userModifiedSlots
+      : null;
+
+  const normalized = {
+    orchestrator: normalizeSlotConfig(source?.orchestrator, baseSource.orchestrator),
+    worker: normalizeSlotConfig(source?.worker, baseSource.worker),
+    validator: normalizeSlotConfig(source?.validator, baseSource.validator),
     skipScrutiny:
-      typeof partial?.skipScrutiny === "boolean"
-        ? partial.skipScrutiny
-        : Boolean(base?.skipScrutiny),
+      typeof source?.skipScrutiny === "boolean"
+        ? source.skipScrutiny
+        : Boolean(baseSource?.skipScrutiny),
     skipUserTesting:
-      typeof partial?.skipUserTesting === "boolean"
-        ? partial.skipUserTesting
-        : Boolean(base?.skipUserTesting),
+      typeof source?.skipUserTesting === "boolean"
+        ? source.skipUserTesting
+        : Boolean(baseSource?.skipUserTesting),
   };
+
+  if (rawModified && rawModified.length > 0) {
+    normalized.userModifiedSlots = Array.from(
+      new Set(rawModified.map((s) => String(s).trim()).filter(Boolean))
+    );
+  }
+  return normalized;
 }
 
 export function resolveMissionPaths(missionDir) {
@@ -563,7 +606,7 @@ function isLocalWorkerPidAlive(pid) {
   }
 }
 
-function createDefaultHudRuntimeAdapter(paths) {
+function createDefaultHudRuntimeAdapter(paths, options = {}) {
   return {
     isDefaultHudRuntime: true,
     async runFeature(feature, slotConfig, state) {
@@ -572,12 +615,17 @@ function createDefaultHudRuntimeAdapter(paths) {
         slotConfig?.runId ||
         feature?.runId ||
         `run-${crypto.randomUUID().slice(0, 8)}`;
+      const allowLocalDaemon = Boolean(
+        options.allowLocalDaemon === true ||
+          process.env.T3_MISSION_LOCAL_WORKER_DAEMON === "1"
+      );
       return await execRuntimeSubprocess("dispatch", paths.dotMissionDir, {
         missionId: state?.missionId || "mission",
         feature,
         slotConfig,
         runId,
         repoPath: state?.repoPath || paths.repoDir,
+        ...(allowLocalDaemon ? { allowLocalDaemon: true } : {}),
       });
     },
     async pauseWorker(worker, state) {
@@ -854,11 +902,17 @@ export function createMissionHudServer({
   onCommand,
   dispatchAdapter,
   runtimeAdapter,
+  allowLocalDaemon = false,
+  notifyUrl = process.env.T3_MISSION_NOTIFY_URL || null,
 } = {}) {
   const paths = resolveMissionPaths(missionDir || process.cwd());
   const hasCustomAdapter = Boolean(dispatchAdapter || runtimeAdapter);
   const effectiveAdapter =
-    dispatchAdapter || runtimeAdapter || createDefaultHudRuntimeAdapter(paths);
+    dispatchAdapter ||
+    runtimeAdapter ||
+    createDefaultHudRuntimeAdapter(paths, { allowLocalDaemon });
+  const resolvedNotifyUrl =
+    typeof notifyUrl === "string" && notifyUrl.trim() ? notifyUrl.trim() : null;
   const sseClients = new Set();
   let sseEventSeq = 1;
   let fsWatcher = null;
@@ -941,7 +995,12 @@ export function createMissionHudServer({
   reconcileStaleRunningStateOnStartup();
 
   function buildInMemorySnapshot({ state: rawState, features: rawFeatures, modelSettings: rawModelSettings, progressLog }) {
-    const initialized = rawState !== null && rawState !== undefined;
+    const initialized = Boolean(
+      rawState !== null &&
+        rawState !== undefined &&
+        rawState.initialized !== false &&
+        rawState.missionId !== "mission-uninitialized"
+    );
     const state = initialized
       ? {
           initialized: true,
@@ -1175,6 +1234,23 @@ export function createMissionHudServer({
     if (typeof onCommand === "function") {
       await onCommand({ type, payload, snapshot });
     }
+    if (resolvedNotifyUrl) {
+      try {
+        await fetch(resolvedNotifyUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type,
+            missionDir: paths.dotMissionDir,
+            payload,
+            state: snapshot?.state,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+      } catch {
+        // Ignore webhook delivery failures so HUD HTTP responses never fail
+      }
+    }
   }
 
   async function handleApprove(req, res) {
@@ -1247,7 +1323,28 @@ export function createMissionHudServer({
           : f.kind || (isValidator ? "scrutiny" : "implementation");
       const role = isValidator ? "Validator" : kind === "explorer" ? "Explorer" : "Worker";
       const slotName = isValidator ? "validator" : "worker";
-      const slotCfg = modelSettings[slotName] || DEFAULT_HUD_MODEL_SETTINGS[slotName];
+      const baseSlotCfg = modelSettings[slotName] || DEFAULT_HUD_MODEL_SETTINGS[slotName];
+      const rawOverride =
+        f?.target ??
+        f?.workerTarget ??
+        f?.slotConfig ??
+        (f?.model
+          ? {
+              providerInstanceId: f.providerInstanceId,
+              model: f.model,
+              effort: f.effort,
+              reasoningEffort: f.reasoningEffort,
+              options: f.options,
+            }
+          : null);
+      const slotCfg =
+        rawOverride !== null && rawOverride !== undefined
+          ? normalizeSlotConfig(rawOverride, baseSlotCfg)
+          : normalizeSlotConfig(baseSlotCfg, baseSlotCfg);
+      const cleanedWorkerOptions = { ...(slotCfg.options || {}) };
+      if (!doesProviderDeclareEffortOption(slotCfg.providerInstanceId)) {
+        delete cleanedWorkerOptions.effort;
+      }
 
       featuresList[pendingFeatureIdx] = {
         ...f,
@@ -1273,7 +1370,7 @@ export function createMissionHudServer({
         slot: slotName,
         providerInstanceId: slotCfg.providerInstanceId,
         model: slotCfg.model,
-        options: slotCfg.options || {},
+        options: cleanedWorkerOptions,
         status: "running",
         attempt: nextAttempt,
         startedAt: nowIso,
@@ -1335,7 +1432,7 @@ export function createMissionHudServer({
           resultObj &&
             typeof resultObj === "object" &&
             (resultObj.ok === false ||
-              resultObj.dispatched === false ||
+              (resultObj.dispatched === false && resultObj.dispatchPending !== true) ||
               resultObj.accepted === false ||
               resultObj.started === false ||
               resultObj.canStart === false ||
@@ -1390,31 +1487,51 @@ export function createMissionHudServer({
               Array.isArray(updatedState.sessions) && updatedState.sessions.length > 0
                 ? updatedState.sessions[updatedState.sessions.length - 1]
                 : null;
-            for (const key of [
-              "taskId",
-              "childThreadId",
-              "childRunId",
-              "worktreePath",
-              "workerPid",
-              "runtimeTransport",
-              "delegatedBy",
-            ]) {
-              if (runRes[key] !== undefined) {
-                selectedWorkerEntry[key] = runRes[key];
-                updatedState.activeWorker[key] = runRes[key];
-                if (lastSession) lastSession[key] = runRes[key];
-                featuresList[pendingFeatureIdx][key] = runRes[key];
-              }
-            }
-            applyRuntimeDaemonMetadata(runRes);
             if (runRes.dispatchPending === true) {
-              selectedWorkerEntry.dispatchPending = true;
-              updatedState.activeWorker.dispatchPending = true;
-              if (lastSession) lastSession.dispatchPending = true;
+              const pendingTransport = runRes.runtimeTransport || "orchestrator-pending";
+              for (const target of [
+                selectedWorkerEntry,
+                updatedState.activeWorker,
+                lastSession,
+                featuresList[pendingFeatureIdx],
+              ]) {
+                if (!target || typeof target !== "object") continue;
+                delete target.taskId;
+                delete target.childThreadId;
+                delete target.childRunId;
+                delete target.workerPid;
+                delete target.daemonStateFile;
+                delete target.daemonStatus;
+                target.dispatchPending = true;
+                target.runtimeTransport = pendingTransport;
+                if (runRes.worktreePath !== undefined) {
+                  target.worktreePath = runRes.worktreePath;
+                }
+              }
             } else {
+              for (const key of [
+                "taskId",
+                "childThreadId",
+                "childRunId",
+                "worktreePath",
+                "workerPid",
+                "runtimeTransport",
+                "delegatedBy",
+              ]) {
+                if (runRes[key] !== undefined) {
+                  selectedWorkerEntry[key] = runRes[key];
+                  updatedState.activeWorker[key] = runRes[key];
+                  if (lastSession) lastSession[key] = runRes[key];
+                  featuresList[pendingFeatureIdx][key] = runRes[key];
+                }
+              }
+              applyRuntimeDaemonMetadata(runRes);
               delete selectedWorkerEntry.dispatchPending;
               delete updatedState.activeWorker.dispatchPending;
               if (lastSession) delete lastSession.dispatchPending;
+              if (featuresList[pendingFeatureIdx]) {
+                delete featuresList[pendingFeatureIdx].dispatchPending;
+              }
             }
           }
         }
@@ -1544,9 +1661,10 @@ export function createMissionHudServer({
         ...(prevSlot?.options || {}),
         ...(incoming.options || {}),
       };
+      const numericEffort = hasEffort
+        ? Math.max(1, Math.min(5, Math.round(Number(rawEffortVal) || 4)))
+        : undefined;
       if (hasEffort) {
-        const numericEffort = Math.max(1, Math.min(5, Math.round(Number(rawEffortVal) || 4)));
-        nextOptions.effort = numericEffort;
         if (!hasReasoning) {
           nextOptions.reasoningEffort = derivedReasoning;
         }
@@ -1559,6 +1677,18 @@ export function createMissionHudServer({
         incoming.model !== undefined && incoming.model !== prevSlot?.model;
       const incomingEntry =
         incoming.model !== undefined ? findCatalogEntry(incoming.model) : null;
+      const effectiveProvider =
+        incoming.providerInstanceId ??
+        (modelChanged ? incomingEntry?.providerInstanceId : undefined) ??
+        prevSlot?.providerInstanceId;
+
+      if (doesProviderDeclareEffortOption(effectiveProvider)) {
+        if (numericEffort !== undefined) {
+          nextOptions.effort = numericEffort;
+        }
+      } else {
+        delete nextOptions.effort;
+      }
 
       const merged = {
         ...prevSlot,
@@ -1577,7 +1707,7 @@ export function createMissionHudServer({
           ? { providerInstanceId: incoming.providerInstanceId }
           : {}),
         ...(incoming.label !== undefined ? { label: incoming.label } : {}),
-        ...(hasEffort ? { effort: nextOptions.effort } : {}),
+        ...(numericEffort !== undefined ? { effort: numericEffort } : {}),
         ...(derivedReasoning !== undefined ? { reasoningEffort: derivedReasoning } : {}),
         options: nextOptions,
       };
@@ -1606,18 +1736,40 @@ export function createMissionHudServer({
       patch.skipUserTesting = container.skipUserTesting;
     }
 
-    const updatedSettings = normalizeHudModelSettings(patch, currentSettings);
-    const existingState =
-      safeReadJsonSync(paths.statePath, null) || buildUninitializedState(paths.repoDir);
-    const updatedState = {
-      ...existingState,
-      initialized: true,
-      revision: (typeof existingState.revision === "number" ? existingState.revision : 0) + 1,
-    };
-
     const changedRoles = Object.keys(patch).filter((k) =>
       ["orchestrator", "worker", "validator"].includes(k)
     );
+    const modifiedKeys = [...changedRoles];
+    if (typeof patch.skipScrutiny === "boolean") {
+      modifiedKeys.push("skipScrutiny");
+    }
+    if (typeof patch.skipUserTesting === "boolean") {
+      modifiedKeys.push("skipUserTesting");
+    }
+    const existingModified = Array.isArray(currentSettings.userModifiedSlots)
+      ? currentSettings.userModifiedSlots
+      : [];
+    patch.userModifiedSlots = Array.from(
+      new Set([...existingModified, ...modifiedKeys])
+    );
+
+    const updatedSettings = normalizeHudModelSettings(patch, currentSettings);
+    const rawExistingState = safeReadJsonSync(paths.statePath, null);
+    const existingState =
+      rawExistingState || buildUninitializedState(paths.repoDir);
+    const isUninitializedState = Boolean(
+      !rawExistingState ||
+        existingState.initialized === false ||
+        existingState.missionId === "mission-uninitialized"
+    );
+    const updatedState = {
+      ...existingState,
+      initialized: isUninitializedState ? false : true,
+      missionId: isUninitializedState
+        ? "mission-uninitialized"
+        : existingState.missionId,
+      revision: (typeof existingState.revision === "number" ? existingState.revision : 0) + 1,
+    };
     const summaryParts = (changedRoles.length ? changedRoles : ["validator"]).map(
       (role) => {
         const slotCfg = updatedSettings[role];
@@ -2300,6 +2452,8 @@ function parseCliArgs(argv) {
   let portExplicit = false;
   let host = "127.0.0.1";
   let foreground = false;
+  let notifyUrl = process.env.T3_MISSION_NOTIFY_URL || null;
+  let allowLocalDaemon = process.env.T3_MISSION_LOCAL_WORKER_DAEMON === "1";
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -2319,16 +2473,36 @@ function parseCliArgs(argv) {
       host = arg.slice("--host=".length);
     } else if (arg === "--foreground") {
       foreground = true;
+    } else if ((arg === "--notify-url" || arg === "--notifyUrl") && argv[i + 1]) {
+      notifyUrl = argv[++i];
+    } else if (arg.startsWith("--notify-url=")) {
+      notifyUrl = arg.slice("--notify-url=".length);
+    } else if (arg === "--local-worker-daemon" || arg === "--allow-local-daemon") {
+      allowLocalDaemon = true;
     }
   }
 
-  return { missionDir, port, portExplicit, host, foreground };
+  return {
+    missionDir,
+    port,
+    portExplicit,
+    host,
+    foreground,
+    notifyUrl,
+    allowLocalDaemon,
+  };
 }
 
 async function runCli() {
-  const { missionDir, port, portExplicit, host, foreground } = parseCliArgs(
-    process.argv.slice(2)
-  );
+  const {
+    missionDir,
+    port,
+    portExplicit,
+    host,
+    foreground,
+    notifyUrl,
+    allowLocalDaemon,
+  } = parseCliArgs(process.argv.slice(2));
   const paths = resolveMissionPaths(missionDir);
   fs.mkdirSync(paths.dotMissionDir, { recursive: true });
 
@@ -2393,10 +2567,22 @@ async function runCli() {
 
   let srv;
   try {
-    srv = await createMissionHudServer({ missionDir, port, host });
+    srv = await createMissionHudServer({
+      missionDir,
+      port,
+      host,
+      notifyUrl,
+      allowLocalDaemon,
+    });
   } catch (err) {
     if (err && err.code === "EADDRINUSE" && !portExplicit) {
-      srv = await createMissionHudServer({ missionDir, port: 0, host });
+      srv = await createMissionHudServer({
+        missionDir,
+        port: 0,
+        host,
+        notifyUrl,
+        allowLocalDaemon,
+      });
     } else {
       throw err;
     }

@@ -79,23 +79,29 @@ When the user triggers `/mission <需求>` or asks to start a Mission ("开启 m
 ### Step 3: Propose the Mission Plan (`ProposeMission`) & Wait for User Approval
 1. Synthesize the exploration findings into a structured Mission Plan containing:
    - **Milestones** (`M1`, `M2`, ...)
-   - **Features** (scoped implementation units mapped to milestones and `VAL-*` assertions)
+   - **Features** (scoped implementation units mapped to milestones and `VAL-*` assertions; supports optional per-feature model overrides via `feature.target` or `feature.workerTarget`)
    - **Validation Contract** (`VAL-*` assertions with testable acceptance criteria)
-   - **Three-Role Model Settings** (`orchestrator`, `worker`, `validator`)
+   - **Three-Role Model Settings** (`orchestrator`, `worker`, `validator`; preserves any slots the user already edited in the HUD unless `forceModelSettings: true` is passed)
 2. Invoke `ProposeMission` via MCP or CLI:
    ```bash
    node t3-mission/bridge/cli.mjs ProposeMission --mission-dir .mission --json '<plan-payload>'
    ```
-3. **HARD GUARDRAIL (Mandatory Approval Gate)**:
-   - Prompt the user to review the proposed Milestones, Features, Validation Contract, and three-role model slots (`Orchestrator` / `Worker` / `Validator`) in the right-side **Mission HUD** and click **Approve** (or confirm approval).
+3. Immediately start `WaitForApproval` as a background command (or via the `WaitForApproval` MCP tool) so the Orchestrator thread is woken automatically as soon as the user clicks **Approve & Start Mission** or **Request Changes** in the HUD:
+   ```bash
+   node t3-mission/bridge/cli.mjs WaitForApproval --mission-dir .mission --timeout-ms 600000
+   ```
+   *(You may also pass `--notify-url <webhookUrl>` when starting `hud/server.mjs` to POST HUD command notifications to a T3 `schedule_task` webhook.)*
+4. **HARD GUARDRAIL (Mandatory Approval Gate)**:
+   - Prompt the user to review the proposed Milestones, Features, Validation Contract, and three-role model slots (`Orchestrator` / `Worker` / `Validator`) in the right-side **Mission HUD** and click **Approve & Start Mission** (or confirm approval).
    - **NEVER** call `StartMissionRun` or dispatch any implementation `Worker` before the user has explicitly approved the plan (`planAccepted === true`).
 
 ### Step 4: Execute Serial Workers & Mandatory Milestone Validators (`StartMissionRun`)
-1. Once the user clicks **Approve** in the HUD (or approves the plan via `ApproveMissionPlan`):
+1. Once `WaitForApproval` resolves with `event: "plan_approved"` (or the user approves the plan via the HUD / `ApproveMissionPlan`):
    ```bash
    node t3-mission/bridge/cli.mjs ApproveMissionPlan --mission-dir .mission
    node t3-mission/bridge/cli.mjs StartMissionRun --mission-dir .mission
    ```
+   *(If the HUD recorded `activeWorker.dispatchPending === true` because no live ACP transport was present in the HUD subprocess, dispatch that pending feature via `delegate_task` or `StartMissionRun` with a live transport adapter.)*
 2. For each pending Feature in the active Milestone:
    - Dispatch the Worker using `delegate_task` with standardized title `[M<N>] Worker #<K>: <Feature Title>`, `role: "implementation"`, `isolation: "worktree"`, normalized `target` from the `worker` slot, and a stable idempotent `clientRequestId`.
    - When the Worker finishes, record its structured handoff via `EndFeatureRun` (always supplying `featureId` and `runId` to fence against stale workers):

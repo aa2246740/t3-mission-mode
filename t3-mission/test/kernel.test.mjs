@@ -839,21 +839,36 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
   });
   approveMissionPlan(projectDir);
 
-  // F09: normalizeSlotConfig keeps effort and reasoningEffort consistent
+  // F09 & DISPATCH-FIX-005: normalizeSlotConfig keeps top-level effort + reasoningEffort, and injects options.effort ONLY for providers declaring effort
   const normalizedLow = normalizeSlotConfig(
     { providerInstanceId: "codex", model: "gpt-6.1-sol", effort: 2, reasoningEffort: "high" },
     { providerInstanceId: "codex", model: "gpt-6.1-sol", options: { reasoningEffort: "high" } }
   );
-  assert.equal(normalizedLow.options.effort, 2);
+  assert.equal(normalizedLow.effort, 2);
+  assert.equal(normalizedLow.reasoningEffort, "low");
   assert.equal(normalizedLow.options.reasoningEffort, "low");
+  assert.equal("effort" in normalizedLow.options, false);
 
   const normalizedMinimal = normalizeSlotConfig({
     providerInstanceId: "codex",
     model: "gpt-6.1-sol",
     effort: 1,
   });
-  assert.equal(normalizedMinimal.options.effort, 1);
+  assert.equal(normalizedMinimal.effort, 1);
+  assert.equal(normalizedMinimal.reasoningEffort, "minimal");
   assert.equal(normalizedMinimal.options.reasoningEffort, "minimal");
+  assert.equal("effort" in normalizedMinimal.options, false);
+
+  const normalizedClaude = normalizeSlotConfig({
+    providerInstanceId: "claudeAgent",
+    model: "claude-opus-5-5",
+    effort: 5,
+  });
+  assert.equal(normalizedClaude.effort, 5);
+  assert.equal(normalizedClaude.reasoningEffort, "max");
+  assert.equal(normalizedClaude.options.effort, 5);
+  assert.equal(normalizedClaude.options.reasoningEffort, "max");
+  assert.equal("effort" in normalizedClaude.options, true);
 
   // V7-R2-F01: fixed-tier models omit effort and reasoningEffort keys completely
   const normalizedFixed = normalizeSlotConfig(
@@ -1525,4 +1540,194 @@ test("COMPLETION-REQUIRES-START: endFeatureRun on final validator immediately tr
   );
   assert.equal(completedLogsAfterNoop.length, 1);
   assert.equal(logsAfterNoop.length, logsAfterEnd.length);
+});
+
+test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: uninitialized placeholder replacement, HUD model-slot preservation, provider-scoped options.effort, and per-feature target overrides", async (t) => {
+  const projectDir = makeTempProjectDir(t);
+  const dotMission = path.join(projectDir, ".mission");
+  fs.mkdirSync(dotMission, { recursive: true });
+
+  // Simulate HUD writing uninitialized state and user-modified model-settings + progress_log before ProposeMission
+  fs.writeFileSync(
+    path.join(dotMission, "state.json"),
+    JSON.stringify(
+      {
+        initialized: false,
+        missionId: "mission-uninitialized",
+        title: "Waiting for Mission Initialization",
+        repoPath: projectDir,
+        status: "planning",
+        revision: 2,
+        planAccepted: false,
+      },
+      null,
+      2
+    ) + "\n"
+  );
+  fs.writeFileSync(
+    path.join(dotMission, "model-settings.json"),
+    JSON.stringify(
+      {
+        orchestrator: {
+          providerInstanceId: "claudeAgent",
+          model: "claude-opus-5-5",
+          effort: 5,
+          reasoningEffort: "max",
+          options: { effort: 5, reasoningEffort: "max" },
+        },
+        worker: {
+          providerInstanceId: "codex",
+          model: "gpt-5.4",
+          effort: 4,
+          reasoningEffort: "high",
+          options: { reasoningEffort: "high" },
+        },
+        validator: {
+          providerInstanceId: "codex",
+          model: "gpt-6.1-sol",
+          effort: 5,
+          reasoningEffort: "max",
+          options: { reasoningEffort: "max" },
+        },
+        skipScrutiny: true,
+        skipUserTesting: false,
+        userModifiedSlots: ["validator", "skipScrutiny"],
+      },
+      null,
+      2
+    ) + "\n"
+  );
+  fs.writeFileSync(
+    path.join(dotMission, "progress_log.jsonl"),
+    JSON.stringify({
+      seq: 1,
+      timestamp: new Date().toISOString(),
+      type: "model_slots_updated",
+      message: "Model slots updated: validator=gpt-6.1-sol (max/5)",
+      details: { changedRoles: ["validator"] },
+    }) + "\n"
+  );
+
+  // Call proposeMission without explicit title and with conflicting validator/skipScrutiny in input.modelSettings
+  const proposed = proposeMission(projectDir, {
+    repoPath: projectDir,
+    milestones: [{ id: "m1", title: "Milestone 1" }],
+    assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Check 1" }],
+    features: [
+      {
+        id: "f1-ui",
+        milestoneId: "m1",
+        title: "UI Feature with string target",
+        target: "claude-opus-5-5",
+        fulfills: ["VAL-1"],
+      },
+      {
+        id: "f2-logic",
+        milestoneId: "m1",
+        title: "Logic Feature with object workerTarget",
+        workerTarget: {
+          providerInstanceId: "codex",
+          model: "gpt-6.1-sol",
+          reasoningEffort: "max",
+        },
+        fulfills: ["VAL-1"],
+      },
+    ],
+    modelSettings: {
+      worker: {
+        providerInstanceId: "cpa",
+        model: "grok-4.7",
+        effort: 3,
+      },
+      validator: {
+        providerInstanceId: "cpa",
+        model: "grok-4.7",
+        effort: 3,
+      },
+      skipScrutiny: false,
+    },
+  });
+
+  // DISPATCH-FIX-003: missionId generated fresh (not mission-uninitialized), initialized=true, title falls back to "Untitled Mission"
+  assert.notEqual(proposed.state.missionId, "mission-uninitialized");
+  assert.match(proposed.state.missionId, /^mission-/);
+  assert.equal(proposed.state.initialized, true);
+  assert.equal(proposed.state.title, "Untitled Mission");
+
+  // DISPATCH-FIX-004: validator & skipScrutiny preserved from user HUD edits; worker updated from input.modelSettings (since not in userModifiedSlots)
+  assert.equal(proposed.modelSettings.validator.model, "gpt-6.1-sol");
+  assert.equal(proposed.modelSettings.validator.providerInstanceId, "codex");
+  assert.equal(proposed.modelSettings.validator.effort, 5);
+  assert.equal(proposed.modelSettings.validator.reasoningEffort, "max");
+  assert.equal(proposed.modelSettings.skipScrutiny, true);
+  assert.equal(proposed.modelSettings.worker.model, "grok-4.7");
+  assert.equal("effort" in proposed.modelSettings.worker.options, false);
+  assert.equal("effort" in proposed.modelSettings.validator.options, false);
+  assert.equal(proposed.modelSettings.orchestrator.options.effort, 5);
+
+  // Pre-existing progress_log.jsonl was NOT wiped, and model_slots_preserved was appended
+  const logs = readProgressLog(projectDir);
+  assert.equal(logs[0].type, "model_slots_updated");
+  const preservedLog = logs.find((l) => l.type === "model_slots_preserved");
+  assert.ok(preservedLog, "Expected model_slots_preserved entry in progress_log.jsonl");
+  assert.deepEqual(preservedLog.details.preservedSlots, ["validator", "skipScrutiny"]);
+
+  // DISPATCH-FIX-006: normalizeFeature and resolveFeatureSlot support per-feature target & workerTarget overrides
+  const f1 = proposed.features[0];
+  const f2 = proposed.features[1];
+  assert.equal(f1.target.model, "claude-opus-5-5");
+  assert.equal(f1.target.providerInstanceId, "claudeAgent");
+  assert.equal(f2.workerTarget.model, "gpt-6.1-sol");
+  assert.equal(f2.workerTarget.providerInstanceId, "codex");
+  assert.equal("effort" in f2.workerTarget.options, false);
+
+  approveMissionPlan(projectDir);
+  const dispatchedSlots = [];
+  await startMissionRun(
+    projectDir,
+    {},
+    {
+      async runFeature(feature, slotConfig) {
+        dispatchedSlots.push({ featureId: feature.id, slotConfig });
+        return { taskId: `task-${feature.id}`, childThreadId: `thread-${feature.id}` };
+      },
+    }
+  );
+
+  assert.equal(dispatchedSlots.length, 1);
+  assert.equal(dispatchedSlots[0].featureId, "f1-ui");
+  assert.equal(dispatchedSlots[0].slotConfig.model, "claude-opus-5-5");
+  assert.equal(dispatchedSlots[0].slotConfig.providerInstanceId, "claudeAgent");
+  assert.equal("effort" in dispatchedSlots[0].slotConfig.options, true);
+
+  const runningState1 = loadState(projectDir);
+  assert.equal(runningState1.activeWorker.model, "claude-opus-5-5");
+  assert.equal(runningState1.activeWorker.providerInstanceId, "claudeAgent");
+  assert.equal("effort" in runningState1.activeWorker.options, true);
+
+  // Complete f1-ui and verify f2-logic dispatches with codex / gpt-6.1-sol and no options.effort
+  endFeatureRun(projectDir, {
+    runId: runningState1.activeWorker.runId,
+    featureId: "f1-ui",
+    successState: "success",
+    validatorsPassed: true,
+    handoff: { whatWasImplemented: VALID_SUMMARY_50 },
+  });
+
+  await startMissionRun(
+    projectDir,
+    {},
+    {
+      async runFeature(feature, slotConfig) {
+        dispatchedSlots.push({ featureId: feature.id, slotConfig });
+        return { taskId: `task-${feature.id}`, childThreadId: `thread-${feature.id}` };
+      },
+    }
+  );
+  assert.equal(dispatchedSlots.length, 2);
+  assert.equal(dispatchedSlots[1].featureId, "f2-logic");
+  assert.equal(dispatchedSlots[1].slotConfig.model, "gpt-6.1-sol");
+  assert.equal(dispatchedSlots[1].slotConfig.providerInstanceId, "codex");
+  assert.equal(dispatchedSlots[1].slotConfig.options.reasoningEffort, "max");
+  assert.equal("effort" in dispatchedSlots[1].slotConfig.options, false);
 });

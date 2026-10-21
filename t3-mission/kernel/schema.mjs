@@ -133,6 +133,44 @@ function doesSlotSupportEffort(providerInstanceId, model, safeRaw = {}, safeBase
   return true;
 }
 
+export function doesProviderDeclareEffortOption(providerInstanceId) {
+  const norm = String(providerInstanceId || "").trim().toLowerCase();
+  return (
+    norm === "claudeagent" ||
+    norm === "claude-code" ||
+    norm === "claude-agent-acp" ||
+    norm === "acpregistry_cursor"
+  );
+}
+
+const KNOWN_MODEL_TO_PROVIDER = {
+  "claude-opus-5-5": "claudeAgent",
+  "claude-opus-4-6": "claudeAgent",
+  "claude-sonnet-4-5": "claudeAgent",
+  "gemini-4-argon-high": "antigravity",
+  "gpt-6.1-sol": "codex",
+  "gpt-5.4": "codex",
+  "swe-2-max": "cpa",
+  "grok-4.7": "cpa",
+  "gpt-6-astra-high": "openai",
+};
+
+export function inferProviderForModel(modelId, fallbackProvider = null) {
+  const key = String(modelId || "").trim().toLowerCase();
+  if (KNOWN_MODEL_TO_PROVIDER[key]) {
+    return KNOWN_MODEL_TO_PROVIDER[key];
+  }
+  if (/^claude/i.test(key)) {
+    return /-(low|medium|high)$/i.test(key) ? "antigravity" : "claudeAgent";
+  }
+  if (/^gemini/i.test(key)) return "antigravity";
+  if (/^grok/i.test(key)) return fallbackProvider === "cpa" ? "cpa" : "grok";
+  if (/^swe-/i.test(key)) return "cpa";
+  if (/^gpt-6-astra/i.test(key)) return "openai";
+  if (/^gpt-/i.test(key)) return "codex";
+  return fallbackProvider;
+}
+
 export function normalizeSlotConfig(raw = {}, base = {}) {
   const safeRaw =
     typeof raw === "string" && raw.trim()
@@ -142,11 +180,17 @@ export function normalizeSlotConfig(raw = {}, base = {}) {
         : {};
   const safeBase = base && typeof base === "object" ? base : {};
 
+  const model = safeRaw.model ?? safeBase.model ?? "gemini-4-argon-high";
+  const inferredProvider =
+    safeRaw.model && safeRaw.model !== safeBase.model && !safeRaw.providerInstanceId
+      ? inferProviderForModel(safeRaw.model, safeBase.providerInstanceId)
+      : null;
   const providerInstanceId =
     safeRaw.providerInstanceId ??
+    inferredProvider ??
     safeBase.providerInstanceId ??
+    inferProviderForModel(model, "antigravity") ??
     "antigravity";
-  const model = safeRaw.model ?? safeBase.model ?? "gemini-4-argon-high";
 
   const baseOptions =
     safeBase.options && typeof safeBase.options === "object"
@@ -178,6 +222,24 @@ export function normalizeSlotConfig(raw = {}, base = {}) {
   const rawReasoningVal =
     safeRaw.reasoningEffort ?? rawOptions.reasoningEffort;
 
+  let resolvedEffort =
+    parseEffortLevel(safeBase.effort ?? baseOptions.effort) ??
+    (safeBase.reasoningEffort || baseOptions.reasoningEffort
+      ? REASONING_TO_EFFORT_LEVEL[
+          String(safeBase.reasoningEffort || baseOptions.reasoningEffort)
+            .trim()
+            .toLowerCase()
+        ] ?? null
+      : null);
+  let resolvedReasoning =
+    typeof (safeBase.reasoningEffort ?? baseOptions.reasoningEffort) === "string"
+      ? String(safeBase.reasoningEffort ?? baseOptions.reasoningEffort)
+          .trim()
+          .toLowerCase()
+      : resolvedEffort !== null
+        ? EFFORT_LEVEL_TO_REASONING[resolvedEffort]
+        : null;
+
   const parsedLevel = parseEffortLevel(rawEffortVal);
   if (parsedLevel !== null) {
     const mappedReasoning = EFFORT_LEVEL_TO_REASONING[parsedLevel];
@@ -189,31 +251,46 @@ export function normalizeSlotConfig(raw = {}, base = {}) {
       ? REASONING_TO_EFFORT_LEVEL[normRawReasoning] ?? null
       : null;
 
-    options.effort = parsedLevel;
+    resolvedEffort = parsedLevel;
     if (normRawReasoning && rawReasoningLevel === parsedLevel) {
-      options.reasoningEffort = normRawReasoning;
+      resolvedReasoning = normRawReasoning;
     } else {
-      options.reasoningEffort = mappedReasoning;
+      resolvedReasoning = mappedReasoning;
     }
   } else if (
     typeof rawReasoningVal === "string" &&
     rawReasoningVal.trim() !== ""
   ) {
     const normRawReasoning = rawReasoningVal.trim().toLowerCase();
-    options.reasoningEffort = normRawReasoning;
-    if (
-      options.effort !== undefined &&
-      REASONING_TO_EFFORT_LEVEL[normRawReasoning]
-    ) {
-      options.effort = REASONING_TO_EFFORT_LEVEL[normRawReasoning];
+    resolvedReasoning = normRawReasoning;
+    if (REASONING_TO_EFFORT_LEVEL[normRawReasoning]) {
+      resolvedEffort = REASONING_TO_EFFORT_LEVEL[normRawReasoning];
     }
   }
 
-  return {
+  if (resolvedReasoning) {
+    options.reasoningEffort = resolvedReasoning;
+  }
+  if (doesProviderDeclareEffortOption(providerInstanceId)) {
+    if (resolvedEffort !== null) {
+      options.effort = resolvedEffort;
+    }
+  } else {
+    delete options.effort;
+  }
+
+  const result = {
     providerInstanceId,
     model,
     options,
   };
+  if (resolvedEffort !== null) {
+    result.effort = resolvedEffort;
+  }
+  if (resolvedReasoning) {
+    result.reasoningEffort = resolvedReasoning;
+  }
+  return result;
 }
 
 export function normalizeModelSettings(
@@ -229,7 +306,13 @@ export function normalizeModelSettings(
       ? { ...base, ...base.slots }
       : base || DEFAULT_MODEL_SETTINGS;
 
-  return {
+  const rawModified = Array.isArray(source.userModifiedSlots)
+    ? source.userModifiedSlots
+    : Array.isArray(baseSource.userModifiedSlots)
+      ? baseSource.userModifiedSlots
+      : null;
+
+  const normalized = {
     orchestrator: normalizeSlotConfig(
       source.orchestrator,
       baseSource.orchestrator || DEFAULT_MODEL_SETTINGS.orchestrator
@@ -251,6 +334,13 @@ export function normalizeModelSettings(
         ? source.skipUserTesting
         : Boolean(baseSource.skipUserTesting),
   };
+
+  if (rawModified && rawModified.length > 0) {
+    normalized.userModifiedSlots = Array.from(
+      new Set(rawModified.map((s) => String(s).trim()).filter(Boolean))
+    );
+  }
+  return normalized;
 }
 
 export function normalizeMilestone(milestone, index = 0) {
@@ -335,7 +425,30 @@ export function normalizeFeature(feature, index = 0) {
       : 5;
   const lastHandoff = feature.lastHandoff ?? null;
 
-  return {
+  const rawOverride =
+    feature.target ??
+    feature.workerTarget ??
+    feature.slotConfig ??
+    (feature.model
+      ? {
+          providerInstanceId: feature.providerInstanceId,
+          model: feature.model,
+          effort: feature.effort,
+          reasoningEffort: feature.reasoningEffort,
+          options: feature.options,
+        }
+      : null);
+
+  let normalizedOverride = null;
+  if (rawOverride !== null && rawOverride !== undefined) {
+    const baseDefault =
+      kind === "scrutiny" || kind === "user_testing"
+        ? DEFAULT_MODEL_SETTINGS.validator
+        : DEFAULT_MODEL_SETTINGS.worker;
+    normalizedOverride = normalizeSlotConfig(rawOverride, baseDefault);
+  }
+
+  const normalizedFeature = {
     ...feature,
     id,
     milestoneId,
@@ -349,6 +462,27 @@ export function normalizeFeature(feature, index = 0) {
     maxAttempts,
     lastHandoff,
   };
+
+  if (normalizedOverride) {
+    if (feature.target !== undefined) {
+      normalizedFeature.target = normalizedOverride;
+    }
+    if (feature.workerTarget !== undefined) {
+      normalizedFeature.workerTarget = normalizedOverride;
+    }
+    if (feature.slotConfig !== undefined) {
+      normalizedFeature.slotConfig = normalizedOverride;
+    }
+    if (
+      feature.target === undefined &&
+      feature.workerTarget === undefined &&
+      feature.slotConfig === undefined
+    ) {
+      normalizedFeature.target = normalizedOverride;
+    }
+  }
+
+  return normalizedFeature;
 }
 
 export function normalizeAssertion(assertion, index = 0) {
@@ -382,6 +516,32 @@ export function normalizeAssertion(assertion, index = 0) {
 }
 
 export function createInitialState(input = {}, existingState = null) {
+  const isUninitializedPlaceholder = Boolean(
+    !existingState ||
+      existingState.initialized === false ||
+      existingState.missionId === "mission-uninitialized"
+  );
+  const validInputMissionId =
+    typeof input.missionId === "string" &&
+    input.missionId.trim() &&
+    input.missionId.trim() !== "mission-uninitialized"
+      ? input.missionId.trim()
+      : null;
+  const validExistingMissionId =
+    !isUninitializedPlaceholder &&
+    typeof existingState?.missionId === "string" &&
+    existingState.missionId.trim() &&
+    existingState.missionId.trim() !== "mission-uninitialized"
+      ? existingState.missionId.trim()
+      : null;
+  const validExistingTitle =
+    !isUninitializedPlaceholder &&
+    typeof existingState?.title === "string" &&
+    existingState.title.trim() &&
+    existingState.title.trim() !== "Waiting for Mission Initialization"
+      ? existingState.title.trim()
+      : null;
+
   const milestones = Array.isArray(input.milestones)
     ? input.milestones.map((m, i) => normalizeMilestone(m, i))
     : existingState?.milestones ?? [];
@@ -390,8 +550,9 @@ export function createInitialState(input = {}, existingState = null) {
     : existingState?.assertions ?? [];
 
   return {
-    missionId: input.missionId || existingState?.missionId || createMissionId(),
-    title: String(input.title || existingState?.title || "Untitled Mission"),
+    initialized: true,
+    missionId: validInputMissionId || validExistingMissionId || createMissionId(),
+    title: String(input.title || validExistingTitle || "Untitled Mission"),
     repoPath: String(input.repoPath || existingState?.repoPath || process.cwd()),
     status: input.status || "awaiting_input",
     revision:

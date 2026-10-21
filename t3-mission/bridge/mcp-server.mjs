@@ -22,7 +22,8 @@ export const MISSION_TOOL_NAMES = [
   "DismissHandoffItems",
   "EndFeatureRun",
   "UpdateMissionFeatures",
-  "CheckMissionStateBeforeResuming"
+  "CheckMissionStateBeforeResuming",
+  "WaitForApproval"
 ];
 
 export const MISSION_TOOLS = [
@@ -178,6 +179,20 @@ export const MISSION_TOOLS = [
       },
       required: ["missionDir"]
     }
+  },
+  {
+    name: "WaitForApproval",
+    description:
+      "Block and poll .mission/state.json and .mission/progress_log.jsonl until the user approves or rejects the proposed Mission plan in the HUD.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        missionDir: { type: "string", description: "Path to the project or .mission directory" },
+        timeoutMs: { type: "number", description: "Timeout in milliseconds (default 600000)" },
+        pollMs: { type: "number", description: "Polling interval in milliseconds (default 200)" }
+      },
+      required: ["missionDir"]
+    }
   }
 ];
 
@@ -188,7 +203,8 @@ const TOOL_CAMEL_MAP = {
   DismissHandoffItems: "dismissHandoffItems",
   EndFeatureRun: "endFeatureRun",
   UpdateMissionFeatures: "updateMissionFeatures",
-  CheckMissionStateBeforeResuming: "checkMissionStateBeforeResuming"
+  CheckMissionStateBeforeResuming: "checkMissionStateBeforeResuming",
+  WaitForApproval: "waitForApproval"
 };
 
 const CANONICAL_TOOL_BY_LOWER = new Map();
@@ -201,6 +217,8 @@ for (const name of MISSION_TOOL_NAMES) {
     .toLowerCase();
   CANONICAL_TOOL_BY_LOWER.set(kebab, name);
 }
+CANONICAL_TOOL_BY_LOWER.set("waitforhuddecision", "WaitForApproval");
+CANONICAL_TOOL_BY_LOWER.set("wait-for-hud-decision", "WaitForApproval");
 
 /**
  * Resolve any tool alias (`ProposeMission`, `proposeMission`, `propose-mission`) to its canonical tool name.
@@ -1096,6 +1114,131 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
       transportClient: context.transportClient,
       execFileImpl: context.execFileImpl
     });
+
+  if (canonicalName === "WaitForApproval") {
+    const customFn =
+      kernel.WaitForApproval ??
+      kernel.waitForApproval ??
+      kernel.WaitForHudDecision ??
+      kernel.waitForHudDecision;
+    if (typeof customFn === "function") {
+      return await invokeKernelFunction(kernel, customFn, missionDir, args, adapter);
+    }
+
+    const timeoutMs =
+      typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs) && args.timeoutMs >= 0
+        ? args.timeoutMs
+        : 600000;
+    const pollMs =
+      typeof args.pollMs === "number" && Number.isFinite(args.pollMs) && args.pollMs > 0
+        ? Math.max(5, args.pollMs)
+        : 200;
+
+    const readProgressLogEntries = () => {
+      if (kernel && typeof kernel.readProgressLog === "function") {
+        try {
+          return kernel.readProgressLog(missionDir);
+        } catch {}
+      }
+      const baseDir =
+        kernel && typeof kernel.resolveMissionBaseDir === "function"
+          ? kernel.resolveMissionBaseDir(missionDir)
+          : resolveFallbackBaseDir(missionDir);
+      const logPath = path.join(baseDir, "progress_log.jsonl");
+      if (!fs.existsSync(logPath)) return [];
+      try {
+        return fs
+          .readFileSync(logPath, "utf8")
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .map((l, idx) => {
+            try {
+              const p = JSON.parse(l);
+              return { seq: typeof p.seq === "number" ? p.seq : idx + 1, ...p };
+            } catch {
+              return { seq: idx + 1, type: "info", message: l };
+            }
+          });
+      } catch {
+        return [];
+      }
+    };
+
+    const initialState = loadStateFromKernelOrDisk(missionDir, kernel);
+    const initialLogs = readProgressLogEntries();
+    const baselineRevision =
+      typeof initialState?.revision === "number" ? initialState.revision : 0;
+    const baselineFeedback = initialState?.lastPlanFeedback ?? null;
+    const baselineRejectedCount = initialLogs.filter(
+      (e) => e && e.type === "plan_rejected"
+    ).length;
+    const baselineLastRejectedSeq = initialLogs
+      .filter((e) => e && e.type === "plan_rejected")
+      .reduce((max, e) => (typeof e.seq === "number" && e.seq > max ? e.seq : max), 0);
+
+    const startTime = Date.now();
+    while (true) {
+      const currentState = loadStateFromKernelOrDisk(missionDir, kernel);
+      const currentLogs = readProgressLogEntries();
+
+      if (currentState && currentState.planAccepted === true) {
+        return {
+          ok: true,
+          event: "plan_approved",
+          planAccepted: true,
+          dispatchPending: Boolean(currentState.activeWorker?.dispatchPending),
+          activeWorker: currentState.activeWorker ?? null,
+          state: currentState
+        };
+      }
+
+      const rejectedLogs = currentLogs.filter((e) => e && e.type === "plan_rejected");
+      const latestRejected = rejectedLogs.at(-1);
+      const latestRejectedSeq =
+        typeof latestRejected?.seq === "number" ? latestRejected.seq : 0;
+      const hasNewRejectionLog =
+        rejectedLogs.length > baselineRejectedCount ||
+        latestRejectedSeq > baselineLastRejectedSeq;
+      const hasNewRejectionState = Boolean(
+        currentState &&
+          currentState.status === "planning" &&
+          currentState.planAccepted === false &&
+          ((typeof currentState.revision === "number" &&
+            currentState.revision > baselineRevision &&
+            currentState.lastPlanFeedback !== undefined) ||
+            (currentState.lastPlanFeedback &&
+              currentState.lastPlanFeedback !== baselineFeedback))
+      );
+
+      if (hasNewRejectionLog || hasNewRejectionState) {
+        const feedbackFromLog =
+          latestRejected?.details?.feedback ??
+          (typeof latestRejected?.message === "string" &&
+          latestRejected.message.startsWith("Mission plan rejected:")
+            ? latestRejected.message.slice("Mission plan rejected:".length).trim()
+            : null);
+        return {
+          ok: true,
+          event: "plan_rejected",
+          planAccepted: false,
+          feedback: currentState?.lastPlanFeedback ?? feedbackFromLog ?? null,
+          state: currentState
+        };
+      }
+
+      if (Date.now() - startTime >= timeoutMs) {
+        return {
+          ok: false,
+          timedOut: true,
+          event: "timeout",
+          state: currentState
+        };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  }
 
   if (canonicalName === "CheckMissionStateBeforeResuming") {
     const customFn =

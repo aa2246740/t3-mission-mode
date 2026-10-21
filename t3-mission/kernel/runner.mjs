@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import {
   createRunId,
+  DEFAULT_MODEL_SETTINGS,
+  doesProviderDeclareEffortOption,
   inferFeatureKind,
   isValidatorFeature,
   MissionKernelError,
   normalizeFeature,
+  normalizeSlotConfig,
 } from "./schema.mjs";
 import {
   appendProgressLog,
@@ -49,14 +52,36 @@ export function cleanupLocalWorkerDaemon(worker) {
 export function resolveFeatureSlot(feature, modelSettings) {
   const validator = isValidatorFeature(feature);
   const slotName = validator ? "validator" : "worker";
-  const slotConfig = validator
-    ? modelSettings.validator
-    : modelSettings.worker;
+  const baseSlot =
+    (validator ? modelSettings?.validator : modelSettings?.worker) ||
+    (validator ? DEFAULT_MODEL_SETTINGS.validator : DEFAULT_MODEL_SETTINGS.worker);
+  const rawOverride =
+    feature?.target ??
+    feature?.workerTarget ??
+    feature?.slotConfig ??
+    (feature?.model
+      ? {
+          providerInstanceId: feature.providerInstanceId,
+          model: feature.model,
+          effort: feature.effort,
+          reasoningEffort: feature.reasoningEffort,
+          options: feature.options,
+        }
+      : null);
+  const resolvedSlot =
+    rawOverride !== null && rawOverride !== undefined
+      ? normalizeSlotConfig(rawOverride, baseSlot)
+      : normalizeSlotConfig(baseSlot, baseSlot);
+  const cleanedOptions = { ...(resolvedSlot.options || {}) };
+  if (!doesProviderDeclareEffortOption(resolvedSlot.providerInstanceId)) {
+    delete cleanedOptions.effort;
+  }
   return {
     slotName,
     slotConfig: {
       slot: slotName,
-      ...slotConfig,
+      ...resolvedSlot,
+      options: cleanedOptions,
     },
   };
 }

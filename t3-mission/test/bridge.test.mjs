@@ -1330,7 +1330,8 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
     "DismissHandoffItems",
     "EndFeatureRun",
     "UpdateMissionFeatures",
-    "CheckMissionStateBeforeResuming"
+    "CheckMissionStateBeforeResuming",
+    "WaitForApproval"
   ]);
 
   // 3. tools/call for all 7 tools
@@ -1439,7 +1440,7 @@ test("VAL-BRIDGE-003: stdio MCP Server communicates over NDJSON streams", async 
 
   assert.equal(lines.length, 2);
   assert.equal(lines[0].id, 1);
-  assert.equal(lines[0].result.tools.length, 7);
+  assert.equal(lines[0].result.tools.length, 8);
   assert.equal(lines[1].id, 2);
   assert.equal(lines[1].result.structuredContent.planAccepted, true);
 });
@@ -1549,21 +1550,53 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
   try {
     const cleanEnv = { ...process.env, T3_ACP_MCP_NODE: "" };
 
-    // Confirm tools/list still returns exactly 7 MCP tools
+    // Confirm tools/list returns all 8 MCP tools (including WaitForApproval)
     const listStdout = execFileSync(process.execPath, [CLI_PATH, "tools/list"], {
       env: cleanEnv,
       encoding: "utf8"
     });
     const listParsed = JSON.parse(listStdout);
-    assert.equal(listParsed.tools.length, 7);
-    assert.equal(MISSION_TOOLS.length, 7);
+    assert.equal(listParsed.tools.length, 8);
+    assert.equal(MISSION_TOOLS.length, 8);
 
-    // 1. DispatchWorkerRuntime spawns a live detached LocalWorkerDaemon
+    // Default DispatchWorkerRuntime (without T3_ACP_MCP_NODE and without allowLocalDaemon) sets dispatchPending: true and spawns NO daemon
+    const defaultDispatchStdout = execFileSync(
+      process.execPath,
+      [
+        CLI_PATH,
+        "DispatchWorkerRuntime",
+        "--mission-dir",
+        tempMissionDir,
+        "--json",
+        JSON.stringify({
+          missionId: "m-runtime-1",
+          runId: "run-rt-0",
+          repoPath: tempMissionDir,
+          feature: { id: "f-rt-0", title: "Default No Transport" },
+          slotConfig: { providerInstanceId: "codex", model: "gpt-5.4" }
+        })
+      ],
+      { env: { ...cleanEnv, T3_MISSION_LOCAL_WORKER_DAEMON: "" }, encoding: "utf8" }
+    );
+    const defaultDispatchRes = JSON.parse(defaultDispatchStdout);
+    assert.equal(defaultDispatchRes.ok, true);
+    assert.equal(defaultDispatchRes.dispatched, false);
+    assert.equal(defaultDispatchRes.dispatchPending, true);
+    assert.equal(defaultDispatchRes.code, "NO_T3_TRANSPORT");
+    assert.equal(defaultDispatchRes.runtimeTransport, "orchestrator-pending");
+    assert.equal(defaultDispatchRes.worktreePath, tempMissionDir);
+    assert.equal(defaultDispatchRes.workerPid, undefined);
+    assert.equal(defaultDispatchRes.taskId, undefined);
+    assert.equal(defaultDispatchRes.childThreadId, undefined);
+    assert.equal(defaultDispatchRes.daemonStateFile, undefined);
+
+    // 1. DispatchWorkerRuntime with --local-worker-daemon spawns a live detached LocalWorkerDaemon
     const dispatchStdout = execFileSync(
       process.execPath,
       [
         CLI_PATH,
         "DispatchWorkerRuntime",
+        "--local-worker-daemon",
         "--mission-dir",
         tempMissionDir,
         "--json",
@@ -1744,7 +1777,7 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
   const tempMissionDir = createTempDir("t3-f03-dead-worker-");
   let spawnedPid = null;
   try {
-    const cleanEnv = { ...process.env, T3_ACP_MCP_NODE: "" };
+    const cleanEnv = { ...process.env, T3_ACP_MCP_NODE: "", T3_MISSION_LOCAL_WORKER_DAEMON: "1" };
 
     // Pre-commit state.json with activeWorker: null and empty sessions (as during POST /api/mission/approve)
     fs.writeFileSync(
@@ -2065,6 +2098,74 @@ test("V7-F03, V7-F02 & V7-F07: resolveEffectiveRuntimeMode and delegateMissionTa
     assert.equal(errJson2.ok, false);
     assert.equal(errJson2.code, "HANDOFF_ATTENTION_REQUIRED");
     assert.equal(errJson2.reasonCode, "HANDOFF_GATE_BLOCKED");
+  } finally {
+    fs.rmSync(tempMissionDir, { recursive: true, force: true });
+  }
+});
+
+test("DISPATCH-FIX-001 & DISPATCH-FIX-002: WaitForApproval resolves on plan_approved and plan_rejected, and times out with exitCode 1", async () => {
+  const tempMissionDir = createTempDir("t3-wait-for-approval-");
+  try {
+    await callMissionTool("ProposeMission", {
+      missionDir: tempMissionDir,
+      title: "WaitForApproval Mission",
+      milestones: [{ id: "m1", title: "M1" }],
+      features: [{ id: "f1", milestoneId: "m1", title: "Feature 1" }],
+      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Check 1" }]
+    });
+
+    // 1. Timeout when no decision happens within timeoutMs
+    const outTimeout = [];
+    const timeoutRes = await runCli(
+      ["WaitForApproval", "--mission-dir", tempMissionDir, "--timeout-ms", "40", "--poll-ms", "10"],
+      {
+        stdout: { write(c) { outTimeout.push(String(c)); } },
+        stderr: { write() {} }
+      }
+    );
+    assert.equal(timeoutRes.exitCode, 1);
+    assert.equal(timeoutRes.result.ok, false);
+    assert.equal(timeoutRes.result.timedOut, true);
+    assert.equal(timeoutRes.result.event, "timeout");
+
+    // 2. Plan rejected via rejectMissionPlan resolves WaitForApproval with event: "plan_rejected"
+    const { rejectMissionPlan } = await import("../kernel/index.mjs");
+    setTimeout(() => {
+      rejectMissionPlan(tempMissionDir, "Please split f1 into two features");
+    }, 30);
+
+    const rejectWaitRes = await runCli(
+      ["WaitForHudDecision", "--mission-dir", tempMissionDir, "--timeout-ms", "2000", "--poll-ms", "15"],
+      {
+        stdout: { write() {} },
+        stderr: { write() {} }
+      }
+    );
+    assert.equal(rejectWaitRes.exitCode, 0);
+    assert.equal(rejectWaitRes.result.ok, true);
+    assert.equal(rejectWaitRes.result.event, "plan_rejected");
+    assert.equal(rejectWaitRes.result.planAccepted, false);
+    assert.equal(rejectWaitRes.result.feedback, "Please split f1 into two features");
+
+    // 3. Plan approved resolves WaitForApproval with event: "plan_approved"
+    setTimeout(async () => {
+      await callMissionTool("ApproveMissionPlan", { missionDir: tempMissionDir });
+      await callMissionTool("StartMissionRun", { missionDir: tempMissionDir });
+    }, 30);
+
+    const approveWaitRes = await runCli(
+      ["wait-for-approval", "--mission-dir", tempMissionDir, "--timeout-ms", "2000", "--poll-ms", "15"],
+      {
+        stdout: { write() {} },
+        stderr: { write() {} }
+      }
+    );
+    assert.equal(approveWaitRes.exitCode, 0);
+    assert.equal(approveWaitRes.result.ok, true);
+    assert.equal(approveWaitRes.result.event, "plan_approved");
+    assert.equal(approveWaitRes.result.planAccepted, true);
+    assert.equal(approveWaitRes.result.dispatchPending, true);
+    assert.equal(approveWaitRes.result.activeWorker.featureId, "f1");
   } finally {
     fs.rmSync(tempMissionDir, { recursive: true, force: true });
   }
