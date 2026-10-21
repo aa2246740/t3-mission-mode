@@ -954,16 +954,21 @@ function renderCenterColumn(snapshot) {
             <span class="approval-badge">Plan Review &amp; Validation Contract</span>
             <h2 class="approval-title" style="margin-top:4px;">${escapeHtml(state.title || "Mission Plan Ready for Approval")}</h2>
           </div>
-          <button
-            type="button"
-            class="btn-primary-approve"
-            id="btn-approve"
-            data-testid="btn-approve-mission"
-            data-action="approve"
-          >
-            \u2713 Approve &amp; Start Mission
-          </button>
+          <div>
+            <button type="button" class="strip-btn" id="btn-reject-plan" data-action="reject-plan">Request Changes</button>
+            <button
+              type="button"
+              class="btn-primary-approve"
+              id="btn-approve"
+              data-testid="btn-approve-mission"
+              data-action="approve"
+            >
+              \u2713 Approve &amp; Start Mission
+            </button>
+          </div>
         </div>
+        <label for="plan-feedback">Feedback (optional)</label>
+        <input id="plan-feedback" type="text" placeholder="Describe the requested changes">
         <div class="approval-summary-pills">
           <span class="approval-stat-pill mono">${milestones.length} Milestones</span>
           <span class="approval-stat-pill mono">${featuresList.length} Planned Features</span>
@@ -973,6 +978,15 @@ function renderCenterColumn(snapshot) {
           Review the full milestone roadmap and Validation Contract below, then approve to dispatch the first worker.
         </div>
       `;
+      approvalEl.querySelector("#btn-reject-plan")?.addEventListener("click", async () => {
+        try {
+          await postAction("/api/mission/reject", {
+            feedback: approvalEl.querySelector("#plan-feedback")?.value || "",
+          });
+        } catch (err) {
+          handleActionError(err);
+        }
+      });
       const approveBtn = approvalEl.querySelector("#btn-approve");
       approveBtn?.addEventListener("click", async () => {
         try {

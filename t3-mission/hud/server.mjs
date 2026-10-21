@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import cp, { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { getFeatureSlotOverride, inferProviderForModel } from "../kernel/schema.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -242,52 +243,7 @@ function normalizeEffortPair(rawEffort, rawReasoningEffort, fallbackLevel = 4) {
 
 function normalizeSlotConfig(rawSlot, fallbackSlot) {
   const base = fallbackSlot || DEFAULT_HUD_MODEL_SETTINGS.orchestrator;
-  if (typeof rawSlot === "string") {
-    const entry = findCatalogEntry(rawSlot);
-    const providerInstanceId =
-      entry?.providerInstanceId || base.providerInstanceId || "codex";
-    const model = entry?.model || rawSlot;
-    const label = entry?.label || rawSlot;
-    if (!doesModelSupportEffort({ model, providerInstanceId }, entry)) {
-      const cleanedOptions = { ...(base.options || {}) };
-      delete cleanedOptions.effort;
-      delete cleanedOptions.reasoningEffort;
-      delete cleanedOptions.reasoning_effort;
-      delete cleanedOptions.thinking;
-      return {
-        providerInstanceId,
-        model,
-        label,
-        supportsEffort: false,
-        effortLevels: [],
-        options: cleanedOptions,
-      };
-    }
-    const { effort, reasoningEffort } = normalizeEffortPair(
-      entry?.effort,
-      entry?.reasoningEffort,
-      base.effort || 4
-    );
-    const slotOptions = {
-      ...(base.options || {}),
-      reasoningEffort,
-    };
-    if (doesProviderDeclareEffortOption(providerInstanceId)) {
-      slotOptions.effort = effort;
-    } else {
-      delete slotOptions.effort;
-    }
-    return {
-      providerInstanceId,
-      model,
-      label,
-      supportsEffort: true,
-      effortLevels: entry?.effortLevels || ["minimal", "low", "medium", "high", "max"],
-      effort,
-      reasoningEffort,
-      options: slotOptions,
-    };
-  }
+  if (typeof rawSlot === "string") rawSlot = { model: rawSlot };
 
   if (!rawSlot || typeof rawSlot !== "object") {
     if (base && typeof base === "object" && base !== rawSlot) {
@@ -300,8 +256,11 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
   const entry = findCatalogEntry(candidateModel);
   const providerInstanceId =
     rawSlot.providerInstanceId ||
-    entry?.providerInstanceId ||
+    (rawSlot.model && rawSlot.model !== base.model
+      ? inferProviderForModel(rawSlot.model, entry?.providerInstanceId || base.providerInstanceId)
+      : null) ||
     base.providerInstanceId ||
+    entry?.providerInstanceId ||
     "codex";
   const model = entry?.model || String(candidateModel);
   const label = rawSlot.label || entry?.label || String(candidateModel);
@@ -339,12 +298,15 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
         : rawSlot.options?.reasoningEffort !== undefined &&
             rawSlot.options?.reasoningEffort !== null
           ? rawSlot.options.reasoningEffort
-          : entry?.reasoningEffort;
+          : undefined;
+  const hasExplicitEffort = explicitEffort !== undefined && explicitEffort !== null;
+  const hasExplicitReasoning = explicitReasoning !== undefined && explicitReasoning !== null;
+  const inheritEffort = !hasExplicitEffort && !hasExplicitReasoning;
 
   const { effort, reasoningEffort } = normalizeEffortPair(
-    explicitEffort,
-    explicitReasoning,
-    entry?.effort ?? base.effort ?? 4
+    inheritEffort ? base.effort ?? base.options?.effort ?? entry?.effort : explicitEffort,
+    inheritEffort ? base.reasoningEffort ?? base.options?.reasoningEffort ?? entry?.reasoningEffort : explicitReasoning,
+    base.effort ?? entry?.effort ?? 4
   );
 
   const slotOptions = {
@@ -1234,23 +1196,29 @@ export function createMissionHudServer({
     if (typeof onCommand === "function") {
       await onCommand({ type, payload, snapshot });
     }
-    if (resolvedNotifyUrl) {
-      try {
-        await fetch(resolvedNotifyUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type,
-            missionDir: paths.dotMissionDir,
-            payload,
-            state: snapshot?.state,
-            timestamp: new Date().toISOString(),
-          }),
-        });
-      } catch {
-        // Ignore webhook delivery failures so HUD HTTP responses never fail
-      }
-    }
+  }
+
+  async function emitWebhookNotification(type, payload, committedSnapshot) {
+    if (!resolvedNotifyUrl) return;
+    const reqPromise = fetch(resolvedNotifyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type,
+        missionDir: paths.dotMissionDir,
+        payload,
+        state: committedSnapshot?.state,
+        timestamp: new Date().toISOString(),
+      }),
+      signal: AbortSignal.timeout(2000),
+    }).catch(() => {});
+    await Promise.race([
+      reqPromise,
+      new Promise((resolve) => {
+        const timer = setTimeout(resolve, 80);
+        if (typeof timer.unref === "function") timer.unref();
+      }),
+    ]);
   }
 
   async function handleApprove(req, res) {
@@ -1324,19 +1292,7 @@ export function createMissionHudServer({
       const role = isValidator ? "Validator" : kind === "explorer" ? "Explorer" : "Worker";
       const slotName = isValidator ? "validator" : "worker";
       const baseSlotCfg = modelSettings[slotName] || DEFAULT_HUD_MODEL_SETTINGS[slotName];
-      const rawOverride =
-        f?.target ??
-        f?.workerTarget ??
-        f?.slotConfig ??
-        (f?.model
-          ? {
-              providerInstanceId: f.providerInstanceId,
-              model: f.model,
-              effort: f.effort,
-              reasoningEffort: f.reasoningEffort,
-              options: f.options,
-            }
-          : null);
+      const rawOverride = getFeatureSlotOverride(f);
       const slotCfg =
         rawOverride !== null && rawOverride !== undefined
           ? normalizeSlotConfig(rawOverride, baseSlotCfg)
@@ -1607,6 +1563,7 @@ export function createMissionHudServer({
 
       lastDiskSignature = computeDiskSignature();
       const snapshot = broadcastSnapshot("plan_approved");
+      await emitWebhookNotification("approve", { body, logEntry, logEntries }, snapshot);
       sendJson(res, 200, {
         ok: true,
         state: snapshot ? snapshot.state : updatedState,
@@ -1614,6 +1571,52 @@ export function createMissionHudServer({
         logEntries,
         snapshot,
       });
+    } catch (err) {
+      restoreDiskBackup(backup);
+      throw err;
+    }
+  }
+
+  async function handleReject(req, res) {
+    const body = await readJsonBody(req);
+    const backup = captureDiskBackup();
+    const nowIso = new Date().toISOString();
+    const existing = safeReadJsonSync(paths.statePath, null) || buildUninitializedState(paths.repoDir);
+    const nextRevision = (typeof existing.revision === "number" ? existing.revision : 0) + 1;
+    const feedback = String(body.feedback || body.reason || body.message || "Plan changes requested");
+    const updatedState = {
+      ...existing,
+      planAccepted: false,
+      status: "planning",
+      lastPlanFeedback: feedback,
+      lastPlanRejectedAt: nowIso,
+      rejectionRevision: nextRevision,
+      revision: nextRevision,
+    };
+    const existingLogs = readProgressLogSync(paths.progressLogPath);
+    const logEntries = buildProgressLogEntries(existingLogs, [{
+      timestamp: nowIso,
+      type: "plan_rejected",
+      message: `Mission plan rejected: ${feedback}`,
+      details: { feedback },
+      featureId: null,
+      workerNumber: null,
+    }]);
+    const logEntry = logEntries[0];
+    try {
+      const preBroadcastSnapshot = buildInMemorySnapshot({
+        state: updatedState,
+        features: safeReadJsonSync(paths.featuresPath, null),
+        modelSettings: safeReadJsonSync(paths.modelSettingsPath, null),
+        progressLog: [...existingLogs, ...logEntries],
+      });
+      await notifyCommand("reject", { body, logEntry, logEntries }, preBroadcastSnapshot);
+      writeJsonAtomicSync(paths.statePath, updatedState);
+      writeProgressLogEntriesSync(paths.progressLogPath, logEntries);
+      lastDiskSignature = computeDiskSignature();
+      const snapshot = broadcastSnapshot("plan_rejected");
+      await emitWebhookNotification("reject", { body, logEntry, logEntries }, snapshot);
+      sendJson(res, 200, { ok: true, state: snapshot?.state || updatedState, logEntry, logEntries, snapshot });
     } catch (err) {
       restoreDiskBackup(backup);
       throw err;
@@ -1805,6 +1808,7 @@ export function createMissionHudServer({
 
       lastDiskSignature = computeDiskSignature();
       const snapshot = broadcastSnapshot("model_slots_updated");
+      await emitWebhookNotification("model-slots", { body, updatedSettings, logEntry }, snapshot);
       sendJson(res, 200, {
         ok: true,
         modelSettings: updatedSettings,
@@ -1968,6 +1972,7 @@ export function createMissionHudServer({
       writeJsonAtomicSync(paths.statePath, updatedState);
       lastDiskSignature = computeDiskSignature();
       const snapshot = broadcastSnapshot("mission_paused");
+      await emitWebhookNotification("pause", { body, logEntries }, snapshot);
       sendJson(res, 200, {
         ok: true,
         state: snapshot ? snapshot.state : updatedState,
@@ -2154,7 +2159,10 @@ export function createMissionHudServer({
         preBroadcastSnapshot
       );
 
-      if (existingState.activeWorker && typeof effectiveAdapter.resumeWorker === "function") {
+      const pendingDispatch = existingState.activeWorker?.dispatchPending === true ||
+        (existingState.activeWorker?.runtimeTransport === "orchestrator-pending" &&
+          !existingState.activeWorker.taskId && !existingState.activeWorker.childThreadId && !existingState.activeWorker.workerPid);
+      if (!pendingDispatch && existingState.activeWorker && typeof effectiveAdapter.resumeWorker === "function") {
         const rwRes = await effectiveAdapter.resumeWorker(
           existingState.activeWorker,
           { trigger: "[resume the mission]", diagnostic, gitCheck, body },
@@ -2185,7 +2193,7 @@ export function createMissionHudServer({
             );
           }
         }
-      } else if (typeof effectiveAdapter.startMissionRun === "function") {
+      } else if (!pendingDispatch && typeof effectiveAdapter.startMissionRun === "function") {
         const smRes = await effectiveAdapter.startMissionRun(
           paths.dotMissionDir,
           { trigger: "[resume the mission]", diagnostic, gitCheck, body },
@@ -2222,6 +2230,7 @@ export function createMissionHudServer({
       writeJsonAtomicSync(paths.statePath, updatedState);
       lastDiskSignature = computeDiskSignature();
       const snapshot = broadcastSnapshot("mission_resumed");
+      await emitWebhookNotification("resume", { body, trigger: "[resume the mission]", diagnostic, gitCheck, logEntries }, snapshot);
       sendJson(res, 200, {
         ok: true,
         trigger: "[resume the mission]",
@@ -2326,6 +2335,11 @@ export function createMissionHudServer({
 
       if (method === "POST" && pathname === "/api/mission/approve") {
         await handleApprove(req, res);
+        return;
+      }
+
+      if (method === "POST" && pathname === "/api/mission/reject") {
+        await handleReject(req, res);
         return;
       }
 

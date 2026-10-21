@@ -1676,10 +1676,8 @@ test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: u
   const f1 = proposed.features[0];
   const f2 = proposed.features[1];
   assert.equal(f1.target.model, "claude-opus-5-5");
-  assert.equal(f1.target.providerInstanceId, "claudeAgent");
-  assert.equal(f2.workerTarget.model, "gpt-6.1-sol");
-  assert.equal(f2.workerTarget.providerInstanceId, "codex");
-  assert.equal("effort" in f2.workerTarget.options, false);
+  assert.equal(f1.target.providerInstanceId, undefined);
+  assert.deepEqual(f2.workerTarget, { providerInstanceId: "codex", model: "gpt-6.1-sol", reasoningEffort: "max" });
 
   approveMissionPlan(projectDir);
   const dispatchedSlots = [];

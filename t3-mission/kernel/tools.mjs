@@ -152,8 +152,13 @@ export function proposeMission(missionDir, input = {}) {
 
 export function approveMissionPlan(missionDir) {
   const state = loadState(missionDir);
+  if (state.planAccepted === true) {
+    return { ...state, state };
+  }
   state.planAccepted = true;
-  state.status = "orchestrator_turn";
+  if (!state.activeWorker && state.status !== "running" && state.status !== "paused") {
+    state.status = "orchestrator_turn";
+  }
   state.revision = (state.revision || 1) + 1;
   saveState(missionDir, state);
 
@@ -175,9 +180,9 @@ export function rejectMissionPlan(missionDir, feedback = "") {
   state.planAccepted = false;
   state.status = "planning";
   state.revision = (state.revision || 1) + 1;
-  if (feedback) {
-    state.lastPlanFeedback = String(feedback);
-  }
+  state.lastPlanFeedback = String(feedback || "Plan changes requested");
+  state.lastPlanRejectedAt = new Date().toISOString();
+  state.rejectionRevision = state.revision;
   saveState(missionDir, state);
 
   appendProgressLog(missionDir, {

@@ -4,6 +4,8 @@ import {
   DEFAULT_MODEL_SETTINGS,
   doesProviderDeclareEffortOption,
   inferFeatureKind,
+  getFeatureSlotOverride,
+  isDispatchRejected,
   isValidatorFeature,
   MissionKernelError,
   normalizeFeature,
@@ -55,19 +57,7 @@ export function resolveFeatureSlot(feature, modelSettings) {
   const baseSlot =
     (validator ? modelSettings?.validator : modelSettings?.worker) ||
     (validator ? DEFAULT_MODEL_SETTINGS.validator : DEFAULT_MODEL_SETTINGS.worker);
-  const rawOverride =
-    feature?.target ??
-    feature?.workerTarget ??
-    feature?.slotConfig ??
-    (feature?.model
-      ? {
-          providerInstanceId: feature.providerInstanceId,
-          model: feature.model,
-          effort: feature.effort,
-          reasoningEffort: feature.reasoningEffort,
-          options: feature.options,
-        }
-      : null);
+  const rawOverride = getFeatureSlotOverride(feature);
   const resolvedSlot =
     rawOverride !== null && rawOverride !== undefined
       ? normalizeSlotConfig(rawOverride, baseSlot)
@@ -283,183 +273,92 @@ export async function startMissionRun(
     state.activeWorker?.status === "paused" ||
     state.activeWorker?.resumePending === true;
 
-  // Already-running guard (F02 serialStart) + F03 dispatchPending / default runtime handoff
-  if (
-    !needsResume &&
-    state.status === "running" &&
-    state.activeWorker &&
-    state.activeWorker.status === "running"
-  ) {
+  // An active run owns the feature regardless of the mission's display status.
+  if (state.activeWorker) {
     const existing = state.activeWorker;
-    const isDefaultRuntimePlaceholder =
+    const pendingDispatch =
+      existing.dispatchPending === true ||
+      (existing.runtimeTransport === "orchestrator-pending" &&
+        !existing.taskId && !existing.childThreadId && !existing.workerPid) ||
       existing.delegatedBy === "hud-default-runtime" ||
       existing.runtimeTransport === "bridge-cli-subprocess" ||
       existing.runtimeTransport === "hud-default-runtime";
-    if (
-      (existing.dispatchPending === true || isDefaultRuntimePlaceholder) &&
-      typeof effectiveAdapter?.runFeature === "function"
-    ) {
+    if (pendingDispatch) {
+      if (typeof effectiveAdapter.runFeature !== "function") return state;
       const pendingRunId = existing.runId;
       const pendingFeatureId = existing.featureId;
-      if (existing.workerPid || existing.daemonStateFile) {
-        cleanupLocalWorkerDaemon(existing);
-        delete existing.workerPid;
-        delete existing.daemonStateFile;
-        delete existing.daemonStatus;
-      }
-      delete existing.dispatchPending;
-      delete existing.delegatedBy;
-      delete existing.runtimeTransport;
-      if (Array.isArray(state.sessions)) {
-        state.sessions = state.sessions.map((s) => {
-          if (s.runId === pendingRunId) {
-            const copy = { ...s };
-            delete copy.dispatchPending;
-            delete copy.delegatedBy;
-            delete copy.runtimeTransport;
-            delete copy.workerPid;
-            delete copy.daemonStateFile;
-            delete copy.daemonStatus;
-            return copy;
+
+      const persistDispatch = (result, pending) => {
+        const current = loadState(missionDir);
+        if (current.activeWorker?.runId !== pendingRunId) return current;
+        const featuresDoc = loadFeaturesDoc(missionDir);
+        const update = (entry) => {
+          const next = { ...entry };
+          if (pending) {
+            next.dispatchPending = true;
+            return next;
           }
-          return s;
-        });
-      }
-      saveState(missionDir, state);
-
-      const featuresDoc = loadFeaturesDoc(missionDir);
-      const modelSettings = loadModelSettings(missionDir);
-      const fIdx = featuresDoc.features.findIndex(
-        (f) => f.id === pendingFeatureId
-      );
-      if (fIdx !== -1) {
-        delete featuresDoc.features[fIdx].dispatchPending;
-        delete featuresDoc.features[fIdx].delegatedBy;
-        delete featuresDoc.features[fIdx].runtimeTransport;
-        delete featuresDoc.features[fIdx].workerPid;
-        delete featuresDoc.features[fIdx].daemonStateFile;
-        delete featuresDoc.features[fIdx].daemonStatus;
-        if (
-          typeof featuresDoc.features[fIdx].attempts !== "number" ||
-          featuresDoc.features[fIdx].attempts < 1
-        ) {
-          featuresDoc.features[fIdx].attempts = existing.attempt || 1;
+          for (const key of ["dispatchPending", "resumePending", "delegatedBy", "runtimeTransport", "workerPid", "daemonStateFile", "daemonStatus"]) {
+            delete next[key];
+          }
+          Object.assign(next, extractDelegationIdentity(result), { status: "running" });
+          for (const key of ["runtimeTransport", "workerPid", "daemonStateFile", "daemonStatus", "delegatedBy"]) {
+            if (result?.[key] !== undefined) next[key] = result[key];
+          }
+          return next;
+        };
+        if (!pending) {
+          cleanupLocalWorkerDaemon(existing);
+          current.status = "running";
+          current.lastStartedAt = new Date().toISOString();
         }
-        saveFeaturesDoc(missionDir, {
-          ...featuresDoc,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      const feature =
-        fIdx !== -1
-          ? featuresDoc.features[fIdx]
-          : {
-              id: pendingFeatureId,
-              title: existing.featureTitle || pendingFeatureId,
-              milestoneId: existing.milestoneId || "m1",
-              kind: existing.kind || "implementation",
-              skillName: existing.skillName || "worker-implementation",
-            };
-      const { slotConfig } = resolveFeatureSlot(feature, modelSettings);
-
-      const result = await effectiveAdapter.runFeature(
-        feature,
-        slotConfig,
-        loadState(missionDir)
-      );
-
-      const identity = extractDelegationIdentity(result);
-      state = loadState(missionDir);
-      const updatedFeaturesDoc = loadFeaturesDoc(missionDir);
-
-      if (Object.keys(identity).length > 0) {
-        if (state.activeWorker && state.activeWorker.runId === pendingRunId) {
-          cleanupLocalWorkerDaemon(state.activeWorker);
-          state.activeWorker = {
-            ...state.activeWorker,
-            ...identity,
-          };
-          delete state.activeWorker.dispatchPending;
-          delete state.activeWorker.delegatedBy;
-          delete state.activeWorker.runtimeTransport;
-          delete state.activeWorker.workerPid;
-          delete state.activeWorker.daemonStateFile;
-          delete state.activeWorker.daemonStatus;
-        }
-        if (Array.isArray(state.sessions)) {
-          state.sessions = state.sessions.map((s) => {
-            if (s.runId === pendingRunId) {
-              const copy = { ...s, ...identity };
-              delete copy.dispatchPending;
-              delete copy.delegatedBy;
-              delete copy.runtimeTransport;
-              delete copy.workerPid;
-              delete copy.daemonStateFile;
-              delete copy.daemonStatus;
-              return copy;
-            }
-            return s;
-          });
-        }
-        const idx = updatedFeaturesDoc.features.findIndex(
-          (f) => f.id === pendingFeatureId
+        current.activeWorker = update(current.activeWorker);
+        current.sessions = (current.sessions || []).map((session) =>
+          session.runId === pendingRunId ? update(session) : session
         );
-        if (idx !== -1) {
-          const featureIdentity = {};
-          if (identity.taskId) featureIdentity.taskId = identity.taskId;
-          if (identity.childThreadId)
-            featureIdentity.childThreadId = identity.childThreadId;
-          if (identity.worktreePath)
-            featureIdentity.worktreePath = identity.worktreePath;
-          if (identity.childRunId)
-            featureIdentity.childRunId = identity.childRunId;
-          updatedFeaturesDoc.features[idx] = {
-            ...updatedFeaturesDoc.features[idx],
-            ...featureIdentity,
-          };
-          delete updatedFeaturesDoc.features[idx].dispatchPending;
-          delete updatedFeaturesDoc.features[idx].delegatedBy;
-          delete updatedFeaturesDoc.features[idx].runtimeTransport;
-          delete updatedFeaturesDoc.features[idx].workerPid;
-          delete updatedFeaturesDoc.features[idx].daemonStateFile;
-          delete updatedFeaturesDoc.features[idx].daemonStatus;
+        const idx = featuresDoc.features.findIndex((f) => f.id === pendingFeatureId);
+        if (idx !== -1) featuresDoc.features[idx] = update(featuresDoc.features[idx]);
+        current.revision = (current.revision || 1) + 1;
+        saveFeaturesDoc(missionDir, { ...featuresDoc, updatedAt: new Date().toISOString() });
+        saveState(missionDir, current);
+        return current;
+      };
+
+      // Persist the retry marker before entering an adapter, including legacy placeholders.
+      persistDispatch(null, true);
+      const featuresDoc = loadFeaturesDoc(missionDir);
+      const feature = featuresDoc.features.find((f) => f.id === pendingFeatureId) || {
+        id: pendingFeatureId,
+        title: existing.featureTitle || pendingFeatureId,
+        milestoneId: existing.milestoneId || "m1",
+        kind: existing.kind || "implementation",
+        skillName: existing.skillName || "worker-implementation",
+      };
+      const { slotConfig } = resolveFeatureSlot(feature, loadModelSettings(missionDir));
+      let result;
+      try {
+        result = await effectiveAdapter.runFeature(feature, slotConfig, loadState(missionDir));
+        if (isDispatchRejected(result)) {
+          throw new MissionKernelError(
+            result?.code || result?.response?.code || "DISPATCH_REJECTED",
+            result?.error || result?.response?.error || "Runtime refused pending worker dispatch"
+          );
         }
-        saveState(missionDir, state);
-        saveFeaturesDoc(missionDir, {
-          ...updatedFeaturesDoc,
-          updatedAt: new Date().toISOString(),
-        });
+      } catch (err) {
+        persistDispatch(null, true);
+        throw err;
       }
-
-      if (
-        state.activeWorker &&
-        state.activeWorker.runId === pendingRunId &&
-        result &&
-        typeof result === "object" &&
-        result.handoff
-      ) {
-        cleanupLocalWorkerDaemon(state.activeWorker);
-        endFeatureRun(missionDir, {
-          runId: pendingRunId,
-          featureId: pendingFeatureId,
-          ...result,
-        });
+      const identity = extractDelegationIdentity(result);
+      const stillPending = result?.dispatchPending === true ||
+        result?.response?.dispatchPending === true ||
+        (!identity.taskId && !identity.childThreadId && !result?.workerPid && !result?.handoff);
+      state = persistDispatch(result, stillPending);
+      if (!stillPending && state.activeWorker?.runId === pendingRunId && result?.handoff) {
+        endFeatureRun(missionDir, { ...result, runId: pendingRunId, featureId: pendingFeatureId });
       }
-
-      state = loadState(missionDir);
-      if (
-        state.status === "orchestrator_turn" ||
-        state.status === "paused" ||
-        state.status === "completed" ||
-        state.lastHandoffNeedsAttention ||
-        (state.activeWorker && state.activeWorker.status === "running") ||
-        state.activeWorker
-      ) {
-        return state;
-      }
-    } else {
-      return state;
+      return loadState(missionDir);
     }
+    if (!needsResume) return state;
   }
 
   // Resume interrupted worker first if recovering from paused state

@@ -2112,18 +2112,18 @@ test("HUD Effort Capability Fix (t3m-m1-w3-hud-effort-cap-fix-v1): Fixed-tier / 
 
   assert.equal(normalized.worker.model, "gpt-6.1-sol");
   assert.equal(normalized.worker.supportsEffort, true);
-  assert.equal(normalized.worker.effort, 4);
-  assert.equal(normalized.worker.reasoningEffort, "high");
+  assert.equal(normalized.worker.effort, 5);
+  assert.equal(normalized.worker.reasoningEffort, "max");
   assert.equal("effort" in normalized.worker.options, false);
-  assert.equal(normalized.worker.options.reasoningEffort, "high");
+  assert.equal(normalized.worker.options.reasoningEffort, "max");
 
   assert.equal(normalized.validator.model, "claude-opus-5-5");
   assert.equal(normalized.validator.supportsEffort, true);
-  assert.equal(normalized.validator.effort, 5);
-  assert.equal(normalized.validator.reasoningEffort, "max");
+  assert.equal(normalized.validator.effort, 3);
+  assert.equal(normalized.validator.reasoningEffort, "medium");
   assert.equal("effort" in normalized.validator.options, true);
-  assert.equal(normalized.validator.options.effort, 5);
-  assert.equal(normalized.validator.options.reasoningEffort, "max");
+  assert.equal(normalized.validator.options.effort, 3);
+  assert.equal(normalized.validator.options.reasoningEffort, "medium");
 
   // 3. Verify HUD DOM hides #effort-bars-<slot> for gemini-4-argon-high and shows interactive bars for gpt-6.1-sol / claude-opus-5-5
   const appSrc = fs
@@ -3110,7 +3110,15 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
   assert.equal("effort" in preSlotBody.modelSettings.validator.options, false);
   assert.equal(preSlotBody.modelSettings.validator.options.reasoningEffort, "max");
 
-  // Verify notifyUrl received model-slots event
+  // Webhook delivery is asynchronous and independent of the command response.
+  const waitForWebhookCount = async (count) => {
+    const deadline = Date.now() + 2000;
+    while (webhookEvents.length < count && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(webhookEvents.length, count);
+  };
+  await waitForWebhookCount(1);
   assert.equal(webhookEvents.length, 1);
   assert.equal(webhookEvents[0].type, "model-slots");
 
@@ -3195,7 +3203,8 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
   assert.equal(featuresAfterApprove[0].taskId, undefined);
   assert.equal(featuresAfterApprove[0].childThreadId, undefined);
 
-  // Verify notifyUrl received approve event
+  // Verify eventual delivery of the committed approval snapshot.
+  await waitForWebhookCount(2);
   assert.equal(webhookEvents.length, 2);
   assert.equal(webhookEvents[1].type, "approve");
   assert.equal(webhookEvents[1].state.planAccepted, true);

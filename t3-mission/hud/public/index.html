@@ -109,7 +109,9 @@
           <div class="onboarding-card hidden" id="onboarding-card"></div>
 
           <!-- Plan Review Banner (shown when status === 'awaiting_input' && !planAccepted) -->
-          <div class="approval-card hidden" id="plan-approval-card"></div>
+          <div class="approval-card hidden" id="plan-approval-card">
+            <button type="button" class="strip-btn" id="btn-reject-plan" data-action="reject-plan">Request Changes</button>
+          </div>
 
           <!-- Session Handoff Inspector (shown when a Worker/Validator session is clicked) -->
           <div class="session-inspector hidden" id="session-inspector">

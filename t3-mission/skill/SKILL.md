@@ -96,9 +96,8 @@ When the user triggers `/mission <需求>` or asks to start a Mission ("开启 m
    - **NEVER** call `StartMissionRun` or dispatch any implementation `Worker` before the user has explicitly approved the plan (`planAccepted === true`).
 
 ### Step 4: Execute Serial Workers & Mandatory Milestone Validators (`StartMissionRun`)
-1. Once `WaitForApproval` resolves with `event: "plan_approved"` (or the user approves the plan via the HUD / `ApproveMissionPlan`):
+1. Once `WaitForApproval` resolves with `event: "plan_approved"` and `planAccepted: true`, proceed directly to `StartMissionRun` / `delegate_task`. The HUD has already recorded approval; no second `ApproveMissionPlan` call is needed (repeated approval is idempotent and preserves the active run). If approval arrives only in chat, record it with `ApproveMissionPlan` first:
    ```bash
-   node t3-mission/bridge/cli.mjs ApproveMissionPlan --mission-dir .mission
    node t3-mission/bridge/cli.mjs StartMissionRun --mission-dir .mission
    ```
    *(If the HUD recorded `activeWorker.dispatchPending === true` because no live ACP transport was present in the HUD subprocess, dispatch that pending feature via `delegate_task` or `StartMissionRun` with a live transport adapter.)*

@@ -171,6 +171,37 @@ export function inferProviderForModel(modelId, fallbackProvider = null) {
   return fallbackProvider;
 }
 
+const FEATURE_SLOT_FIELDS = ["model", "providerInstanceId", "effort", "reasoningEffort", "options"];
+
+export function normalizeSparseSlotOverride(raw) {
+  if (typeof raw === "string") return { model: raw.trim() };
+  if (!raw || typeof raw !== "object") return {};
+  return {
+    ...raw,
+    ...(raw.options && typeof raw.options === "object"
+      ? { options: { ...raw.options } }
+      : {}),
+  };
+}
+
+export function getFeatureSlotOverride(feature = {}) {
+  const nested = feature.target ?? feature.workerTarget ?? feature.slotConfig;
+  if (nested !== undefined && nested !== null) return normalizeSparseSlotOverride(nested);
+  const entries = FEATURE_SLOT_FIELDS
+    .filter((key) => Object.hasOwn(feature, key) && feature[key] !== undefined)
+    .map((key) => [key, feature[key]]);
+  return entries.length ? normalizeSparseSlotOverride(Object.fromEntries(entries)) : null;
+}
+
+export function isDispatchRejected(result) {
+  return [result, result?.response].some((value) =>
+    value && typeof value === "object" &&
+    (value.ok === false || value.accepted === false || value.started === false ||
+      value.canStart === false || value.blocked === true ||
+      (value.dispatched === false && value.dispatchPending !== true))
+  );
+}
+
 export function normalizeSlotConfig(raw = {}, base = {}) {
   const safeRaw =
     typeof raw === "string" && raw.trim()
@@ -230,7 +261,7 @@ export function normalizeSlotConfig(raw = {}, base = {}) {
             .trim()
             .toLowerCase()
         ] ?? null
-      : null);
+      : null) ?? 4;
   let resolvedReasoning =
     typeof (safeBase.reasoningEffort ?? baseOptions.reasoningEffort) === "string"
       ? String(safeBase.reasoningEffort ?? baseOptions.reasoningEffort)
@@ -425,28 +456,7 @@ export function normalizeFeature(feature, index = 0) {
       : 5;
   const lastHandoff = feature.lastHandoff ?? null;
 
-  const rawOverride =
-    feature.target ??
-    feature.workerTarget ??
-    feature.slotConfig ??
-    (feature.model
-      ? {
-          providerInstanceId: feature.providerInstanceId,
-          model: feature.model,
-          effort: feature.effort,
-          reasoningEffort: feature.reasoningEffort,
-          options: feature.options,
-        }
-      : null);
-
-  let normalizedOverride = null;
-  if (rawOverride !== null && rawOverride !== undefined) {
-    const baseDefault =
-      kind === "scrutiny" || kind === "user_testing"
-        ? DEFAULT_MODEL_SETTINGS.validator
-        : DEFAULT_MODEL_SETTINGS.worker;
-    normalizedOverride = normalizeSlotConfig(rawOverride, baseDefault);
-  }
+  const normalizedOverride = getFeatureSlotOverride(feature);
 
   const normalizedFeature = {
     ...feature,
@@ -463,23 +473,13 @@ export function normalizeFeature(feature, index = 0) {
     lastHandoff,
   };
 
-  if (normalizedOverride) {
-    if (feature.target !== undefined) {
-      normalizedFeature.target = normalizedOverride;
+  for (const key of ["target", "workerTarget", "slotConfig"]) {
+    if (feature[key] !== undefined && feature[key] !== null) {
+      normalizedFeature[key] = normalizeSparseSlotOverride(feature[key]);
     }
-    if (feature.workerTarget !== undefined) {
-      normalizedFeature.workerTarget = normalizedOverride;
-    }
-    if (feature.slotConfig !== undefined) {
-      normalizedFeature.slotConfig = normalizedOverride;
-    }
-    if (
-      feature.target === undefined &&
-      feature.workerTarget === undefined &&
-      feature.slotConfig === undefined
-    ) {
-      normalizedFeature.target = normalizedOverride;
-    }
+  }
+  if (normalizedOverride && feature.target == null && feature.workerTarget == null && feature.slotConfig == null) {
+    normalizedFeature.target = normalizedOverride;
   }
 
   return normalizedFeature;

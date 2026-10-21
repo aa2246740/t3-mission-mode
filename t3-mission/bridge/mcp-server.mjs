@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import { DISMISSAL_TYPES } from "../kernel/schema.mjs";
+import { DISMISSAL_TYPES, isDispatchRejected } from "../kernel/schema.mjs";
 import {
   checkGitTreeBeforeResume,
   createT3Adapter,
@@ -358,7 +358,7 @@ function saveStateToKernelOrDisk(missionDir, kernel, state) {
 }
 
 function persistWorkerMetadataIntoState(missionDir, kernel, meta) {
-  if (!meta || typeof meta !== "object") {
+  if (!meta || typeof meta !== "object" || isDispatchRejected(meta) || meta.dispatchPending === true) {
     return null;
   }
   const { runId, featureId, taskId, childThreadId, childRunId, worktreePath } = meta;
@@ -378,6 +378,9 @@ function persistWorkerMetadataIntoState(missionDir, kernel, meta) {
     return state;
   }
 
+  if (state.activeWorker.dispatchPending === true && !taskId && !childThreadId && !meta.workerPid && !meta.handoff) {
+    return state;
+  }
   const nextActiveWorker = {
     ...state.activeWorker,
     taskId: taskId ?? state.activeWorker.taskId ?? null,
@@ -436,6 +439,7 @@ export function createBridgeDispatchAdapter(missionDir, baseAdapter = {}, kernel
       const res = await baseAdapter.runFeature(feature, slotConfig, missionState, opts);
       const response = res?.response ?? res;
       const fullResult = {
+        ...(response && typeof response === "object" ? response : {}),
         ...(res && typeof res === "object" ? res : {}),
         taskId: response?.taskId ?? res?.taskId ?? null,
         childThreadId:
@@ -466,7 +470,9 @@ export function createBridgeDispatchAdapter(missionDir, baseAdapter = {}, kernel
         featureId
       };
 
-      persistWorkerMetadataIntoState(missionDir, kernel, lastRunFeatureResult);
+      if (!isDispatchRejected(fullResult) && fullResult.dispatchPending !== true) {
+        persistWorkerMetadataIntoState(missionDir, kernel, lastRunFeatureResult);
+      }
       return fullResult;
     };
   }
@@ -1167,9 +1173,8 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
 
     const initialState = loadStateFromKernelOrDisk(missionDir, kernel);
     const initialLogs = readProgressLogEntries();
-    const baselineRevision =
-      typeof initialState?.revision === "number" ? initialState.revision : 0;
-    const baselineFeedback = initialState?.lastPlanFeedback ?? null;
+    const baselineRejectionRevision = initialState?.rejectionRevision;
+    const baselineRejectedAt = initialState?.lastPlanRejectedAt;
     const baselineRejectedCount = initialLogs.filter(
       (e) => e && e.type === "plan_rejected"
     ).length;
@@ -1204,11 +1209,10 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
         currentState &&
           currentState.status === "planning" &&
           currentState.planAccepted === false &&
-          ((typeof currentState.revision === "number" &&
-            currentState.revision > baselineRevision &&
-            currentState.lastPlanFeedback !== undefined) ||
-            (currentState.lastPlanFeedback &&
-              currentState.lastPlanFeedback !== baselineFeedback))
+          ((currentState.rejectionRevision !== undefined &&
+            currentState.rejectionRevision !== baselineRejectionRevision) ||
+            (currentState.lastPlanRejectedAt !== undefined &&
+              currentState.lastPlanRejectedAt !== baselineRejectedAt))
       );
 
       if (hasNewRejectionLog || hasNewRejectionState) {
@@ -1331,7 +1335,9 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
     const lastMeta =
       dispatchAdapter.getLastRunFeatureResult?.() ??
       dispatchAdapter.getLastResumeResult?.();
-    if (lastMeta && (lastMeta.taskId || lastMeta.childThreadId || lastMeta.childRunId || lastMeta.worktreePath)) {
+    if (lastMeta && !isDispatchRejected(lastMeta) && lastMeta.dispatchPending !== true &&
+        result?.activeWorker?.dispatchPending !== true &&
+        (lastMeta.taskId || lastMeta.childThreadId || lastMeta.childRunId || lastMeta.worktreePath)) {
       const persistedState = persistWorkerMetadataIntoState(missionDir, kernel, lastMeta);
       if (result && typeof result === "object" && result.activeWorker) {
         result.activeWorker = {
