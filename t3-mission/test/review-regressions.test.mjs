@@ -398,4 +398,10 @@ test("V12: Request Changes feedback draft survives inspecting features/sessions 
   await listeners.get("#btn-reject-plan:click")();
   assert.deepEqual(requests, [{ url: "/api/mission/reject", body: { feedback: "Draft feedback must survive inspecting feature 1." } }]);
   assert.equal(vm.runInContext("hudState.planFeedbackDraft", context), "");
+  assert.equal(inputEl.value, "");
+  // V13: transition to planning after reject, then propose revised plan (awaiting_input) -> feedback input must be empty
+  vm.runInContext("renderCenterColumn({initialized:true,state:{initialized:true,status:\"planning\",planAccepted:false},features:[{id:\"f1\",title:\"Feature 1\",status:\"pending\"}]})", context);
+  vm.runInContext("renderCenterColumn({initialized:true,state:{initialized:true,status:\"awaiting_input\",planAccepted:false},features:[{id:\"f1\",title:\"Feature 1 v2\",status:\"pending\"}]})", context);
+  assert.equal(inputEl.value, "");
+  assert.equal(vm.runInContext("hudState.planFeedbackDraft", context), "");
 });

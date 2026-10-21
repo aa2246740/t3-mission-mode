@@ -944,16 +944,16 @@ function renderCenterColumn(snapshot) {
   // 2. High-Clarity Plan Review Banner when status === "awaiting_input" && !planAccepted
   const showApprovalCard = state.status === "awaiting_input" && !state.planAccepted;
   if (approvalEl) {
-    if (
-      typeof approvalEl.innerHTML === "string" &&
-      approvalEl.innerHTML.includes("id=\"plan-feedback\"")
-    ) {
-      const existingFeedbackInput = approvalEl.querySelector?.("#plan-feedback");
-      if (existingFeedbackInput && typeof existingFeedbackInput.value === "string") {
-        hudState.planFeedbackDraft = existingFeedbackInput.value;
-      }
-    }
     if (showApprovalCard) {
+      if (
+        typeof approvalEl.innerHTML === "string" &&
+        approvalEl.innerHTML.includes("id=\"plan-feedback\"")
+      ) {
+        const existingFeedbackInput = approvalEl.querySelector?.("#plan-feedback");
+        if (existingFeedbackInput && typeof existingFeedbackInput.value === "string") {
+          hudState.planFeedbackDraft = existingFeedbackInput.value;
+        }
+      }
       approvalEl.classList.remove("hidden");
       const milestones = Array.isArray(state.milestones) ? state.milestones : [];
       const featuresList = Array.isArray(features) ? features : [];
@@ -1002,16 +1002,24 @@ function renderCenterColumn(snapshot) {
         });
       }
       approvalEl.querySelector("#btn-reject-plan")?.addEventListener("click", async () => {
+        const inputBeforeSubmit = approvalEl.querySelector("#plan-feedback");
+        const currentFeedback =
+          inputBeforeSubmit?.value ||
+          hudState.planFeedbackDraft ||
+          "";
         try {
-          const currentFeedback =
-            approvalEl.querySelector("#plan-feedback")?.value ||
-            hudState.planFeedbackDraft ||
-            "";
+          hudState.planFeedbackDraft = "";
+          if (inputBeforeSubmit) inputBeforeSubmit.value = "";
           await postAction("/api/mission/reject", {
             feedback: currentFeedback,
           });
           hudState.planFeedbackDraft = "";
+          const inputAfterSubmit = approvalEl.querySelector("#plan-feedback");
+          if (inputAfterSubmit) inputAfterSubmit.value = "";
         } catch (err) {
+          hudState.planFeedbackDraft = currentFeedback;
+          const inputOnError = approvalEl.querySelector("#plan-feedback");
+          if (inputOnError) inputOnError.value = currentFeedback;
           handleActionError(err);
         }
       });
@@ -1019,11 +1027,16 @@ function renderCenterColumn(snapshot) {
       approveBtn?.addEventListener("click", async () => {
         try {
           await triggerApprove();
+          hudState.planFeedbackDraft = "";
+          const inputAfterApprove = approvalEl.querySelector("#plan-feedback");
+          if (inputAfterApprove) inputAfterApprove.value = "";
         } catch (err) {
           handleActionError(err);
         }
       });
     } else {
+      hudState.planFeedbackDraft = "";
+      approvalEl.innerHTML = "";
       approvalEl.classList.add("hidden");
     }
   }
