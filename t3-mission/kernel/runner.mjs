@@ -179,27 +179,102 @@ export async function dispatchFeatureToWorker(
     return loadState(missionDir);
   }
 
-  const result = await dispatchAdapter.runFeature(
-    featuresDoc.features[featureIdx],
-    slotConfig,
-    loadState(missionDir)
-  );
+  const preDispatchState = loadState(missionDir);
+  const wasPausedBefore = preDispatchState.status === "paused";
+  const prePausedAt = preDispatchState.pausedAt;
+
+  const markInitialPending = () => {
+    const cur = loadState(missionDir);
+    if (cur.activeWorker && cur.activeWorker.runId === runId) {
+      cur.activeWorker = { ...cur.activeWorker, dispatchPending: true };
+      for (const k of ["taskId", "childThreadId", "childRunId", "workerPid", "daemonStateFile"]) {
+        delete cur.activeWorker[k];
+      }
+    }
+    if (Array.isArray(cur.sessions)) {
+      cur.sessions = cur.sessions.map((s) => {
+        if (s.runId !== runId) return s;
+        const copy = { ...s, dispatchPending: true };
+        for (const k of ["taskId", "childThreadId", "childRunId", "workerPid", "daemonStateFile"]) {
+          delete copy[k];
+        }
+        return copy;
+      });
+    }
+    const fDoc = loadFeaturesDoc(missionDir);
+    const fIdx = fDoc.features.findIndex((f) => f.id === candidate.id);
+    if (fIdx !== -1) {
+      const fCopy = { ...fDoc.features[fIdx], dispatchPending: true };
+      for (const k of ["taskId", "childThreadId", "childRunId", "workerPid", "daemonStateFile"]) {
+        delete fCopy[k];
+      }
+      fDoc.features[fIdx] = fCopy;
+      saveFeaturesDoc(missionDir, { ...fDoc, updatedAt: new Date().toISOString() });
+    }
+    saveState(missionDir, cur);
+  };
+
+  let result;
+  try {
+    result = await dispatchAdapter.runFeature(
+      featuresDoc.features[featureIdx],
+      slotConfig,
+      loadState(missionDir)
+    );
+    if (isDispatchRejected(result)) {
+      throw new MissionKernelError(
+        result?.code || result?.response?.code || "DISPATCH_REJECTED",
+        result?.error || result?.response?.error || "Runtime refused worker dispatch"
+      );
+    }
+  } catch (err) {
+    markInitialPending();
+    throw err;
+  }
 
   const identity = extractDelegationIdentity(result);
+  const isObjectResult = result !== null && typeof result === "object";
+  const stillPending =
+    isObjectResult &&
+    (result?.dispatchPending === true ||
+      result?.response?.dispatchPending === true ||
+      (!identity.taskId &&
+        !identity.childThreadId &&
+        !result?.workerPid &&
+        !result?.daemonStateFile &&
+        !result?.handoff));
+
+  if (stillPending) {
+    markInitialPending();
+    return loadState(missionDir);
+  }
+
   state = loadState(missionDir);
   featuresDoc = loadFeaturesDoc(missionDir);
+  const pausedDuringDispatch =
+    state.status === "paused" && (!wasPausedBefore || state.pausedAt !== prePausedAt);
 
-  if (Object.keys(identity).length > 0) {
+  if (Object.keys(identity).length > 0 || pausedDuringDispatch) {
     if (state.activeWorker && state.activeWorker.runId === runId) {
-      state.activeWorker = {
+      const nextWorker = {
         ...state.activeWorker,
         ...identity,
+        ...(pausedDuringDispatch ? { status: "paused" } : {}),
       };
+      delete nextWorker.dispatchPending;
+      state.activeWorker = nextWorker;
     }
     if (Array.isArray(state.sessions)) {
-      state.sessions = state.sessions.map((s) =>
-        s.runId === runId ? { ...s, ...identity } : s
-      );
+      state.sessions = state.sessions.map((s) => {
+        if (s.runId !== runId) return s;
+        const nextS = {
+          ...s,
+          ...identity,
+          ...(pausedDuringDispatch ? { status: "paused" } : {}),
+        };
+        delete nextS.dispatchPending;
+        return nextS;
+      });
     }
     const fIdx = featuresDoc.features.findIndex((f) => f.id === candidate.id);
     if (fIdx !== -1) {
@@ -210,16 +285,21 @@ export async function dispatchFeatureToWorker(
       if (identity.worktreePath)
         featureIdentity.worktreePath = identity.worktreePath;
       if (identity.childRunId) featureIdentity.childRunId = identity.childRunId;
-      featuresDoc.features[fIdx] = {
+      const nextF = {
         ...featuresDoc.features[fIdx],
         ...featureIdentity,
       };
+      delete nextF.dispatchPending;
+      featuresDoc.features[fIdx] = nextF;
     }
     saveState(missionDir, state);
     saveFeaturesDoc(missionDir, {
       ...featuresDoc,
       updatedAt: new Date().toISOString(),
     });
+    if (pausedDuringDispatch && typeof dispatchAdapter.pauseWorker === "function") {
+      await dispatchAdapter.pauseWorker(state.activeWorker, state);
+    }
   }
 
   // If dispatchAdapter.runFeature didn't call endFeatureRun itself, and returned a handoff object, handle it
@@ -287,21 +367,45 @@ export async function startMissionRun(
       if (typeof effectiveAdapter.runFeature !== "function") return state;
       const pendingRunId = existing.runId;
       const pendingFeatureId = existing.featureId;
+      const featuresDocInitial = loadFeaturesDoc(missionDir);
+      const feature = featuresDocInitial.features.find((f) => f.id === pendingFeatureId) || {
+        id: pendingFeatureId,
+        title: existing.featureTitle || pendingFeatureId,
+        milestoneId: existing.milestoneId || "m1",
+        kind: existing.kind || "implementation",
+        skillName: existing.skillName || "worker-implementation",
+      };
+      const { slotName, slotConfig } = resolveFeatureSlot(feature, loadModelSettings(missionDir));
+      const preDispatchState = loadState(missionDir);
+      const wasPausedBeforeDispatch = preDispatchState.status === "paused";
+      const preDispatchPausedAt = preDispatchState.pausedAt;
 
-      const persistDispatch = (result, pending) => {
+      const persistDispatch = (result, pending, pausedDuringFlight = false) => {
         const current = loadState(missionDir);
         if (current.activeWorker?.runId !== pendingRunId) return current;
         const featuresDoc = loadFeaturesDoc(missionDir);
-        const update = (entry) => {
+        const targetStatus = pausedDuringFlight ? "paused" : "running";
+        const update = (entry, isFeatureEntry = false) => {
           const next = { ...entry };
+          if (!isFeatureEntry && slotConfig) {
+            next.slot = slotName;
+            next.providerInstanceId = slotConfig.providerInstanceId;
+            next.model = slotConfig.model;
+            next.options = structuredClone(slotConfig.options || {});
+          }
           if (pending) {
             next.dispatchPending = true;
+            for (const k of ["taskId", "childThreadId", "childRunId", "workerPid", "daemonStateFile"]) {
+              delete next[k];
+            }
             return next;
           }
           for (const key of ["dispatchPending", "resumePending", "delegatedBy", "runtimeTransport", "workerPid", "daemonStateFile", "daemonStatus"]) {
             delete next[key];
           }
-          Object.assign(next, extractDelegationIdentity(result), { status: "running" });
+          Object.assign(next, extractDelegationIdentity(result), {
+            status: isFeatureEntry ? "running" : targetStatus,
+          });
           for (const key of ["runtimeTransport", "workerPid", "daemonStateFile", "daemonStatus", "delegatedBy"]) {
             if (result?.[key] !== undefined) next[key] = result[key];
           }
@@ -309,15 +413,17 @@ export async function startMissionRun(
         };
         if (!pending) {
           cleanupLocalWorkerDaemon(existing);
-          current.status = "running";
-          current.lastStartedAt = new Date().toISOString();
+          current.status = targetStatus;
+          if (!pausedDuringFlight) {
+            current.lastStartedAt = new Date().toISOString();
+          }
         }
-        current.activeWorker = update(current.activeWorker);
+        current.activeWorker = update(current.activeWorker, false);
         current.sessions = (current.sessions || []).map((session) =>
-          session.runId === pendingRunId ? update(session) : session
+          session.runId === pendingRunId ? update(session, false) : session
         );
         const idx = featuresDoc.features.findIndex((f) => f.id === pendingFeatureId);
-        if (idx !== -1) featuresDoc.features[idx] = update(featuresDoc.features[idx]);
+        if (idx !== -1) featuresDoc.features[idx] = update(featuresDoc.features[idx], true);
         current.revision = (current.revision || 1) + 1;
         saveFeaturesDoc(missionDir, { ...featuresDoc, updatedAt: new Date().toISOString() });
         saveState(missionDir, current);
@@ -325,16 +431,7 @@ export async function startMissionRun(
       };
 
       // Persist the retry marker before entering an adapter, including legacy placeholders.
-      persistDispatch(null, true);
-      const featuresDoc = loadFeaturesDoc(missionDir);
-      const feature = featuresDoc.features.find((f) => f.id === pendingFeatureId) || {
-        id: pendingFeatureId,
-        title: existing.featureTitle || pendingFeatureId,
-        milestoneId: existing.milestoneId || "m1",
-        kind: existing.kind || "implementation",
-        skillName: existing.skillName || "worker-implementation",
-      };
-      const { slotConfig } = resolveFeatureSlot(feature, loadModelSettings(missionDir));
+      persistDispatch(null, true, false);
       let result;
       try {
         result = await effectiveAdapter.runFeature(feature, slotConfig, loadState(missionDir));
@@ -345,14 +442,22 @@ export async function startMissionRun(
           );
         }
       } catch (err) {
-        persistDispatch(null, true);
+        persistDispatch(null, true, false);
         throw err;
       }
       const identity = extractDelegationIdentity(result);
       const stillPending = result?.dispatchPending === true ||
         result?.response?.dispatchPending === true ||
         (!identity.taskId && !identity.childThreadId && !result?.workerPid && !result?.handoff);
-      state = persistDispatch(result, stillPending);
+      const postFlightState = loadState(missionDir);
+      const pausedDuringFlight =
+        !stillPending &&
+        postFlightState.status === "paused" &&
+        (!wasPausedBeforeDispatch || postFlightState.pausedAt !== preDispatchPausedAt);
+      state = persistDispatch(result, stillPending, pausedDuringFlight);
+      if (pausedDuringFlight && typeof effectiveAdapter.pauseWorker === "function") {
+        await effectiveAdapter.pauseWorker(state.activeWorker, state);
+      }
       if (!stillPending && state.activeWorker?.runId === pendingRunId && result?.handoff) {
         endFeatureRun(missionDir, { ...result, runId: pendingRunId, featureId: pendingFeatureId });
       }

@@ -5,6 +5,7 @@ const hudState = {
   sseConnected: false,
   lastEventId: null,
   lastActionError: null,
+  planFeedbackDraft: "",
 };
 
 function escapeHtml(value) {
@@ -943,11 +944,21 @@ function renderCenterColumn(snapshot) {
   // 2. High-Clarity Plan Review Banner when status === "awaiting_input" && !planAccepted
   const showApprovalCard = state.status === "awaiting_input" && !state.planAccepted;
   if (approvalEl) {
+    if (
+      typeof approvalEl.innerHTML === "string" &&
+      approvalEl.innerHTML.includes("id=\"plan-feedback\"")
+    ) {
+      const existingFeedbackInput = approvalEl.querySelector?.("#plan-feedback");
+      if (existingFeedbackInput && typeof existingFeedbackInput.value === "string") {
+        hudState.planFeedbackDraft = existingFeedbackInput.value;
+      }
+    }
     if (showApprovalCard) {
       approvalEl.classList.remove("hidden");
       const milestones = Array.isArray(state.milestones) ? state.milestones : [];
       const featuresList = Array.isArray(features) ? features : [];
       const assertions = Array.isArray(state.assertions) ? state.assertions : [];
+      const draftValue = hudState.planFeedbackDraft || "";
       approvalEl.innerHTML = `
         <div class="approval-banner-top">
           <div>
@@ -968,7 +979,7 @@ function renderCenterColumn(snapshot) {
           </div>
         </div>
         <label for="plan-feedback">Feedback (optional)</label>
-        <input id="plan-feedback" type="text" placeholder="Describe the requested changes">
+        <input id="plan-feedback" type="text" placeholder="Describe the requested changes" value="${escapeHtml(draftValue)}">
         <div class="approval-summary-pills">
           <span class="approval-stat-pill mono">${milestones.length} Milestones</span>
           <span class="approval-stat-pill mono">${featuresList.length} Planned Features</span>
@@ -978,11 +989,28 @@ function renderCenterColumn(snapshot) {
           Review the full milestone roadmap and Validation Contract below, then approve to dispatch the first worker.
         </div>
       `;
+      const feedbackInputEl = approvalEl.querySelector("#plan-feedback");
+      if (feedbackInputEl) {
+        if (draftValue) {
+          feedbackInputEl.value = draftValue;
+        }
+        feedbackInputEl.addEventListener?.("input", (ev) => {
+          hudState.planFeedbackDraft = ev?.target?.value ?? feedbackInputEl.value ?? "";
+        });
+        feedbackInputEl.addEventListener?.("change", (ev) => {
+          hudState.planFeedbackDraft = ev?.target?.value ?? feedbackInputEl.value ?? "";
+        });
+      }
       approvalEl.querySelector("#btn-reject-plan")?.addEventListener("click", async () => {
         try {
+          const currentFeedback =
+            approvalEl.querySelector("#plan-feedback")?.value ||
+            hudState.planFeedbackDraft ||
+            "";
           await postAction("/api/mission/reject", {
-            feedback: approvalEl.querySelector("#plan-feedback")?.value || "",
+            feedback: currentFeedback,
           });
+          hudState.planFeedbackDraft = "";
         } catch (err) {
           handleActionError(err);
         }
