@@ -1027,9 +1027,6 @@ function renderCenterColumn(snapshot) {
       approveBtn?.addEventListener("click", async () => {
         try {
           await triggerApprove();
-          hudState.planFeedbackDraft = "";
-          const inputAfterApprove = approvalEl.querySelector("#plan-feedback");
-          if (inputAfterApprove) inputAfterApprove.value = "";
         } catch (err) {
           handleActionError(err);
         }
@@ -1385,6 +1382,10 @@ async function triggerApprove() {
     await postAction("/api/mission/approve", {
       approvedBy: "user",
     });
+    hudState.planFeedbackDraft = "";
+    const approvalEl = document.getElementById("plan-approval-card");
+    const inputAfterApprove = approvalEl?.querySelector?.("#plan-feedback");
+    if (inputAfterApprove) inputAfterApprove.value = "";
   } catch (err) {
     handleActionError(err);
   }

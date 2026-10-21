@@ -405,3 +405,39 @@ test("V12: Request Changes feedback draft survives inspecting features/sessions 
   assert.equal(inputEl.value, "");
   assert.equal(vm.runInContext("hudState.planFeedbackDraft", context), "");
 });
+
+test("V14: failed approval (HTTP 409) preserves unsent Request Changes feedback draft", async () => {
+  const app = fs.readFileSync(new URL("../hud/public/app.js", import.meta.url), "utf8")
+    .replace("export function applySnapshot", "function applySnapshot").replace(/initHud\(\);\s*$/, "");
+  const listeners = new Map();
+  let inputVal = "";
+  const inputEl = {
+    get value() { return inputVal; },
+    set value(v) { inputVal = v; },
+    addEventListener(type, handler) { listeners.set(`#plan-feedback:${type}`, handler); },
+  };
+  const card = {
+    innerHTML: "",
+    classList: { add() {}, remove() {} },
+    querySelector(selector) {
+      if (selector === "#plan-feedback") return inputEl;
+      return { addEventListener(type, handler) { listeners.set(`${selector}:${type}`, handler); } };
+    },
+  };
+  const context = vm.createContext({
+    document: { getElementById(id) { return id === "plan-approval-card" ? card : null; } },
+    fetch: async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({ ok: false, code: "PROVIDER_BUSY", error: "Provider busy" }),
+    }),
+    console, setTimeout, clearTimeout,
+  });
+  vm.runInContext(app, context);
+  vm.runInContext("renderCenterColumn({initialized:true,state:{initialized:true,status:\"awaiting_input\",planAccepted:false},features:[{id:\"f1\",title:\"Feature 1\",status:\"pending\"}]})", context);
+  inputEl.value = "Keep this feedback when approve fails with 409";
+  listeners.get("#plan-feedback:input")?.({ target: inputEl });
+  await listeners.get("#btn-approve:click")();
+  assert.equal(inputEl.value, "Keep this feedback when approve fails with 409");
+  assert.equal(vm.runInContext("hudState.planFeedbackDraft", context), "Keep this feedback when approve fails with 409");
+});
