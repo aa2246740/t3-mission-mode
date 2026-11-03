@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import { DISMISSAL_TYPES, isDispatchRejected } from "../kernel/schema.mjs";
+import { DISMISSAL_TYPES } from "../kernel/schema.mjs";
 import {
   checkGitTreeBeforeResume,
   createT3Adapter,
@@ -16,8 +16,11 @@ import {
 } from "./t3-adapter.mjs";
 
 export const MISSION_TOOL_NAMES = [
+  "MissionTick",
+  "ReconcileBoundedTimer",
   "ProposeMission",
   "ApproveMissionPlan",
+  "BindFeatureDispatch",
   "StartMissionRun",
   "DismissHandoffItems",
   "EndFeatureRun",
@@ -27,6 +30,42 @@ export const MISSION_TOOL_NAMES = [
 ];
 
 export const MISSION_TOOLS = [
+  {
+    name: "ReconcileBoundedTimer",
+    description: "Record original enable and current disabled receipts for one interrupted bounded timer without scheduling or dispatching work.",
+    inputSchema: { type: "object", properties: {
+      missionDir: { type: "string" }, requestId: { type: "string" }, enabledResponse: { type: "object" },
+      disabledResponse: { type: "object" }, newWakeInstructions: { type: "string", maxLength: 4000 }
+    }, required: ["missionDir", "requestId", "enabledResponse", "disabledResponse", "newWakeInstructions"] }
+  },
+  {
+    name: "MissionTick",
+    description: "Advance approved Mission state deterministically and return exactly one owner action. Submit the original T3 responses as observations; never dispatch or End outside this loop.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        missionDir: { type: "string" },
+        timerMaxWakeups: { type: "integer", minimum: 1, maximum: 12, description: "Optional fail-stop bound, set before the first timer and persisted for the Mission." },
+        timerWakeInstructions: { type: "string", maxLength: 4000, description: "Optional immutable instructions retained in the bounded timer prompt." },
+        dispatchResolution: { type: "object", description: "Explicit user selection after all conflicting executions have archived terminal proof; never infer userConfirmed.", properties: {
+          intentId: { type: "string" }, userConfirmed: { type: "boolean", const: true }, reason: { type: "string" },
+          terminalObservationIds: { type: "array", items: { type: "string" } }, selectedTaskId: { type: "string" }, selectedChildThreadId: { type: "string" }
+        }, required: ["intentId", "userConfirmed", "reason", "terminalObservationIds", "selectedTaskId", "selectedChildThreadId"] },
+        observations: { type: "array", items: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["owner", "timer", "timer_disabled", "dispatch", "children", "task_status", "integration", "interrupt", "resume"] },
+            featureId: { type: "string" }, runId: { type: "string" },
+            intentId: { type: "string" }, invocationId: { type: "string" }, taskId: { type: "string" },
+            requestId: { type: "string" }, controlId: { type: "string" }, cursor: { type: ["string", "null"] },
+            response: { description: "Original, unedited tool return, including MCP content or structuredContent." }
+          },
+          required: ["type", "response"]
+        } }
+      },
+      required: ["missionDir"]
+    }
+  },
   {
     name: "ProposeMission",
     description:
@@ -41,7 +80,15 @@ export const MISSION_TOOLS = [
         milestones: { type: "array", items: { type: "object" } },
         features: { type: "array", items: { type: "object" } },
         assertions: { type: "array", items: { type: "object" } },
-        modelSettings: { type: "object" }
+        modelSettings: { type: "object" },
+        integration: { type: "object", properties: { branch: { type: "string" }, auto: { type: "boolean" } }, required: ["branch", "auto"] },
+        permissions: { type: "array", items: { type: "object" } },
+        ownerThreadId: { type: "string" },
+        pauseMode: { type: "string", enum: ["interrupt", "let_finish"] },
+        timerEveryMs: { type: "integer", minimum: 1000 },
+        retryPolicy: { type: "object", properties: { baseDelayMs: { type: "integer", minimum: 1 }, maxDelayMs: { type: "integer", minimum: 1 }, maxConsecutiveProviderErrors: { type: "integer", minimum: 1 }, maxStalledDecisionRepeats: { type: "integer", minimum: 1 }, maxResultFormatRetries: { type: "integer", minimum: 0 } } },
+        fallbackTargets: { type: "object", description: "Approved role map: worker/validator/orchestrator arrays of providerInstanceId, model, and exact options objects." },
+        autopilot: { type: "boolean", description: "HUD records user gates only; MissionTick owns dispatch and End." }
       },
       required: ["missionDir"]
     }
@@ -58,6 +105,21 @@ export const MISSION_TOOLS = [
         approvedBy: { type: "string" }
       },
       required: ["missionDir"]
+    }
+  },
+  {
+    name: "BindFeatureDispatch",
+    description: "Record an already accepted T3 task for the exact active run without dispatching, resuming or changing paused status. The caller must verify the task receipt against T3 before binding.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        missionDir: { type: "string" }, featureId: { type: "string" }, runId: { type: "string" },
+        taskId: { type: "string" }, childThreadId: { type: "string" }, childRunId: { type: "string" },
+        worktreePath: { type: "string" }, runtimeTransport: { type: "string", enum: ["t3-delegate-task"] },
+        expectedRevision: { type: "integer", minimum: 0 }, workerNumber: { type: "integer" }, clientRequestId: { type: "string" }, target: { type: "object" },
+        providerInstanceId: { type: "string" }, model: { type: "string" }, options: { type: "object" }
+      },
+      required: ["missionDir", "featureId", "runId", "taskId", "childThreadId", "runtimeTransport", "expectedRevision"]
     }
   },
   {
@@ -196,10 +258,15 @@ export const MISSION_TOOLS = [
   }
 ];
 
+for (const tool of MISSION_TOOLS) tool.inputSchema.properties.commandId = { type: 'string', description: 'Stable caller command identity. Reusing it with a different payload is refused.' };
+
 const TOOL_CAMEL_MAP = {
+  MissionTick: "missionTick",
+  ReconcileBoundedTimer: "reconcileBoundedTimer",
   ProposeMission: "proposeMission",
   ApproveMissionPlan: "approveMissionPlan",
   StartMissionRun: "startMissionRun",
+  BindFeatureDispatch: "bindFeatureDispatch",
   DismissHandoffItems: "dismissHandoffItems",
   EndFeatureRun: "endFeatureRun",
   UpdateMissionFeatures: "updateMissionFeatures",
@@ -268,43 +335,6 @@ function readJsonFileSafe(filePath, fallback = null) {
   }
 }
 
-function writeJsonFileSafe(filePath, data) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpFile = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmpFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-  fs.renameSync(tmpFile, filePath);
-}
-
-function appendFallbackLog(baseDir, entry) {
-  fs.mkdirSync(baseDir, { recursive: true });
-  const logPath = path.join(baseDir, "progress_log.jsonl");
-  const record = {
-    timestamp: new Date().toISOString(),
-    ...entry
-  };
-  fs.appendFileSync(logPath, `${JSON.stringify(record)}\n`, "utf8");
-}
-
-const DEFAULT_FALLBACK_MODEL_SETTINGS = {
-  orchestrator: {
-    providerInstanceId: "claude-agent-acp",
-    model: "claude-opus-4-6",
-    options: { effort: "max" }
-  },
-  worker: {
-    providerInstanceId: "codex",
-    model: "gpt-5.4",
-    options: { reasoningEffort: "xhigh" }
-  },
-  validator: {
-    providerInstanceId: "codex",
-    model: "gpt-6-1-sol",
-    options: { reasoningEffort: "high" }
-  },
-  skipScrutiny: false,
-  skipUserTesting: false
-};
-
 /**
  * Normalize legacy dismissal item aliases (`reason` -> `justification`, `itemId` -> `summary`)
  * at the Bridge boundary while preserving strict Kernel validation.
@@ -331,692 +361,35 @@ export function normalizeDismissalPayloadItems(dismissals) {
 }
 
 function loadStateFromKernelOrDisk(missionDir, kernel) {
-  if (kernel && typeof kernel.tryLoadState === "function") {
-    try {
-      return kernel.tryLoadState(missionDir);
-    } catch {
-      // Fallback to direct disk read
-    }
-  }
-  const baseDir =
-    kernel && typeof kernel.resolveMissionBaseDir === "function"
-      ? kernel.resolveMissionBaseDir(missionDir)
-      : resolveFallbackBaseDir(missionDir);
-  return readJsonFileSafe(path.join(baseDir, "state.json"), null);
+  if (typeof kernel?.tryLoadState !== 'function') throw kernelUnavailable(new Error('Consistent Mission reader is unavailable'));
+  return kernel.tryLoadState(missionDir);
 }
 
-function saveStateToKernelOrDisk(missionDir, kernel, state) {
-  if (kernel && typeof kernel.saveState === "function") {
-    return kernel.saveState(missionDir, state);
-  }
-  const baseDir =
-    kernel && typeof kernel.resolveMissionBaseDir === "function"
-      ? kernel.resolveMissionBaseDir(missionDir)
-      : resolveFallbackBaseDir(missionDir);
-  writeJsonFileSafe(path.join(baseDir, "state.json"), state);
-  return state;
-}
-
-function persistWorkerMetadataIntoState(missionDir, kernel, meta) {
-  if (!meta || typeof meta !== "object" || isDispatchRejected(meta) || meta.dispatchPending === true) {
-    return null;
-  }
-  const { runId, featureId, taskId, childThreadId, childRunId, worktreePath } = meta;
-  if (!taskId && !childThreadId && !childRunId && !worktreePath) {
-    return null;
-  }
-
-  const state = loadStateFromKernelOrDisk(missionDir, kernel);
-  if (!state || typeof state !== "object" || !state.activeWorker) {
-    return null;
-  }
-
-  if (runId && state.activeWorker.runId && state.activeWorker.runId !== runId) {
-    return state;
-  }
-  if (!runId && featureId && state.activeWorker.featureId && state.activeWorker.featureId !== featureId) {
-    return state;
-  }
-
-  if (state.activeWorker.dispatchPending === true && !taskId && !childThreadId && !meta.workerPid && !meta.handoff) {
-    return state;
-  }
-  const nextActiveWorker = {
-    ...state.activeWorker,
-    taskId: taskId ?? state.activeWorker.taskId ?? null,
-    childThreadId: childThreadId ?? state.activeWorker.childThreadId ?? null,
-    childRunId: childRunId ?? state.activeWorker.childRunId ?? null,
-    worktreePath: worktreePath ?? state.activeWorker.worktreePath ?? null
-  };
-
-  state.activeWorker = nextActiveWorker;
-  if (Array.isArray(state.sessions)) {
-    const targetRunId = nextActiveWorker.runId;
-    state.sessions = state.sessions.map((session) => {
-      const matchesRun = targetRunId && session.runId === targetRunId;
-      const matchesFeature = !targetRunId && featureId && session.featureId === featureId;
-      if (!matchesRun && !matchesFeature) {
-        return session;
-      }
-      return {
-        ...session,
-        taskId: taskId ?? session.taskId ?? null,
-        childThreadId: childThreadId ?? session.childThreadId ?? null,
-        childRunId: childRunId ?? session.childRunId ?? null,
-        worktreePath: worktreePath ?? session.worktreePath ?? null
-      };
-    });
-  }
-
-  return saveStateToKernelOrDisk(missionDir, kernel, state);
-}
-
-/**
- * Wrap a dispatch adapter so `runFeature` and `resumeWorker` always pass through
- * full adapter metadata (`taskId`, `childThreadId`, `childRunId`, `worktreePath`,
- * `resumed`, `canResume`, `status`, `preflight`, `handoff`) and defensively persist
- * runtime task/thread/worktree metadata into `state.activeWorker` and `state.sessions` on disk.
- *
- * @param {string} missionDir
- * @param {Record<string, any>} baseAdapter
- * @param {Record<string, any>} [kernel]
- */
+/** Preserve raw transport evidence; the real kernel owns receipt and lifecycle persistence. */
 export function createBridgeDispatchAdapter(missionDir, baseAdapter = {}, kernel = undefined) {
-  let lastRunFeatureResult = null;
-  let lastResumeResult = null;
-
-  const hasRunFeature = typeof baseAdapter?.runFeature === "function";
-  const hasResumeWorker = typeof baseAdapter?.resumeWorker === "function";
-
-  const wrapped = {
-    ...baseAdapter,
-    getLastRunFeatureResult: () => lastRunFeatureResult,
-    getLastResumeResult: () => lastResumeResult
-  };
-
-  if (hasRunFeature) {
-    wrapped.runFeature = async (feature, slotConfig, missionState = {}, opts = undefined) => {
-      const res = await baseAdapter.runFeature(feature, slotConfig, missionState, opts);
-      const response = res?.response ?? res;
-      const fullResult = {
-        ...(response && typeof response === "object" ? response : {}),
-        ...(res && typeof res === "object" ? res : {}),
-        taskId: response?.taskId ?? res?.taskId ?? null,
-        childThreadId:
-          response?.childThreadId ??
-          res?.childThreadId ??
-          response?.threadId ??
-          res?.threadId ??
-          null,
-        childRunId:
-          response?.childRunId ??
-          res?.childRunId ??
-          response?.runId ??
-          res?.runId ??
-          null,
-        worktreePath: response?.worktreePath ?? res?.worktreePath ?? null,
-        resumed: Boolean(res?.resumed ?? false),
-        canResume: res?.canResume !== undefined ? Boolean(res.canResume) : true,
-        status: res?.status ?? response?.status ?? "running",
-        preflight: res?.preflight ?? res?.gitCheck ?? null,
-        handoff: res?.handoff
-      };
-
-      const runId = missionState?.activeWorker?.runId ?? null;
-      const featureId = feature?.id ?? missionState?.activeWorker?.featureId ?? null;
-      lastRunFeatureResult = {
-        ...fullResult,
-        runId,
-        featureId
-      };
-
-      if (!isDispatchRejected(fullResult) && fullResult.dispatchPending !== true) {
-        persistWorkerMetadataIntoState(missionDir, kernel, lastRunFeatureResult);
-      }
-      return fullResult;
-    };
-  }
-
-  if (hasResumeWorker) {
-    wrapped.resumeWorker = async (activeWorkerOrParams, opts = undefined, maybeState = undefined) => {
-      const res = await baseAdapter.resumeWorker(activeWorkerOrParams, opts, maybeState);
-      const response = res?.response ?? res;
-      const preflight = res?.preflight ?? res?.gitCheck ?? null;
-      const canResume =
-        res?.canResume !== undefined
-          ? Boolean(res.canResume)
-          : preflight?.canResume !== undefined
-            ? Boolean(preflight.canResume)
-            : true;
-      const resumed = Boolean(res?.resumed && canResume);
-      const status =
-        res?.status ??
-        (resumed
-          ? "running"
-          : preflight?.hasConflicts
-            ? "blocked_by_conflicts"
-            : "blocked_by_git_error");
-
-      const activeWorker =
-        (activeWorkerOrParams &&
-        typeof activeWorkerOrParams === "object" &&
-        activeWorkerOrParams.activeWorker
-          ? activeWorkerOrParams.activeWorker
-          : activeWorkerOrParams) ||
-        maybeState?.activeWorker ||
-        {};
-
-      const fullResult = {
-        ...(res && typeof res === "object" ? res : {}),
-        taskId:
-          response?.taskId ??
-          res?.taskId ??
-          activeWorker?.taskId ??
-          null,
-        childThreadId:
-          response?.childThreadId ??
-          res?.childThreadId ??
-          res?.threadId ??
-          activeWorker?.childThreadId ??
-          activeWorker?.threadId ??
-          null,
-        childRunId:
-          response?.childRunId ??
-          res?.childRunId ??
-          activeWorker?.childRunId ??
-          null,
-        worktreePath:
-          response?.worktreePath ??
-          res?.worktreePath ??
-          preflight?.path ??
-          activeWorker?.worktreePath ??
-          null,
-        resumed,
-        canResume,
-        status,
-        preflight,
-        handoff: res?.handoff
-      };
-
-      const runId = activeWorker?.runId ?? maybeState?.activeWorker?.runId ?? null;
-      const featureId = activeWorker?.featureId ?? maybeState?.activeWorker?.featureId ?? null;
-      lastResumeResult = {
-        ...fullResult,
-        runId,
-        featureId
-      };
-
-      if (!resumed || !canResume) {
-        const diskState = loadStateFromKernelOrDisk(missionDir, kernel);
-        if (diskState && typeof diskState === "object") {
-          diskState.status = "paused";
-          if (diskState.activeWorker) {
-            diskState.activeWorker = {
-              ...diskState.activeWorker,
-              status: "paused"
-            };
-          }
-          if (Array.isArray(diskState.sessions) && runId) {
-            diskState.sessions = diskState.sessions.map((s) =>
-              s.runId === runId ? { ...s, status: "paused" } : s
-            );
-          }
-          saveStateToKernelOrDisk(missionDir, kernel, diskState);
-        }
-      } else {
-        persistWorkerMetadataIntoState(missionDir, kernel, lastResumeResult);
-      }
-
-      return fullResult;
-    };
-  }
-
-  return wrapped;
+  return baseAdapter;
 }
 
-/**
- * Create the built-in durable fallback kernel used when `../kernel/index.mjs` is not yet merged
- * in an isolated worktree.
- */
-export function createFallbackKernel() {
+function kernelUnavailable(cause) {
+  const error = new Error("The real Mission kernel is unavailable; lifecycle writes are disabled", { cause });
+  error.code = "KERNEL_UNAVAILABLE";
+  return error;
+}
+
+/** Compatibility sentinel: no fallback lifecycle implementation or writes. */
+export function createFallbackKernel(cause) {
+  const unavailable = () => { throw kernelUnavailable(cause); };
   return {
     __isFallbackKernel: true,
-
-    proposeMission(missionDir, input = {}) {
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      fs.mkdirSync(baseDir, { recursive: true });
-      const nowIso = new Date().toISOString();
-
-      const milestones = Array.isArray(input.milestones)
-        ? input.milestones
-        : [{ id: "M1", title: "Milestone 1" }];
-      const features = Array.isArray(input.features)
-        ? input.features.map((f, idx) => ({
-            id: f.id || `feature-${idx + 1}`,
-            milestoneId: f.milestoneId || milestones[0]?.id || "M1",
-            title: f.title || f.id || `Feature ${idx + 1}`,
-            description: f.description || "",
-            kind: f.kind || "implementation",
-            status: f.status || "pending",
-            attempts: f.attempts ?? 0,
-            maxAttempts: f.maxAttempts ?? 5,
-            fulfills: Array.isArray(f.fulfills) ? f.fulfills : [],
-            lastHandoff: f.lastHandoff ?? null
-          }))
-        : [];
-      const assertions = Array.isArray(input.assertions)
-        ? input.assertions.map((a, idx) => ({
-            id: a.id || `VAL-${idx + 1}`,
-            milestoneId: a.milestoneId || milestones[0]?.id || "M1",
-            description: a.description || a.title || "",
-            status: a.status || "pending"
-          }))
-        : [];
-
-      const modelSettings = {
-        ...DEFAULT_FALLBACK_MODEL_SETTINGS,
-        ...(input.modelSettings || {})
-      };
-
-      const state = {
-        missionId: input.missionId || `m_${crypto.randomBytes(6).toString("hex")}`,
-        title: input.title || "T3 Mission",
-        goal: input.goal || input.summary || "",
-        status: "awaiting_input",
-        planAccepted: false,
-        milestones,
-        assertions,
-        activeWorker: null,
-        sessions: [],
-        milestoneValidationTriggered: {},
-        lastHandoffNeedsAttention: false,
-        revision: 1,
-        createdAt: nowIso,
-        updatedAt: nowIso
-      };
-
-      writeJsonFileSafe(path.join(baseDir, "state.json"), state);
-      writeJsonFileSafe(path.join(baseDir, "features.json"), {
-        features,
-        updatedAt: nowIso
-      });
-      writeJsonFileSafe(path.join(baseDir, "model-settings.json"), modelSettings);
-      appendFallbackLog(baseDir, {
-        type: "propose_mission",
-        message: "ProposeMission submitted",
-        featureId: null,
-        workerNumber: null
-      });
-
-      return { state, features, modelSettings };
-    },
-
-    approveMissionPlan(missionDir, input = {}) {
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      const statePath = path.join(baseDir, "state.json");
-      const state = readJsonFileSafe(statePath, {
-        missionId: `m_${crypto.randomBytes(6).toString("hex")}`,
-        title: "T3 Mission",
-        status: "awaiting_input",
-        planAccepted: false,
-        milestones: [{ id: "M1", title: "Milestone 1" }],
-        assertions: [],
-        activeWorker: null,
-        sessions: [],
-        revision: 1
-      });
-
-      if (input.modelSettings && typeof input.modelSettings === "object") {
-        const currentSettings = readJsonFileSafe(
-          path.join(baseDir, "model-settings.json"),
-          DEFAULT_FALLBACK_MODEL_SETTINGS
-        );
-        writeJsonFileSafe(path.join(baseDir, "model-settings.json"), {
-          ...currentSettings,
-          ...input.modelSettings
-        });
-      }
-
-      state.planAccepted = true;
-      state.status = "orchestrator_turn";
-      state.revision = (state.revision || 1) + 1;
-      state.updatedAt = new Date().toISOString();
-      writeJsonFileSafe(statePath, state);
-      appendFallbackLog(baseDir, {
-        type: "plan_approved",
-        message: "Mission plan approved",
-        featureId: null,
-        workerNumber: null
-      });
-      return state;
-    },
-
-    async startMissionRun(missionDir, options = {}, dispatchAdapter = {}) {
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      const statePath = path.join(baseDir, "state.json");
-      const featuresPath = path.join(baseDir, "features.json");
-      const modelSettingsPath = path.join(baseDir, "model-settings.json");
-
-      const state = readJsonFileSafe(statePath, null);
-      if (!state) {
-        throw new Error(`Mission state not found in ${baseDir}`);
-      }
-      if (state.planAccepted !== true) {
-        const err = new Error("PLAN_ACCEPTANCE_REQUIRED: Mission plan must be approved before starting a mission run");
-        /** @type {any} */ (err).code = "PLAN_ACCEPTANCE_REQUIRED";
-        throw err;
-      }
-
-      const featuresDoc = readJsonFileSafe(featuresPath, { features: [] });
-      const modelSettings = readJsonFileSafe(modelSettingsPath, DEFAULT_FALLBACK_MODEL_SETTINGS);
-      const nowIso = new Date().toISOString();
-
-      const wasPaused = state.status === "paused";
-      if (wasPaused && state.activeWorker && options?.restartFeature !== true) {
-        let resumeInfo = null;
-        if (typeof dispatchAdapter?.resumeWorker === "function") {
-          resumeInfo = await dispatchAdapter.resumeWorker(state.activeWorker, options, state);
-          if (resumeInfo && (resumeInfo.resumed === false || resumeInfo.canResume === false)) {
-            return {
-              ...state,
-              resumed: false,
-              canResume: false,
-              resumeResult: resumeInfo
-            };
-          }
-        }
-        state.status = "running";
-        state.activeWorker = {
-          ...state.activeWorker,
-          status: "running",
-          resumedAt: nowIso,
-          taskId: resumeInfo?.taskId ?? state.activeWorker.taskId ?? null,
-          childThreadId: resumeInfo?.childThreadId ?? state.activeWorker.childThreadId ?? null,
-          childRunId: resumeInfo?.childRunId ?? state.activeWorker.childRunId ?? null,
-          worktreePath: resumeInfo?.worktreePath ?? state.activeWorker.worktreePath ?? null
-        };
-        state.revision = (state.revision || 1) + 1;
-        writeJsonFileSafe(statePath, state);
-        return {
-          ...state,
-          resumed: true,
-          resumeResult: resumeInfo
-        };
-      }
-
-      if (state.status === "running" && state.activeWorker && state.activeWorker.status === "running") {
-        return state;
-      }
-
-      const nextFeature = featuresDoc.features.find((f) => f.status === "pending");
-      if (!nextFeature) {
-        state.status = "completed";
-        state.activeWorker = null;
-        state.revision = (state.revision || 1) + 1;
-        writeJsonFileSafe(statePath, state);
-        return state;
-      }
-
-      nextFeature.status = "running";
-      nextFeature.attempts = (nextFeature.attempts || 0) + 1;
-      writeJsonFileSafe(featuresPath, {
-        ...featuresDoc,
-        updatedAt: nowIso
-      });
-
-      const isValidator =
-        nextFeature.kind === "scrutiny" ||
-        nextFeature.kind === "user_testing" ||
-        nextFeature.kind === "user-testing" ||
-        nextFeature.kind === "validator" ||
-        nextFeature.kind === "review" ||
-        nextFeature.kind === "test";
-      const slotName = isValidator ? "validator" : "worker";
-      const slotConfig = modelSettings[slotName] || DEFAULT_FALLBACK_MODEL_SETTINGS[slotName];
-      const workerNumber = (Array.isArray(state.sessions) ? state.sessions.length : 0) + 1;
-
-      const activeWorker = {
-        runId: `run_${crypto.randomBytes(6).toString("hex")}`,
-        workerNumber,
-        featureId: nextFeature.id,
-        featureTitle: nextFeature.title,
-        milestoneId: nextFeature.milestoneId || "M1",
-        kind: nextFeature.kind || "implementation",
-        slot: slotName,
-        providerInstanceId: slotConfig.providerInstanceId,
-        model: slotConfig.model,
-        options: slotConfig.options || {},
-        status: "running",
-        attempt: nextFeature.attempts,
-        startedAt: nowIso
-      };
-
-      state.status = "running";
-      state.activeWorker = activeWorker;
-      state.sessions = [...(Array.isArray(state.sessions) ? state.sessions : []), { ...activeWorker }];
-      state.revision = (state.revision || 1) + 1;
-      writeJsonFileSafe(statePath, state);
-
-      let dispatchResult = null;
-      if (typeof dispatchAdapter?.runFeature === "function") {
-        dispatchResult = await dispatchAdapter.runFeature(nextFeature, slotConfig, state);
-        if (
-          dispatchResult?.childThreadId ||
-          dispatchResult?.taskId ||
-          dispatchResult?.childRunId ||
-          dispatchResult?.worktreePath
-        ) {
-          state.activeWorker = {
-            ...state.activeWorker,
-            childThreadId: dispatchResult.childThreadId ?? state.activeWorker.childThreadId ?? null,
-            taskId: dispatchResult.taskId ?? state.activeWorker.taskId ?? null,
-            childRunId: dispatchResult.childRunId ?? state.activeWorker.childRunId ?? null,
-            worktreePath: dispatchResult.worktreePath ?? state.activeWorker.worktreePath ?? null
-          };
-          state.sessions = state.sessions.map((s) =>
-            s.runId === state.activeWorker.runId ? { ...state.activeWorker } : s
-          );
-          writeJsonFileSafe(statePath, state);
-        }
-      }
-
-      return {
-        ...state,
-        dispatchResult
-      };
-    },
-
-    dismissHandoffItems(missionDir, input = {}) {
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      const statePath = path.join(baseDir, "state.json");
-      const state = readJsonFileSafe(statePath, {});
-      const normalized = normalizeDismissalPayloadItems(input.dismissals || []);
-      for (const item of Array.isArray(normalized) ? normalized : []) {
-        if (!item || !DISMISSAL_TYPES.includes(item.type)) {
-          const err = new Error(
-            `INVALID_DISMISSAL_TYPE: Invalid dismissal type "${item?.type}"`
-          );
-          /** @type {any} */ (err).code = "INVALID_DISMISSAL_TYPE";
-          throw err;
-        }
-      }
-      state.lastHandoffNeedsAttention = false;
-      state.dismissals = [
-        ...(Array.isArray(state.dismissals) ? state.dismissals : []),
-        ...(Array.isArray(normalized) ? normalized : [])
-      ];
-      state.revision = (state.revision || 1) + 1;
-      writeJsonFileSafe(statePath, state);
-      return state;
-    },
-
-    endFeatureRun(missionDir, input = {}) {
-      const hasFeatureId = typeof input.featureId === "string" && input.featureId.trim().length > 0;
-      const hasRunId = typeof input.runId === "string" && input.runId.trim().length > 0;
-      if (!hasFeatureId || !hasRunId) {
-        const err = new Error(
-          "MISSING_RUN_IDENTITY: EndFeatureRun requires both runId and featureId"
-        );
-        /** @type {any} */ (err).code = "MISSING_RUN_IDENTITY";
-        throw err;
-      }
-
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      const statePath = path.join(baseDir, "state.json");
-      const featuresPath = path.join(baseDir, "features.json");
-      const state = readJsonFileSafe(statePath, {});
-      const featuresDoc = readJsonFileSafe(featuresPath, { features: [] });
-      if (
-        state.activeWorker &&
-        ((state.activeWorker.runId && state.activeWorker.runId !== input.runId) ||
-          (state.activeWorker.featureId && state.activeWorker.featureId !== input.featureId))
-      ) {
-        const err = new Error(
-          `STALE_WORKER_RUN: Active worker (${state.activeWorker.featureId}/${state.activeWorker.runId}) does not match (${input.featureId}/${input.runId})`
-        );
-        /** @type {any} */ (err).code = "STALE_WORKER_RUN";
-        throw err;
-      }
-
-      const targetFeatureId = input.featureId;
-      const nowIso = new Date().toISOString();
-      const successState = input.successState || "success";
-
-      const featureIdx = featuresDoc.features.findIndex((f) => f.id === targetFeatureId);
-      if (featureIdx !== -1) {
-        featuresDoc.features[featureIdx].status = successState === "success" ? "completed" : "pending";
-        featuresDoc.features[featureIdx].lastHandoff = {
-          ...(input.handoff || {}),
-          runId: input.runId,
-          successState,
-          validatorsPassed: Boolean(input.validatorsPassed ?? true),
-          completedAt: nowIso
-        };
-      }
-
-      state.activeWorker = null;
-      state.lastHandoffAt = nowIso;
-      state.revision = (state.revision || 1) + 1;
-      const shouldReturnToOrchestrator =
-        successState !== "success" ||
-        input.returnToOrchestrator === true ||
-        (Array.isArray(input.handoff?.discoveredIssues) && input.handoff.discoveredIssues.length > 0);
-      if (shouldReturnToOrchestrator) {
-        state.status = "orchestrator_turn";
-      }
-
-      writeJsonFileSafe(statePath, state);
-      writeJsonFileSafe(featuresPath, { ...featuresDoc, updatedAt: nowIso });
-      return {
-        shouldReturnToOrchestrator,
-        feature: featureIdx !== -1 ? featuresDoc.features[featureIdx] : null,
-        state
-      };
-    },
-
-    updateMissionFeatures(missionDir, input = {}) {
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      const statePath = path.join(baseDir, "state.json");
-      const featuresPath = path.join(baseDir, "features.json");
-      const modelSettingsPath = path.join(baseDir, "model-settings.json");
-      const state = readJsonFileSafe(statePath, {});
-      const featuresDoc = readJsonFileSafe(featuresPath, { features: [] });
-      const nowIso = new Date().toISOString();
-
-      if (Array.isArray(input.features)) {
-        featuresDoc.features = input.features;
-      } else {
-        if (Array.isArray(input.addFeatures)) {
-          featuresDoc.features.push(...input.addFeatures);
-        }
-        if (Array.isArray(input.updateFeatures)) {
-          for (const patch of input.updateFeatures) {
-            const idx = featuresDoc.features.findIndex((f) => f.id === patch.id);
-            if (idx !== -1) {
-              featuresDoc.features[idx] = { ...featuresDoc.features[idx], ...patch };
-            }
-          }
-        }
-      }
-
-      if (input.bonusAttempts && typeof input.bonusAttempts === "object") {
-        for (const [featureId, extra] of Object.entries(input.bonusAttempts)) {
-          const idx = featuresDoc.features.findIndex((f) => f.id === featureId);
-          if (idx !== -1 && typeof extra === "number" && extra > 0) {
-            featuresDoc.features[idx] = {
-              ...featuresDoc.features[idx],
-              maxAttempts: (featuresDoc.features[idx].maxAttempts || 5) + extra
-            };
-          }
-        }
-      }
-
-      if (Array.isArray(input.milestones)) {
-        state.milestones = input.milestones;
-      }
-      if (Array.isArray(input.assertions)) {
-        state.assertions = input.assertions;
-      } else if (Array.isArray(input.updateAssertions)) {
-        const assertions = Array.isArray(state.assertions) ? [...state.assertions] : [];
-        for (const patch of input.updateAssertions) {
-          if (!patch || !patch.id) continue;
-          const idx = assertions.findIndex((a) => a.id === patch.id);
-          if (idx !== -1) {
-            assertions[idx] = { ...assertions[idx], ...patch };
-          } else {
-            assertions.push(patch);
-          }
-        }
-        state.assertions = assertions;
-      }
-
-      if (input.modelSettings && typeof input.modelSettings === "object") {
-        const currentSettings = readJsonFileSafe(modelSettingsPath, DEFAULT_FALLBACK_MODEL_SETTINGS);
-        writeJsonFileSafe(modelSettingsPath, { ...currentSettings, ...input.modelSettings });
-      }
-
-      state.lastHandoffNeedsAttention = false;
-      state.revision = (state.revision || 1) + 1;
-      writeJsonFileSafe(statePath, state);
-      writeJsonFileSafe(featuresPath, { ...featuresDoc, updatedAt: nowIso });
-      return {
-        state,
-        features: featuresDoc.features
-      };
-    },
-
-    tryLoadState(missionDir) {
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      return readJsonFileSafe(path.join(baseDir, "state.json"), null);
-    },
-
-    reconcileMissionOnLoad(missionDir) {
-      const baseDir = resolveFallbackBaseDir(missionDir);
-      const statePath = path.join(baseDir, "state.json");
-      const state = readJsonFileSafe(statePath, null);
-      if (!state) {
-        return null;
-      }
-      if (state.status === "running" || state.status === "initializing" || state.status === "orchestrator_turn") {
-        const nowIso = new Date().toISOString();
-        state.status = "paused";
-        if (state.activeWorker && state.activeWorker.status === "running") {
-          state.activeWorker = {
-            ...state.activeWorker,
-            status: "paused",
-            pausedAt: nowIso
-          };
-        }
-        state.revision = (state.revision || 1) + 1;
-        writeJsonFileSafe(statePath, state);
-      }
-      return state;
-    }
+    __kernelUnavailable: true,
+    cause,
+    tryLoadState: unavailable,
+    ...Object.fromEntries(Object.values(TOOL_CAMEL_MAP).map((name) => [name, unavailable])),
   };
 }
 
 /**
- * Dynamically import `../kernel/index.mjs` if available; otherwise return the fallback kernel.
+ * Dynamically import the real kernel; an import failure disables lifecycle tools.
  *
  * @param {Record<string, unknown>} [options={}]
  */
@@ -1029,10 +402,10 @@ export async function resolveMissionKernel(options = {}) {
     if (fs.existsSync(fileURLToPath(kernelUrl))) {
       return await import(kernelUrl.href);
     }
-  } catch {
-    // Fall back to built-in durable kernel when ../kernel/index.mjs is not yet merged
+  } catch (error) {
+    return createFallbackKernel(error);
   }
-  return createFallbackKernel();
+  return createFallbackKernel(new Error("Missing ../kernel/index.mjs"));
 }
 
 /**
@@ -1113,6 +486,7 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
   }
 
   const kernel = await resolveMissionKernel(context);
+  if (kernel.__kernelUnavailable) throw kernelUnavailable(kernel.cause);
   const adapter =
     context.adapter ??
     createT3Adapter({
@@ -1140,39 +514,14 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
         ? Math.max(5, args.pollMs)
         : 200;
 
-    const readProgressLogEntries = () => {
-      if (kernel && typeof kernel.readProgressLog === "function") {
-        try {
-          return kernel.readProgressLog(missionDir);
-        } catch {}
-      }
-      const baseDir =
-        kernel && typeof kernel.resolveMissionBaseDir === "function"
-          ? kernel.resolveMissionBaseDir(missionDir)
-          : resolveFallbackBaseDir(missionDir);
-      const logPath = path.join(baseDir, "progress_log.jsonl");
-      if (!fs.existsSync(logPath)) return [];
-      try {
-        return fs
-          .readFileSync(logPath, "utf8")
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean)
-          .map((l, idx) => {
-            try {
-              const p = JSON.parse(l);
-              return { seq: typeof p.seq === "number" ? p.seq : idx + 1, ...p };
-            } catch {
-              return { seq: idx + 1, type: "info", message: l };
-            }
-          });
-      } catch {
-        return [];
-      }
+    const approvalSnapshot = () => {
+      if (typeof kernel.readMissionSnapshot === 'function') return kernel.readMissionSnapshot(missionDir);
+      if (typeof kernel.readProgressLog !== 'function') throw kernelUnavailable(new Error('Consistent approval snapshot is unavailable'));
+      return { state: loadStateFromKernelOrDisk(missionDir, kernel), progressLog: kernel.readProgressLog(missionDir) };
     };
-
-    const initialState = loadStateFromKernelOrDisk(missionDir, kernel);
-    const initialLogs = readProgressLogEntries();
+    const initial = approvalSnapshot();
+    const initialState = initial.state;
+    const initialLogs = initial.progressLog;
     const baselineRejectionRevision = initialState?.rejectionRevision;
     const baselineRejectedAt = initialState?.lastPlanRejectedAt;
     const baselineRejectedCount = initialLogs.filter(
@@ -1184,8 +533,9 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
 
     const startTime = Date.now();
     while (true) {
-      const currentState = loadStateFromKernelOrDisk(missionDir, kernel);
-      const currentLogs = readProgressLogEntries();
+      const current = approvalSnapshot();
+      const currentState = current.state;
+      const currentLogs = current.progressLog;
 
       if (currentState && currentState.planAccepted === true) {
         return {
@@ -1308,12 +658,7 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
   const camelName = TOOL_CAMEL_MAP[canonicalName];
   const fn = kernel[canonicalName] ?? kernel[camelName];
   if (typeof fn !== "function") {
-    const fallback = createFallbackKernel();
-    const fallbackFn = fallback[canonicalName] ?? fallback[camelName];
-    if (typeof fallbackFn !== "function") {
-      throw new Error(`Kernel does not implement tool "${canonicalName}"`);
-    }
-    return await fallbackFn.call(fallback, missionDir, args, {});
+    throw kernelUnavailable(new Error(`Kernel does not implement tool "${canonicalName}"`));
   }
 
   if (canonicalName === "StartMissionRun") {
@@ -1332,106 +677,11 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
     const dispatchAdapter = createBridgeDispatchAdapter(missionDir, rawDispatchAdapter, kernel);
     const result = await invokeKernelFunction(kernel, fn, missionDir, args, dispatchAdapter);
 
-    const lastMeta =
-      dispatchAdapter.getLastRunFeatureResult?.() ??
-      dispatchAdapter.getLastResumeResult?.();
-    if (lastMeta && !isDispatchRejected(lastMeta) && lastMeta.dispatchPending !== true &&
-        result?.activeWorker?.dispatchPending !== true &&
-        (lastMeta.taskId || lastMeta.childThreadId || lastMeta.childRunId || lastMeta.worktreePath)) {
-      const persistedState = persistWorkerMetadataIntoState(missionDir, kernel, lastMeta);
-      if (result && typeof result === "object" && result.activeWorker) {
-        result.activeWorker = {
-          ...result.activeWorker,
-          taskId: result.activeWorker.taskId ?? lastMeta.taskId ?? null,
-          childThreadId: result.activeWorker.childThreadId ?? lastMeta.childThreadId ?? null,
-          childRunId: result.activeWorker.childRunId ?? lastMeta.childRunId ?? null,
-          worktreePath: result.activeWorker.worktreePath ?? lastMeta.worktreePath ?? null
-        };
-        if (Array.isArray(persistedState?.sessions)) {
-          result.sessions = persistedState.sessions;
-        }
-      }
-    }
     return result;
   }
 
   if (canonicalName === "UpdateMissionFeatures") {
-    const result = await invokeKernelFunction(kernel, fn, missionDir, args, adapter);
-
-    // If caller passed replacement `features`, `milestones`, or `assertions` and the loaded
-    // disk-backed Kernel did not apply those top-level replacement arrays, persist them cleanly.
-    const isDiskBackedKernel =
-      typeof kernel.loadFeaturesDoc === "function" &&
-      typeof kernel.saveFeaturesDoc === "function" &&
-      typeof kernel.loadState === "function" &&
-      typeof kernel.saveState === "function";
-
-    if (
-      isDiskBackedKernel &&
-      (Array.isArray(args.features) || Array.isArray(args.milestones) || Array.isArray(args.assertions))
-    ) {
-      let updatedFeatures = result?.features;
-      let updatedState = result?.state;
-
-      if (
-        Array.isArray(args.features) &&
-        !Array.isArray(args.addFeatures) &&
-        !Array.isArray(args.updateFeatures)
-      ) {
-        const currentDoc = kernel.loadFeaturesDoc(missionDir);
-        const requestedIds = args.features.map((f, idx) => String(f?.id || `f${idx + 1}`).trim());
-        const currentIds = (currentDoc.features || []).map((f) => f.id);
-        const matchesRequested =
-          requestedIds.length === currentIds.length &&
-          requestedIds.every((id, idx) => currentIds[idx] === id);
-
-        if (!matchesRequested) {
-          const savedDoc = kernel.saveFeaturesDoc(missionDir, {
-            ...currentDoc,
-            features: args.features,
-            updatedAt: new Date().toISOString()
-          });
-          updatedFeatures = savedDoc.features;
-        }
-      }
-
-      if (Array.isArray(args.milestones) || Array.isArray(args.assertions)) {
-        const state = kernel.loadState(missionDir);
-        let stateChanged = false;
-
-        if (Array.isArray(args.milestones)) {
-          const normalizedMilestones =
-            typeof kernel.normalizeMilestone === "function"
-              ? args.milestones.map((m, i) => kernel.normalizeMilestone(m, i))
-              : args.milestones;
-          state.milestones = normalizedMilestones;
-          stateChanged = true;
-        }
-
-        if (Array.isArray(args.assertions) && !Array.isArray(args.updateAssertions)) {
-          const normalizedAssertions =
-            typeof kernel.normalizeAssertion === "function"
-              ? args.assertions.map((a, i) => kernel.normalizeAssertion(a, i))
-              : args.assertions;
-          state.assertions = normalizedAssertions;
-          stateChanged = true;
-        }
-
-        if (stateChanged) {
-          updatedState = kernel.saveState(missionDir, state);
-        }
-      }
-
-      if (result && typeof result === "object") {
-        return {
-          ...result,
-          ...(updatedState ? { state: updatedState } : {}),
-          ...(updatedFeatures ? { features: updatedFeatures } : {})
-        };
-      }
-    }
-
-    return result;
+    return await invokeKernelFunction(kernel, fn, missionDir, args, adapter);
   }
 
   return await invokeKernelFunction(kernel, fn, missionDir, args, adapter);

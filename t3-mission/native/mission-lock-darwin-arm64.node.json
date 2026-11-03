@@ -1,0 +1,24 @@
+{
+  "command": [
+    "cc",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-DNAPI_VERSION=8",
+    "-I",
+    "/opt/homebrew/include/node",
+    "-bundle",
+    "-undefined",
+    "dynamic_lookup",
+    "/Volumes/Workspace/Projects/T3-Runtime/worktrees/pi-durable-mission-control/t3-a0cbc888/.mm-a8/t3-mission-mode/t3-mission/native/mission-lock.c",
+    "-o",
+    "/Volumes/Workspace/Projects/T3-Runtime/worktrees/pi-durable-mission-control/t3-a0cbc888/.mm-a8/t3-mission-mode/t3-mission/native/mission-lock-darwin-arm64.node"
+  ],
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v26.7.0",
+  "napi": 8,
+  "sourceSha256": "95c51b2dc9482b8cce59aa55f41433cc9f3f7a2963d478b91fa9d0c83ba07eb1",
+  "binarySha256": "92ed594a0b4de2c571b24e8f79bdb8259c7d4a26d28d2a1c98c6c226b157d855"
+}

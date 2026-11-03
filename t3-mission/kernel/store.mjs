@@ -1,38 +1,13 @@
+import { resolveMissionBaseDir, missionTransaction, readTransactionFile, writeTransactionFile, listTransactionFiles, hasActiveMissionTransaction } from './mission-transaction.mjs';
+export { resolveMissionBaseDir } from './mission-transaction.mjs';
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import {
   DEFAULT_MODEL_SETTINGS,
   MissionKernelError,
   normalizeFeature,
   normalizeModelSettings,
 } from "./schema.mjs";
-
-export function resolveMissionBaseDir(missionDir) {
-  if (!missionDir || typeof missionDir !== "string") {
-    throw new MissionKernelError(
-      "INVALID_MISSION_DIR",
-      "missionDir must be a non-empty string path"
-    );
-  }
-  const abs = path.resolve(missionDir);
-  if (path.basename(abs) === ".mission") {
-    return abs;
-  }
-  const hasDirectFiles =
-    fs.existsSync(path.join(abs, "state.json")) ||
-    fs.existsSync(path.join(abs, "features.json")) ||
-    fs.existsSync(path.join(abs, "model-settings.json")) ||
-    fs.existsSync(path.join(abs, "progress_log.jsonl"));
-  const dotMissionDir = path.join(abs, ".mission");
-  if (fs.existsSync(dotMissionDir)) {
-    return dotMissionDir;
-  }
-  if (hasDirectFiles) {
-    return abs;
-  }
-  return dotMissionDir;
-}
 
 export function getMissionPaths(missionDir) {
   const baseDir = resolveMissionBaseDir(missionDir);
@@ -51,31 +26,14 @@ export function ensureMissionDir(missionDir) {
   return paths;
 }
 
-export function writeFileAtomicSync(filePath, content) {
-  const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true });
-  const tmpName = `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${crypto
-    .randomBytes(4)
-    .toString("hex")}.tmp`;
-  const tmpPath = path.join(dir, tmpName);
-  fs.writeFileSync(tmpPath, content, "utf8");
-  fs.renameSync(tmpPath, filePath);
-}
-
-export function writeJsonAtomicSync(filePath, data) {
-  const serialized = `${JSON.stringify(data, null, 2)}\n`;
-  writeFileAtomicSync(filePath, serialized);
-}
-
+export function writeFileAtomicSync(filePath, content) { return writeTransactionFile(filePath, content); }
+export function writeJsonAtomicSync(filePath, data) { writeFileAtomicSync(filePath, `${JSON.stringify(data, null, 2)}\n`); }
 export function readJsonSync(filePath, fallback = null) {
-  if (!fs.existsSync(filePath)) {
-    return fallback;
-  }
-  const raw = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(raw);
+  const raw = readTransactionFile(filePath);
+  return raw === null ? fallback : JSON.parse(raw);
 }
 
-export function loadState(missionDir) {
+function loadStateImpl(missionDir) {
   const { statePath } = getMissionPaths(missionDir);
   const state = readJsonSync(statePath, null);
   if (!state) {
@@ -90,7 +48,7 @@ export function loadState(missionDir) {
   return state;
 }
 
-export function tryLoadState(missionDir) {
+function tryLoadStateImpl(missionDir) {
   const { statePath } = getMissionPaths(missionDir);
   const state = readJsonSync(statePath, null);
   if (state && !Array.isArray(state.pendingHandoffItems)) {
@@ -99,7 +57,7 @@ export function tryLoadState(missionDir) {
   return state;
 }
 
-export function saveState(missionDir, state) {
+function saveStateImpl(missionDir, state) {
   const { statePath } = ensureMissionDir(missionDir);
   if (state && !Array.isArray(state.pendingHandoffItems)) {
     state.pendingHandoffItems = [];
@@ -108,7 +66,7 @@ export function saveState(missionDir, state) {
   return state;
 }
 
-export function loadFeaturesDoc(missionDir) {
+function loadFeaturesDocImpl(missionDir) {
   const { featuresPath } = getMissionPaths(missionDir);
   const doc = readJsonSync(featuresPath, null);
   if (!doc) {
@@ -133,7 +91,7 @@ export function loadFeaturesDoc(missionDir) {
   };
 }
 
-export function saveFeaturesDoc(missionDir, featuresOrDoc) {
+function saveFeaturesDocImpl(missionDir, featuresOrDoc) {
   const { featuresPath } = ensureMissionDir(missionDir);
   const rawFeatures = Array.isArray(featuresOrDoc)
     ? featuresOrDoc
@@ -151,7 +109,7 @@ export function saveFeaturesDoc(missionDir, featuresOrDoc) {
   return doc;
 }
 
-export function loadModelSettings(missionDir) {
+function loadModelSettingsImpl(missionDir) {
   const { modelSettingsPath } = getMissionPaths(missionDir);
   const raw = readJsonSync(modelSettingsPath, null);
   if (!raw) {
@@ -160,19 +118,19 @@ export function loadModelSettings(missionDir) {
   return normalizeModelSettings(raw);
 }
 
-export function saveModelSettings(missionDir, settings) {
+function saveModelSettingsImpl(missionDir, settings) {
   const { modelSettingsPath } = ensureMissionDir(missionDir);
   const normalized = normalizeModelSettings(settings);
   writeJsonAtomicSync(modelSettingsPath, normalized);
   return normalized;
 }
 
-export function readProgressLog(missionDir) {
+function readProgressLogImpl(missionDir) {
   const { progressLogPath } = getMissionPaths(missionDir);
-  if (!fs.existsSync(progressLogPath)) {
+  if (readTransactionFile(progressLogPath) === null) {
     return [];
   }
-  const raw = fs.readFileSync(progressLogPath, "utf8");
+  const raw = readTransactionFile(progressLogPath);
   return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -180,7 +138,7 @@ export function readProgressLog(missionDir) {
     .map((line) => JSON.parse(line));
 }
 
-export function appendProgressLog(missionDir, entryInput) {
+function appendProgressLogImpl(missionDir, entryInput) {
   const { progressLogPath } = ensureMissionDir(missionDir);
   const entries = readProgressLog(missionDir);
   const nextSeq =
@@ -215,7 +173,7 @@ export function appendProgressLog(missionDir, entryInput) {
   return entry;
 }
 
-export function reconcileMissionOnLoad(missionDir, options = {}) {
+function reconcileMissionOnLoadImpl(missionDir, options = {}) {
   const state = tryLoadState(missionDir);
   if (!state) {
     return null;
@@ -289,4 +247,68 @@ export function reconcileMissionOnLoad(missionDir, options = {}) {
   }
 
   return state;
+}
+
+const loadedStates = new WeakMap();
+const loadedDocuments = new WeakMap();
+function rememberDocument(dir, value, field) {
+  if (!value || typeof value !== 'object') return value;
+  const bytes = readTransactionFile(getMissionPaths(dir)[field]);
+  loadedDocuments.set(value, bytes);
+  if (Array.isArray(value.features)) loadedDocuments.set(value.features, bytes);
+  return value;
+}
+function saveDocument(dir, value, options, field, save) {
+  const composed = hasActiveMissionTransaction();
+  return missionTransaction(dir, () => {
+    const file = getMissionPaths(dir)[field], current = readTransactionFile(file);
+    if (options.expectedRevision !== undefined && JSON.parse(readTransactionFile(getMissionPaths(dir).statePath) ?? '{}').revision !== options.expectedRevision)
+      throw new MissionKernelError('TX_STALE_REVISION', 'Document expectedRevision differs from the current Mission');
+    const result = save(dir, value), next = readTransactionFile(file);
+    if (!composed && loadedDocuments.has(value) && loadedDocuments.get(value) !== current && current !== next)
+      throw new MissionKernelError('TX_STALE_REVISION', 'Document was loaded before another writer committed; reload inside a transaction');
+    rememberDocument(dir, value, field);
+    return rememberDocument(dir, result, field);
+  });
+}
+function rememberState(dir, state) {
+  if (state) loadedStates.set(state, readTransactionFile(getMissionPaths(dir).statePath));
+  return state;
+}
+export function loadState(dir) { return missionTransaction(dir, () => rememberState(dir, loadStateImpl(dir)), { create: false }); }
+export function tryLoadState(dir) { return missionTransaction(dir, () => rememberState(dir, tryLoadStateImpl(dir)), { create: false }); }
+export function saveState(dir, state, options = {}) {
+  const composed = hasActiveMissionTransaction();
+  return missionTransaction(dir, () => {
+    const current = readTransactionFile(getMissionPaths(dir).statePath);
+    const loaded = loadedStates.get(state);
+    if (!composed && current !== null && loaded === undefined && options.expectedRevision === undefined && JSON.stringify(state, null, 2) + "\n" !== current)
+      throw new MissionKernelError('TX_EXPECTED_REVISION_REQUIRED', 'A detached state replacement needs expectedRevision; a proposed next revision is not its base revision');
+    if (!composed && loaded !== undefined && current !== loaded && current !== JSON.stringify(state, null, 2) + "\n")
+      throw new MissionKernelError('TX_STALE_REVISION', 'saveState received a stale loaded state; reload inside a transaction');
+    if (options.expectedRevision !== undefined && current !== null && JSON.parse(current).revision !== options.expectedRevision)
+      throw new MissionKernelError('TX_STALE_REVISION', 'saveState expectedRevision differs from the current state');
+    if (current !== null && Number.isSafeInteger(state?.revision) && state.revision < JSON.parse(current).revision)
+      throw new MissionKernelError('TX_STALE_REVISION', 'saveState cannot replace a newer Mission revision');
+    const saved = saveStateImpl(dir, state);
+    loadedStates.set(state, readTransactionFile(getMissionPaths(dir).statePath));
+    return saved;
+  });
+}
+export function loadFeaturesDoc(dir) { return missionTransaction(dir, () => rememberDocument(dir, loadFeaturesDocImpl(dir), 'featuresPath'), { create: false }); }
+export function saveFeaturesDoc(dir, value, options = {}) { return saveDocument(dir, value, options, 'featuresPath', saveFeaturesDocImpl); }
+export function loadModelSettings(dir) { return missionTransaction(dir, () => rememberDocument(dir, loadModelSettingsImpl(dir), 'modelSettingsPath'), { create: false }); }
+export function saveModelSettings(dir, value, options = {}) { return saveDocument(dir, value, options, 'modelSettingsPath', saveModelSettingsImpl); }
+export function readProgressLog(dir, ...args) { return missionTransaction(dir, () => readProgressLogImpl(dir, ...args), { create: false }); }
+export function appendProgressLog(dir, ...args) { return missionTransaction(dir, () => appendProgressLogImpl(dir, ...args), { create: true }); }
+export function reconcileMissionOnLoad(dir, ...args) { return missionTransaction(dir, () => reconcileMissionOnLoadImpl(dir, ...args), { create: false }); }
+export function readMissionSnapshot(missionDir) {
+  return missionTransaction(missionDir, () => {
+    const paths = getMissionPaths(missionDir);
+    const state = rememberState(missionDir, readJsonSync(paths.statePath, null));
+    const featuresDoc = readJsonSync(paths.featuresPath, null);
+    const modelSettings = readJsonSync(paths.modelSettingsPath, null);
+    const progressLog = readProgressLog(missionDir);
+    return { state, featuresDoc, modelSettings, progressLog };
+  }, { create: false });
 }

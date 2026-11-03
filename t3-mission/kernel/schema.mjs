@@ -1,5 +1,32 @@
 import crypto from "node:crypto";
 
+/** Inspect existing receipts before deciding that this run is still undispatched. */
+export function inspectRunDispatchBinding(state, features = []) {
+  const worker = state?.activeWorker;
+  const sessions = Array.isArray(state?.sessions) ? state.sessions : [];
+  const hasIdentity = (record) => Boolean(record?.taskId || record?.childThreadId || record?.childRunId);
+  if (!worker) {
+    const orphan = features.some((f) => ["running", "paused"].includes(f.status) && hasIdentity(f)) ||
+      sessions.some((s) => ["running", "paused"].includes(s.status) && hasIdentity(s));
+    return { hasIdentity: orphan, requiresBinding: orphan };
+  }
+  const matchingSessions = sessions.filter((s) => s.runId === worker.runId);
+  const feature = features.find((f) => f.id === worker.featureId && ["running", "paused"].includes(f.status));
+  // A feature without runId is the legacy representation of the active attempt.
+  const records = [worker, ...matchingSessions,
+    ...(feature && (!feature.runId || feature.runId === worker.runId) ? [feature] : [])];
+  const accepted = records.some(hasIdentity);
+  const identityKeys = ["taskId", "childThreadId", "childRunId", "worktreePath", "clientRequestId"];
+  const conflict = identityKeys.some((key) => new Set(records.map((r) => r[key]).filter(Boolean)).size > 1);
+  const missingActiveIdentity = records.some((r) =>
+    ["taskId", "childThreadId", "childRunId"].some((key) => r[key] && r[key] !== worker[key]));
+  const wrongSession = matchingSessions.length > 1 || matchingSessions.some((s) => s.featureId !== worker.featureId);
+  return {
+    hasIdentity: accepted,
+    requiresBinding: accepted && (conflict || wrongSession || missingActiveIdentity || !worker.childThreadId),
+  };
+}
+
 export const MISSION_STATUSES = [
   "planning",
   "initializing",
@@ -8,11 +35,13 @@ export const MISSION_STATUSES = [
   "orchestrator_turn",
   "paused",
   "completed",
+  "awaiting_merge",
 ];
 
 export const FEATURE_STATUSES = [
   "pending",
   "running",
+  "paused",
   "completed",
   "failed",
   "cancelled",
@@ -193,13 +222,287 @@ export function getFeatureSlotOverride(feature = {}) {
   return entries.length ? normalizeSparseSlotOverride(Object.fromEntries(entries)) : null;
 }
 
-export function isDispatchRejected(result) {
-  return [result, result?.response].some((value) =>
-    value && typeof value === "object" &&
-    (value.ok === false || value.accepted === false || value.started === false ||
-      value.canStart === false || value.blocked === true ||
-      (value.dispatched === false && value.dispatchPending !== true))
-  );
+export function dispatchReceiptSources(result, { includeOperationRecords = false } = {}) {
+  const sources = [], seen = new Set();
+  const visit = value => {
+    if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value)) return;
+    seen.add(value); sources.push(value);
+    visit(value.response); visit(value.delegation); visit(value.structuredContent);
+    if (includeOperationRecords) { visit(value.task); visit(value.scheduledTask); }
+    if (Array.isArray(value.content)) {
+      const blocks = value.content.filter(block => block?.type === "text");
+      if (blocks.length === 1 && typeof blocks[0].text === "string") {
+        let parsed;
+        try { parsed = JSON.parse(blocks[0].text); } catch { return; }
+        visit(parsed);
+      }
+    }
+  };
+  visit(result);
+  return sources;
+}
+
+/** Classify retained evidence before any caller projects a control result. */
+function inspectControlReceipt(raw, operation, expected, { includeOperationRecords = false } = {}) {
+  if (!["dispatch", "pause", "interrupt", "resume"].includes(operation) || !expected || typeof expected !== "object")
+    throw new TypeError("Control classification requires an operation and expected child identity");
+  const sources = dispatchReceiptSources(raw, { includeOperationRecords });
+  const diagnostics = [];
+  const text = value => typeof value === "string" && value.trim().length > 0 && !/[\u0000-\u001f]/u.test(value);
+  const optionValue = value => Array.isArray(value) && value.every(row => typeof row?.id === "string")
+    ? Object.fromEntries(value.map(row => [row.id, row.value])) : value;
+  const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object"
+    ? Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonical(value[key])])) : value;
+  const identity = {};
+  const expectedThreads = ["childThreadId", "threadId"].map(alias => expected[alias]).filter(text);
+  const resumeSameThread = operation === "resume" && expectedThreads.length > 0 &&
+    sources.some(source => ["childThreadId", "threadId"].some(alias => expectedThreads.includes(source[alias]))) &&
+    sources.some(source => typeof source.taskId === "string" && /(?:^|:|%3A)thread-send(?::|%3A)/i.test(source.taskId));
+  for (const key of ["taskId", "childThreadId", "childRunId", "worktreePath", "clientRequestId"]) {
+    const keys = key === "childThreadId" ? [key, "threadId"] : [key];
+    const values = sources.flatMap(source => keys.map(alias => source[alias])).filter(value => value !== undefined && value !== null);
+    const unique = [...new Set(values.filter(text))];
+    if (unique.length === 1) identity[key] = unique[0];
+    if (unique.length > 1 || values.some(value => !text(value)))
+      diagnostics.push({ code: "DISPATCH_RECEIPT_CONFLICT", key, observed: values });
+    if (["taskId", "childThreadId", "childRunId"].includes(key)) {
+      const wanted = keys.map(alias => expected[alias]).filter(text);
+      const validResumeContinuation = resumeSameThread && (
+        (key === "taskId" && unique.every(value => /(?:^|:|%3A)thread-send(?::|%3A)/i.test(value))) ||
+        (key === "childRunId" && unique.every(value => /^run:thread:/i.test(value)))
+      );
+      if (!validResumeContinuation && (new Set(wanted).size > 1 || unique.some(value => wanted.length && !wanted.every(id => id === value))))
+        diagnostics.push({ code: "CONTROL_IDENTITY_MISMATCH", key, expected: wanted, observed: unique });
+    }
+  }
+  // Scope and target conflicts cannot be hidden in a plain or MCP container.
+  for (const key of ["missionId", "missionRunId", "featureId", "runId", "providerInstanceId", "model", "options"]) {
+    const targets = ["providerInstanceId", "model", "options"].includes(key) ? sources.flatMap(value => [value, value.target].filter(Boolean)) : sources;
+    const values = targets.map(value => value[key]).filter(value => value !== undefined && value !== null);
+    if (new Set(values.map(value => JSON.stringify(canonical(key === "options" ? optionValue(value) : value)))).size > 1)
+      diagnostics.push({ code: "DISPATCH_RECEIPT_CONFLICT", key, observed: values });
+  }
+  const rejected = sources.some(value => value.ok === false || value.accepted === false || value.started === false ||
+    value.canStart === false || value.blocked === true || value.isError === true || value.dispatchOutcome === "rejected" ||
+    value.status === "blocked_by_conflicts" || value.action === "blocked_by_conflicts" ||
+    (operation === "resume" && (value.resumed === false || value.canResume === false || value.sent === false)) ||
+    (["pause", "interrupt"].includes(operation) && (value.paused === false || value.canPause === false || value.interrupted === false)) ||
+    (value.dispatched === false && value.dispatchPending !== true));
+  const pending = sources.some(value => value.dispatchPending === true || value.pending === true);
+  const positiveAcceptance = sources.some(value => ["accepted", "started", "dispatched", "resumed", "sent", "paused", "interrupted"].some(key => value[key] === true));
+  const hasChildIdentity = sources.some(value => ["taskId", "childThreadId", "threadId", "childRunId"].some(key => value[key] !== undefined && value[key] !== null));
+  const hasExecutionEvidence = hasChildIdentity || sources.some(value => ["workerPid", "daemonStateFile", "handoff"].some(key => value[key] !== undefined && value[key] !== null));
+  const identityConflict = diagnostics.length > 0;
+  const malformedEnvelope = Array.isArray(raw) || sources.some(value => {
+    for (const key of ["response", "delegation", "structuredContent", ...(includeOperationRecords ? ["task", "scheduledTask"] : [])]) {
+      if (Object.hasOwn(value, key) && (!value[key] || typeof value[key] !== "object" || Array.isArray(value[key]))) return true;
+    }
+    if (!Object.hasOwn(value, "content")) return false;
+    if (!Array.isArray(value.content)) return true;
+    const blocks = value.content.filter(block => block?.type === "text");
+    if (blocks.length !== 1 || typeof blocks[0].text !== "string") return true;
+    try { const parsed = JSON.parse(blocks[0].text); return !parsed || typeof parsed !== "object" || Array.isArray(parsed); }
+    catch { return true; }
+  });
+  if (malformedEnvelope) diagnostics.push({ code: "INVALID_T3_OBSERVATION" });
+  const affirmative = operation === "dispatch"
+    ? hasChildIdentity || sources.some(value => value.workerPid || value.daemonStateFile || value.handoff)
+    : operation === "resume"
+      ? sources.some(value => value.resumed === true || value.sent === true || value.accepted === true ||
+        ["started", "queued", "steered", "restarted"].includes(value.delivery) ||
+        ((value.ok === true || ["running", "starting", "queued", "waiting", "completed"].includes(value.status)) && text(value.taskId)))
+      : sources.some(value => value.paused === true || value.interrupted === true || value.accepted === true || value.ok === true);
+  const classification = rejected ? "rejected" : identityConflict ? "identity_conflict" : pending ? "pending" : affirmative && !malformedEnvelope ? "confirmed" : "unknown";
+  if (rejected) diagnostics.unshift({ code: "CONTROL_EXPLICIT_REJECTION" });
+  else if (pending) diagnostics.push({ code: "CONTROL_PENDING" });
+  else if (classification === "unknown") diagnostics.push({ code: "CONTROL_OUTCOME_UNKNOWN" });
+  // A blocked dispatch states that it did not start, so it proves non-acceptance like started:false.
+  // Plain and MCP-wrapped receipts share this set; isError alone is not proof.
+  const explicitNonacceptance = sources.some(value => value.ok === false || value.accepted === false || value.started === false ||
+    value.canStart === false || value.blocked === true || value.status === "blocked_by_conflicts" || value.action === "blocked_by_conflicts" ||
+    value.dispatchOutcome === "rejected" || (value.dispatched === false && value.dispatchPending !== true));
+  return { classification, raw, identity, diagnostics, sources, rejected, pending, positiveAcceptance, hasExecutionEvidence, malformedEnvelope,
+    vetoed: rejected || pending || identityConflict || malformedEnvelope,
+    explicitNonacceptance: explicitNonacceptance || (operation === "resume" && sources.some(value => value.resumed === false || value.canResume === false || value.sent === false)) };
+}
+
+export function classifyControlReceipt(raw, operation, expected) {
+  const { classification, identity, diagnostics } = inspectControlReceipt(raw, operation, expected);
+  return { classification, raw, identity, diagnostics };
+}
+
+/** The only authority for releasing, binding or recovering a dispatch intent. */
+export function decideDispatchOutcome(raw, { expectedIdentity = {}, operation = "dispatch" } = {}) {
+  if (expectedIdentity.worker) expectedIdentity = { ...expectedIdentity.worker, ...expectedIdentity, missionRunId: expectedIdentity.runId };
+  const evidence = inspectControlReceipt(raw, operation, expectedIdentity);
+  const { sources, rejected, pending, positiveAcceptance, hasExecutionEvidence, malformedEnvelope } = evidence;
+  const diagnostics = [...evidence.diagnostics];
+  const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object"
+    ? Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonical(value[key])])) : value;
+  const options = value => Array.isArray(value) && value.every(row => typeof row?.id === "string")
+    ? Object.fromEntries(value.map(row => [row.id, row.value])) : value;
+  for (const source of sources) {
+    for (const key of ["missionId", "missionRunId", "featureId", "clientRequestId", "runId"]) {
+      if (key === "runId" && source.featureId === undefined) continue;
+      if (source[key] !== undefined && expectedIdentity[key] !== undefined && source[key] !== expectedIdentity[key])
+        diagnostics.push({ code: "DISPATCH_RECEIPT_CONFLICT", key, expected: expectedIdentity[key], observed: source[key] });
+    }
+    for (const target of [source, source.target].filter(value => value && typeof value === "object")) {
+      for (const key of ["providerInstanceId", "model", "options"]) {
+        const wanted = expectedIdentity.target?.[key] ?? expectedIdentity[key];
+        if (target[key] !== undefined && wanted !== undefined && JSON.stringify(canonical(key === "options" ? options(target[key]) : target[key])) !== JSON.stringify(canonical(key === "options" ? options(wanted) : wanted)))
+          diagnostics.push({ code: "DISPATCH_TARGET_CONFLICT", key, expected: wanted, observed: target[key] });
+      }
+    }
+  }
+  for (const key of ["workerPid", "daemonStateFile"]) {
+    const values = sources.map(source => source[key]).filter(value => value !== undefined && value !== null);
+    if (new Set(values.map(value => JSON.stringify(value))).size > 1)
+      diagnostics.push({ code: "DISPATCH_RECEIPT_CONFLICT", key, observed: values });
+  }
+  const controlReceipt = { classification: evidence.classification, raw, identity: evidence.identity, diagnostics };
+  const result = { raw, diagnostics, controlReceipt };
+  if (diagnostics.some(item => ["DISPATCH_RECEIPT_CONFLICT", "CONTROL_IDENTITY_MISMATCH", "DISPATCH_TARGET_CONFLICT"].includes(item.code)))
+    return { ...result, outcome: "CONFLICT", errorCode: diagnostics.some(item => item.code === "DISPATCH_TARGET_CONFLICT") ? "DISPATCH_TARGET_CONFLICT" : "DISPATCH_RECEIPT_CONFLICT" };
+  if (malformedEnvelope) return { ...result, outcome: "UNKNOWN", reason: "Malformed receipt envelope", errorCode: "DISPATCH_OUTCOME_UNKNOWN" };
+  // Pending without any execution evidence is the established V02/V09 retry contract.
+  if (!positiveAcceptance && !hasExecutionEvidence && (evidence.explicitNonacceptance || pending)) {
+    const failure = sources.map(providerFailure).find(Boolean);
+    const reason = failure?.message || sources.map(value => value.error ?? value.message ?? value.code).find(value => typeof value === "string") || (pending ? "Dispatch remains pending without a child" : "Transport explicitly did not accept the dispatch");
+    return { ...result, outcome: "NOT_ACCEPTED", reason, providerFailureClass: failure?.kind ?? "provider_rejection", ...(rejected ? { errorCode: "DISPATCH_REJECTED" } : {}) };
+  }
+  if (rejected || pending) return { ...result, outcome: "UNKNOWN", reason: "Receipt cannot prove that execution did not start", errorCode: "DISPATCH_OUTCOME_UNKNOWN" };
+  const identity = { ...evidence.identity };
+  for (const key of ["workerPid", "daemonStateFile", "runtimeTransport", "daemonStatus", "delegatedBy"])
+    for (const source of sources) if (source[key] !== undefined) identity[key] = source[key];
+  if (operation === "resume" && evidence.classification === "confirmed")
+    for (const key of ["taskId", "childThreadId", "childRunId"]) identity[key] ??= expectedIdentity[key];
+  if (evidence.classification === "confirmed" && (identity.taskId || identity.childThreadId || identity.childRunId ||
+      (Number.isSafeInteger(identity.workerPid) && identity.workerPid > 0) ||
+      (typeof identity.daemonStateFile === "string" && identity.daemonStateFile.trim())))
+    return { ...result, outcome: "ACCEPTED", identity };
+  return { ...result, outcome: "UNKNOWN", reason: "No recoverable accepted identity", ...(positiveAcceptance ? { errorCode: "DISPATCH_OUTCOME_UNKNOWN" } : {}) };
+}
+
+/** Merge observations of one intent without letting weaker evidence release it. */
+export function mergeDispatchEvidence(receipts, { expectedIdentity = {}, operation = "dispatch", unsettledInvocation = false } = {}) {
+  const identity = {};
+  const diagnostics = [];
+  for (const raw of receipts) {
+    const evidence = inspectControlReceipt(raw, operation, expectedIdentity);
+    for (const source of [evidence.identity, ...evidence.sources]) {
+      for (const key of ["taskId", "childThreadId", "childRunId", "worktreePath", "clientRequestId", "workerPid", "daemonStateFile"]) {
+        if (source[key] === undefined || source[key] === null) continue;
+        if (identity[key] !== undefined && !isSameEvidence(identity[key], source[key]))
+          diagnostics.push({ code: "DISPATCH_RECEIPT_CONFLICT", key, expected: identity[key], observed: source[key] });
+        else identity[key] = source[key];
+      }
+    }
+  }
+  const decisions = receipts.map(raw => decideDispatchOutcome(raw, { expectedIdentity: { ...identity, ...expectedIdentity }, operation }));
+  for (const verdict of decisions) diagnostics.push(...verdict.diagnostics);
+  const conflict = decisions.find(verdict => verdict.outcome === "CONFLICT");
+  if (conflict || diagnostics.some(item => item.code === "DISPATCH_RECEIPT_CONFLICT"))
+    return { ...(conflict ?? decisions[0]), outcome: "CONFLICT", errorCode: conflict?.errorCode ?? "DISPATCH_RECEIPT_CONFLICT", diagnostics };
+  const accepted = decisions.find(verdict => verdict.outcome === "ACCEPTED");
+  const refusal = decisions.findLast(verdict => verdict.outcome === "NOT_ACCEPTED");
+  if (accepted) return { ...accepted, identity: { ...accepted.identity, ...identity }, diagnostics: refusal ? [...diagnostics, { code: "DISPATCH_WEAK_REFUSAL_IGNORED" }] : diagnostics };
+  if (unsettledInvocation) return { ...(decisions.at(-1) ?? decideDispatchOutcome(undefined, { expectedIdentity, operation })), outcome: "UNKNOWN", errorCode: "DISPATCH_OUTCOME_UNKNOWN", reason: "The current callback invocation has no durable return yet", diagnostics: [...diagnostics, { code: "DISPATCH_INVOCATION_UNSETTLED" }] };
+  const uncertain = decisions.find(verdict => verdict.outcome === "UNKNOWN");
+  if (uncertain) return { ...uncertain, errorCode: "DISPATCH_OUTCOME_UNKNOWN", diagnostics: refusal ? [...diagnostics, { code: "DISPATCH_WEAK_REFUSAL_IGNORED" }] : diagnostics };
+  return refusal ?? decideDispatchOutcome(undefined, { expectedIdentity, operation });
+}
+const isSameEvidence = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+/** Remove only dispatch-failure projections, preserving real task terminal results. */
+export function clearDispatchRejection(run) {
+  if (!run) return;
+  const rejected = run.rejectedObservationId;
+  if (rejected && run.terminalObservationId === rejected) delete run.terminalObservationId;
+  if (rejected && run.result?.observationId === rejected) delete run.result;
+  delete run.rejectedObservationId;
+  if (["not_accepted", "acceptance_unknown", "conflict"].includes(run.failure?.kind)) delete run.failure;
+}
+
+export function providerFailure(value) {
+  const message = [value?.summary, value?.error?.message, value?.error, value?.message].filter(item => typeof item === "string").join(" ");
+  const evidence = [message, value?.code, value?.status, value?.error?.code, value?.error?.status].filter(item => typeof item === "string" || Number.isInteger(item)).join(" ");
+  if (/rate.?limit|\b429\b|\b50[234]\b|air_unavailable|service.?unavailable|bad.?gateway|gateway.?timeout|overloaded|try again later|quota|credit|billing|capacity|resource.?exhausted/i.test(evidence)) return { kind: "provider_rate", message: message || evidence.trim() };
+  if (/unauthori[sz]ed|forbidden|authentication|permission.?denied|api.?key|\b40[13]\b/i.test(evidence)) return { kind: "provider_auth", message: message || evidence.trim() };
+  return null;
+}
+
+/** Shared veto for observations whose confirmation fields belong to their operation. */
+export function unwrapObservationResponse(raw, expected = {}, { allowList = false } = {}) {
+  if (allowList && Array.isArray(raw)) return raw;
+  const evidence = inspectControlReceipt(raw, "dispatch", expected, { includeOperationRecords: true });
+  const decision = decideDispatchOutcome(raw, { expectedIdentity: expected });
+  if (decision.outcome === "CONFLICT" || evidence.vetoed)
+    throw new MissionKernelError("INVALID_T3_OBSERVATION", "Observation is rejected, pending, conflicting or malformed", { controlReceipt: classifyControlReceipt(raw, "dispatch", expected) });
+  for (const key of ["scheduledTaskId", "id", "enabled", "parentThreadId", "branch", "sourceBranch", "commit", "mergeSha"]) {
+    const values = evidence.sources.map(source => source[key]).filter(value => value !== undefined);
+    if (new Set(values.map(value => JSON.stringify(value))).size > 1)
+      throw new MissionKernelError("INVALID_T3_OBSERVATION", `Observation has conflicting ${key}`, { raw });
+  }
+  return Object.assign({}, decodeMcpResponse(raw), ...evidence.sources);
+}
+
+export function isDispatchRejected(result, operation = "dispatch", expected = {}) {
+  return classifyControlReceipt(result, operation, expected).classification === "rejected";
+}
+
+export function isDispatchPending(result, expected = {}) {
+  return classifyControlReceipt(result, "dispatch", expected).classification === "pending";
+}
+
+/** Decode supported MCP envelopes only after checking every retained layer. */
+export function unwrapMcpResponse(raw, operation = "dispatch", expected = {}) {
+  const outcome = decideDispatchOutcome(raw, { expectedIdentity: expected, operation });
+  if (operation !== "dispatch") {
+    const verdict = classifyControlReceipt(raw, operation, expected);
+    const wrapped = dispatchReceiptSources(raw).some(value => value.structuredContent || Array.isArray(value.content));
+    if (wrapped && verdict.classification === "rejected" && outcome.outcome !== "NOT_ACCEPTED")
+      throw new MissionKernelError("T3_OBSERVATION_ERROR", "MCP wrapper explicitly refused the control", { controlReceipt: verdict });
+    if (wrapped && verdict.classification === "pending")
+      throw new MissionKernelError("DISPATCH_OUTCOME_UNKNOWN", "MCP wrapper is pending; reconcile the original control", { controlReceipt: verdict });
+    if (outcome.outcome === "CONFLICT")
+      throw new MissionKernelError(outcome.errorCode, "Conflicting or foreign control receipt", { controlReceipt: verdict });
+    return decodeMcpResponse(raw);
+  }
+  if (outcome.outcome === "CONFLICT" || (outcome.outcome === "UNKNOWN" && outcome.errorCode))
+    throw new MissionKernelError(outcome.errorCode, "Operation is unconfirmed; raw evidence is retained", { controlReceipt: outcome.controlReceipt, dispatchDecision: outcome });
+  return decodeMcpResponse(raw);
+}
+
+function decodeMcpResponse(raw) {
+  const decode = value => {
+    if (!value || typeof value !== "object") throw new MissionKernelError("INVALID_T3_OBSERVATION", "T3 response must be JSON data");
+    if (Array.isArray(value)) return value;
+    let inner = value.structuredContent;
+    if (!inner && Array.isArray(value.content)) {
+      const blocks = value.content.filter(block => block?.type === "text");
+      if (blocks.length !== 1) throw new MissionKernelError("INVALID_T3_OBSERVATION", "Expected one JSON text block or structuredContent");
+      try { inner = JSON.parse(blocks[0].text); }
+      catch { throw new MissionKernelError("INVALID_T3_OBSERVATION", "Cannot decode MCP text JSON"); }
+    }
+    if (inner) {
+      const { content, structuredContent, ...outer } = value;
+      const decoded = decode(inner);
+      return Array.isArray(decoded) ? decoded : { ...outer, ...decoded };
+    }
+    const decoded = { ...value };
+    for (const key of ["response", "delegation"]) if (value[key] && typeof value[key] === "object") decoded[key] = decode(value[key]);
+    return decoded;
+  };
+  return decode(raw);
+}
+
+export function isPauseConfirmed(result, expected = {}) {
+  return classifyControlReceipt(result, "pause", expected).classification === "confirmed";
+}
+
+export function isResumeConfirmed(result, expected = {}) {
+  return classifyControlReceipt(result, "resume", expected).classification === "confirmed";
 }
 
 export function normalizeSlotConfig(raw = {}, base = {}) {
@@ -515,7 +818,42 @@ export function normalizeAssertion(assertion, index = 0) {
   };
 }
 
+function validateAutopilotPolicy(input) {
+  const fail = message => { throw new MissionKernelError("INVALID_AUTOPILOT_POLICY", message); };
+  const text = value => typeof value === "string" && value.trim().length > 0;
+  if (input.pauseMode !== undefined && !["interrupt", "let_finish"].includes(input.pauseMode)) fail("pauseMode must be interrupt or let_finish");
+  if (input.timerEveryMs !== undefined && (!Number.isSafeInteger(input.timerEveryMs) || input.timerEveryMs < 1000)) fail("timerEveryMs must be an integer of at least 1000");
+  if (input.ownerThreadId !== undefined && !text(input.ownerThreadId)) fail("ownerThreadId must be nonempty");
+  if (input.retryPolicy !== undefined) {
+    const p = input.retryPolicy;
+    if (!p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).some(key => !["baseDelayMs", "maxDelayMs", "maxConsecutiveProviderErrors", "maxStalledDecisionRepeats", "maxResultFormatRetries"].includes(key)) || Object.entries(p).some(([key, value]) => !Number.isSafeInteger(value) || value < (key === "maxResultFormatRetries" ? 0 : 1)) || (p.baseDelayMs ?? 30000) > (p.maxDelayMs ?? 1800000)) fail("Invalid retryPolicy");
+  }
+  if (input.fallbackTargets !== undefined) {
+    if (!input.fallbackTargets || typeof input.fallbackTargets !== "object" || Array.isArray(input.fallbackTargets)) fail("fallbackTargets must be a role map");
+    for (const [role, targets] of Object.entries(input.fallbackTargets)) {
+      if (!["worker", "validator", "orchestrator"].includes(role) || !Array.isArray(targets) || !targets.every(target => text(target?.providerInstanceId) && text(target.model) && target.options && typeof target.options === "object" && !Array.isArray(target.options))) fail("Each fallback role requires approved provider/model/options targets");
+    }
+  }
+}
+
+/** Return the same state for an idempotent approval; only a new approval advances its epoch. */
+export function approvePlanState(state, approvedAt = new Date().toISOString()) {
+  if (state.planAccepted === true && !["planning", "awaiting_input"].includes(state.status)) return state;
+  return { ...state, planAccepted: true, planApprovalEpoch: (state.planApprovalEpoch ?? 0) + 1, planApprovedAt: approvedAt };
+}
+
 export function createInitialState(input = {}, existingState = null) {
+  validateAutopilotPolicy(input);
+  if (input.autopilot !== undefined && typeof input.autopilot !== "boolean") throw new MissionKernelError("INVALID_AUTOPILOT_POLICY", "autopilot must be a boolean");
+  const integration = input.integration ?? existingState?.integration;
+  if (integration !== undefined && (!integration || typeof integration !== "object" || Array.isArray(integration) ||
+      typeof integration.branch !== "string" || !integration.branch.trim() || typeof integration.auto !== "boolean")) {
+    throw new MissionKernelError("INVALID_INTEGRATION_POLICY", "integration requires branch and an explicit auto boolean");
+  }
+  const permissions = input.permissions ?? existingState?.permissions;
+  if (permissions !== undefined && (!Array.isArray(permissions) || !permissions.every(item => item && typeof item.id === "string" && item.id.trim() && ["pending", "approved", "denied"].includes(item.status)))) {
+    throw new MissionKernelError("INVALID_PERMISSIONS", "permissions require an id and pending, approved, or denied status");
+  }
   const isUninitializedPlaceholder = Boolean(
     !existingState ||
       existingState.initialized === false ||
@@ -554,6 +892,11 @@ export function createInitialState(input = {}, existingState = null) {
     missionId: validInputMissionId || validExistingMissionId || createMissionId(),
     title: String(input.title || validExistingTitle || "Untitled Mission"),
     repoPath: String(input.repoPath || existingState?.repoPath || process.cwd()),
+    ...((input.autopilot ?? existingState?.autopilot) !== undefined ? { autopilot: input.autopilot ?? existingState.autopilot } : {}),
+    ...(integration !== undefined ? { integration: structuredClone(integration) } : {}),
+    ...(permissions !== undefined ? { permissions: structuredClone(permissions) } : {}),
+    ...((input.ownerThreadId ?? existingState?.ownerThreadId) ? { ownerThreadId: input.ownerThreadId ?? existingState.ownerThreadId } : {}),
+    ...Object.fromEntries(["pauseMode", "timerEveryMs", "retryPolicy", "fallbackTargets"].filter(key => (input[key] ?? existingState?.[key]) !== undefined).map(key => [key, structuredClone(input[key] ?? existingState[key])])),
     status: input.status || "awaiting_input",
     revision:
       typeof existingState?.revision === "number"
@@ -563,6 +906,8 @@ export function createInitialState(input = {}, existingState = null) {
       typeof existingState?.elapsedMs === "number" ? existingState.elapsedMs : 0,
     lastStartedAt: null,
     planAccepted: Boolean(input.planAccepted ?? false),
+    planApprovalEpoch: existingState?.planApprovalEpoch ?? 0,
+    ...(existingState?.planApprovedAt ? { planApprovedAt: existingState.planApprovedAt } : {}),
     milestones,
     assertions,
     activeWorker: existingState?.activeWorker ?? null,
@@ -668,4 +1013,24 @@ export function isValidatorFeature(feature) {
     kind === "user_testing" ||
     feature.kind === "user-testing"
   );
+}
+
+/** Order-independent intent verdict after receipts have been attributed to calls. */
+export function mergeInvocationEvidence(invocations, unowned = [], options = {}) {
+  const calls = invocations.map(row => ({ invocationId: row.invocationId, phase: row.phase, ...mergeDispatchEvidence(row.receipts, options) }));
+  // Unattributed refusals cannot settle any registered invocation. Identity and
+  // execution evidence still participate in conflict detection and recovery.
+  const strengthening = unowned.filter(raw => {
+    const verdict = decideDispatchOutcome(raw, options);
+    return verdict.outcome === "ACCEPTED" || verdict.outcome === "CONFLICT" || verdict.errorCode === "DISPATCH_OUTCOME_UNKNOWN";
+  });
+  const merged = mergeDispatchEvidence([...invocations.flatMap(row => row.receipts), ...strengthening], options);
+  const diagnostic = unowned.length ? [{ code: "DISPATCH_UNATTRIBUTED_EVIDENCE", count: unowned.length }] : [];
+  let outcome = merged;
+  if (!["ACCEPTED", "CONFLICT"].includes(merged.outcome)) {
+    const unsettled = calls.find(row => row.phase !== "returned" || row.outcome !== "NOT_ACCEPTED");
+    if (unsettled || !calls.length || strengthening.length) outcome = { ...merged, outcome: "UNKNOWN", errorCode: "DISPATCH_OUTCOME_UNKNOWN", reason: "Not every invocation has its own trusted nonacceptance" };
+    else outcome = { ...calls[0], outcome: "NOT_ACCEPTED" };
+  }
+  return { ...outcome, diagnostics: [...(outcome.diagnostics ?? []), ...diagnostic], invocations: calls.map(({ invocationId, phase, outcome }) => ({ invocationId, phase, outcome })), hasDurableEvidence: invocations.length > 0 || unowned.length > 0 };
 }

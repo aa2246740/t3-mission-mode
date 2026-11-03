@@ -88,18 +88,20 @@ test("V01: repeated HUD approval preserves f1 and its run across mission statuse
   }
 });
 
-test("V02: rejected, throwing, pending and unconfirmed upgrades remain retryable on disk", async (t) => {
+test("V02: rejected, explicitly refused, pending and unconfirmed upgrades remain retryable on disk", async (t) => {
   const cases = [
-    ["throw", () => { throw new Error("transport unavailable"); }, true],
+    ["throw", () => { throw Object.assign(new Error("transport unavailable"), { dispatchOutcome: "rejected" }); }, true],
     ...["ok", "accepted", "started", "canStart", "dispatched"].map((key) =>
       [key, () => ({ [key]: false, taskId: "must-not-attach" }), true]),
     ["blocked", () => ({ blocked: true }), true],
     ["nested rejection", () => ({ response: { accepted: false, taskId: "must-not-attach" } }), true],
     ["outer rejection", () => ({ ok: false, response: { ok: true, taskId: "must-not-attach" } }), true],
     ["pending", () => pendingResult, false],
-    ["pending with identity", () => ({ ...pendingResult, ...acceptedResult }), false],
+    ["pending with identity", () => ({ ...pendingResult, ...acceptedResult }), true],
     ["unconfirmed", () => ({ ok: true, worktreePath: "/private/tmp" }), false],
   ];
+  // Contract 8 and R5-01: only bare non-start evidence (no child identity) proves non-acceptance.
+  const retryable = new Set(["blocked", "pending"]);
   for (const [name, result, rejects] of cases) {
     await t.test(name, async (t) => {
       const dir = fixture(t);
@@ -119,9 +121,23 @@ test("V02: rejected, throwing, pending and unconfirmed upgrades remain retryable
         assert.equal(entry.taskId, undefined);
       }
       let retries = 0;
-      const state = await callMissionTool("StartMissionRun", { missionDir: dir }, { dispatchAdapter: {
+      const retry = callMissionTool("StartMissionRun", { missionDir: dir }, { dispatchAdapter: {
         async runFeature() { retries++; return acceptedResult; },
       } });
+      // Contract 8: a receipt carrying child identity, or ok:true without it, cannot prove non-acceptance,
+      // so it stays fenced for recover_dispatch (as in V09).
+      if (!retryable.has(name)) {
+        await assert.rejects(retry, { code: "DISPATCH_OUTCOME_UNKNOWN" });
+        assert.equal(retries, 0);
+        assert.equal(kernel.loadState(dir).activeWorker.runId, runId);
+        assert.equal(kernel.loadState(dir).sessions.length, 1);
+        for (const entry of runRecords(dir)) {
+          assert.equal(entry.dispatchPending, true);
+          assert.equal(entry.taskId, undefined);
+        }
+        return;
+      }
+      const state = await retry;
       assert.equal(retries, 1);
       assert.equal(state.activeWorker.runId, runId);
       assert.equal(state.sessions.length, 1);
@@ -144,7 +160,13 @@ test("V03: StartMissionRun dispatches paused and HUD-resumed pending runs throug
       } });
       await post(server, "approve");
       await post(server, "pause");
-      if (viaHudResume) assert.equal((await post(server, "resume")).status, 200);
+      if (viaHudResume) {
+        const response = await post(server, "resume");
+        assert.equal(response.status, 200);
+        assert.equal(response.body.trigger, "[resume the mission]");
+        assert.equal(kernel.loadState(dir).status, "running");
+        assert.equal(kernel.loadState(dir).activeWorker.dispatchPending, true);
+      }
       const runId = kernel.loadState(dir).activeWorker.runId;
       let dispatches = 0;
       const state = await callMissionTool("StartMissionRun", { missionDir: dir }, { dispatchAdapter: {
@@ -293,9 +315,9 @@ test("V07/V08: sparse feature overrides inherit the actual role slot in kernel a
   }
 });
 
-test("V09: failed, rejected, pending, and unconfirmed initial dispatches remain retryable without attaching rejected identity", async (t) => {
+test("V09: explicitly refused, rejected, pending, and unconfirmed initial dispatches remain retryable without attaching rejected identity", async (t) => {
   for (const [label, fn, shouldReject] of [
-    ["throw", () => { throw new Error("initial dispatch unavailable"); }, true],
+    ["throw", () => { throw Object.assign(new Error("initial dispatch unavailable"), { dispatchOutcome: "rejected" }); }, true],
     ["rejected", () => ({ ok: false, accepted: false, dispatched: false, code: "PROVIDER_BUSY", taskId: "must-not-attach" }), true],
     ["pending", () => pendingResult, false],
     ["unconfirmed", () => ({ ok: true }), false],
@@ -313,12 +335,14 @@ test("V09: failed, rejected, pending, and unconfirmed initial dispatches remain 
         assert.equal(entry.taskId, undefined);
       }
       let retries = 0;
-      const retried = await callMissionTool("StartMissionRun", { missionDir: dir }, {
+      const retry = callMissionTool("StartMissionRun", { missionDir: dir }, {
         dispatchAdapter: { async runFeature() { retries++; return acceptedResult; } },
       });
-      assert.equal(retries, 1);
-      assert.equal(retried.activeWorker.taskId, acceptedResult.taskId);
-      assert.equal(retried.sessions.length, 1);
+      if (["throw", "unconfirmed", "rejected"].includes(label)) await assert.rejects(retry, { code: "DISPATCH_OUTCOME_UNKNOWN" });
+      else await retry;
+      assert.equal(retries, ["throw", "unconfirmed", "rejected"].includes(label) ? 0 : 1);
+      assert.equal(kernel.loadState(dir).activeWorker.taskId, ["throw", "unconfirmed", "rejected"].includes(label) ? undefined : acceptedResult.taskId);
+      assert.equal(kernel.loadState(dir).sessions.length, 1);
     });
   }
 });

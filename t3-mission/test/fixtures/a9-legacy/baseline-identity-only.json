@@ -1,0 +1,21 @@
+{
+  "version": "baseline",
+  "kind": "identity-only",
+  "calls": 1,
+  "error": {
+    "message": "Real old callback lost its reply"
+  },
+  "sourceEngine": "7ae63065c7e8db019b9633d63aff02e6801e4f69",
+  "files": {
+    "features.json": "{\n  \"features\": [\n    {\n      \"id\": \"f1\",\n      \"milestoneId\": \"m1\",\n      \"title\": \"f1\",\n      \"description\": \"\",\n      \"kind\": \"implementation\",\n      \"skillName\": \"worker-implementation\",\n      \"fulfills\": [],\n      \"status\": \"running\",\n      \"attempts\": 1,\n      \"maxAttempts\": 5,\n      \"lastHandoff\": null,\n      \"dispatchPending\": true\n    }\n  ],\n  \"updatedAt\": \"2026-10-24T10:45:09.629Z\"\n}\n",
+    "model-settings.json": "{\n  \"orchestrator\": {\n    \"providerInstanceId\": \"antigravity\",\n    \"model\": \"gemini-4-argon-high\",\n    \"options\": {}\n  },\n  \"worker\": {\n    \"providerInstanceId\": \"antigravity\",\n    \"model\": \"gemini-4-argon-high\",\n    \"options\": {}\n  },\n  \"validator\": {\n    \"providerInstanceId\": \"codex\",\n    \"model\": \"gpt-6.1-sol\",\n    \"options\": {\n      \"reasoningEffort\": \"high\"\n    },\n    \"effort\": 4,\n    \"reasoningEffort\": \"high\"\n  },\n  \"skipScrutiny\": false,\n  \"skipUserTesting\": false\n}\n",
+    "progress_log.jsonl": "{\"seq\":1,\"timestamp\":\"2026-10-24T10:45:09.576Z\",\"type\":\"propose_mission\",\"message\":\"ProposeMission submitted\",\"featureId\":null,\"workerNumber\":null}\n{\"seq\":2,\"timestamp\":\"2026-10-24T10:45:09.590Z\",\"type\":\"plan_approved\",\"message\":\"Mission plan approved\",\"featureId\":null,\"workerNumber\":null}\n{\"seq\":3,\"timestamp\":\"2026-10-24T10:45:09.600Z\",\"type\":\"run_started\",\"message\":\"Worker #1 started f1: f1\",\"featureId\":\"f1\",\"workerNumber\":1}\n",
+    "state.json": "{\n  \"initialized\": true,\n  \"missionId\": \"mission-9b76d690\",\n  \"title\": \"Real baseline provenance identity-only\",\n  \"repoPath\": \"/Volumes/Workspace/Projects/T3-Runtime/worktrees/pi-durable-mission-control/t3-324657ce/.mm-a9/legacy-generation/baseline-identity-only\",\n  \"status\": \"running\",\n  \"revision\": 4,\n  \"elapsedMs\": 0,\n  \"lastStartedAt\": \"2026-10-24T10:45:09.594Z\",\n  \"planAccepted\": true,\n  \"milestones\": [],\n  \"assertions\": [],\n  \"activeWorker\": {\n    \"runId\": \"run-885ce929\",\n    \"workerNumber\": 1,\n    \"role\": \"Worker\",\n    \"featureId\": \"f1\",\n    \"featureTitle\": \"f1\",\n    \"milestoneId\": \"m1\",\n    \"kind\": \"implementation\",\n    \"skillName\": \"worker-implementation\",\n    \"slot\": \"worker\",\n    \"providerInstanceId\": \"antigravity\",\n    \"model\": \"gemini-4-argon-high\",\n    \"options\": {},\n    \"status\": \"running\",\n    \"attempt\": 1,\n    \"startedAt\": \"2026-10-24T10:45:09.600Z\",\n    \"handoff\": null,\n    \"dispatchPending\": true\n  },\n  \"sessions\": [\n    {\n      \"runId\": \"run-885ce929\",\n      \"workerNumber\": 1,\n      \"role\": \"Worker\",\n      \"featureId\": \"f1\",\n      \"featureTitle\": \"f1\",\n      \"milestoneId\": \"m1\",\n      \"kind\": \"implementation\",\n      \"skillName\": \"worker-implementation\",\n      \"slot\": \"worker\",\n      \"providerInstanceId\": \"antigravity\",\n      \"model\": \"gemini-4-argon-high\",\n      \"options\": {},\n      \"status\": \"running\",\n      \"attempt\": 1,\n      \"startedAt\": \"2026-10-24T10:45:09.600Z\",\n      \"handoff\": null,\n      \"dispatchPending\": true\n    }\n  ],\n  \"pendingHandoffItems\": [],\n  \"lastHandoffNeedsAttention\": false,\n  \"lastHandoffSummary\": null,\n  \"lastHandoffAt\": null,\n  \"milestoneValidationTriggered\": {}\n}\n"
+  },
+  "hashes": {
+    "features.json": "5ed56d83437aebde15e12b104b81edff65ac847ae4e47b636e3e4fe473d32417",
+    "model-settings.json": "f6a29f4ca26e917bc31b0eb9262666e06dc86e174b2001dbe660ba165dc1554d",
+    "progress_log.jsonl": "e2a53a1a729dba4c3f58e53d7510f8603287c84cf02591e9c4edb4704358488d",
+    "state.json": "29dd97acc421267d48fa9b66d15f242ecbc7630c7994475096d20e459d63e838"
+  }
+}

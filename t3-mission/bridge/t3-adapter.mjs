@@ -1,8 +1,14 @@
+import { decideDispatchOutcome, unwrapMcpResponse, unwrapObservationResponse, classifyControlReceipt } from "../kernel/schema.mjs";
 import { execFile as execFileCallback } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFileCallback);
+
+export function preSendFailure(error, code = error.code ?? "LOCAL_DISPATCH_VALIDATION") {
+  error.runtimeResult = { accepted: false, code, preSend: true };
+  return error;
+}
 
 export const VALID_DELEGATE_ROLES = new Set([
   "implementation",
@@ -698,37 +704,21 @@ export function resolveTargetFromModelSettings(modelSettings, roleOrSlot = "work
  * @param {unknown} rawOutput
  * @returns {any}
  */
-export function parseT3ToolOutput(rawOutput) {
-  if (rawOutput === null || rawOutput === undefined) {
-    return {};
+export function parseT3ToolOutput(rawOutput, operation = "dispatch", expected = {}, { retainRaw = false } = {}) {
+  if (rawOutput === null || rawOutput === undefined) return retainRaw ? rawOutput : {};
+  if (typeof rawOutput !== "object") {
+    const text = String(rawOutput).trim();
+    if (!text) return {};
+    try { rawOutput = JSON.parse(text); } catch { return { rawOutput: text }; }
   }
-  if (typeof rawOutput === "object") {
-    if (
-      Array.isArray(rawOutput.content) &&
-      rawOutput.content.length === 1 &&
-      rawOutput.content[0]?.type === "text" &&
-      typeof rawOutput.content[0]?.text === "string"
-    ) {
-      try {
-        const parsedInner = JSON.parse(rawOutput.content[0].text);
-        if (parsedInner && typeof parsedInner === "object") {
-          return parsedInner;
-        }
-      } catch {
-        // Keep raw object if inner text is not JSON
-      }
-    }
-    return rawOutput;
-  }
-  const text = String(rawOutput).trim();
-  if (!text) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(text);
-    return parseT3ToolOutput(parsed);
-  } catch {
-    return { rawOutput: text };
+  if (operation === "observation") return retainRaw ? rawOutput : unwrapObservationResponse(rawOutput, {}, { allowList: true });
+  const verdict = operation === "dispatch" ? decideDispatchOutcome(rawOutput, { expectedIdentity: expected }) : classifyControlReceipt(rawOutput, operation, expected);
+  if (retainRaw) return verdict.raw;
+  try { return unwrapMcpResponse(rawOutput, operation, expected); }
+  catch (error) {
+    if (error.code === "INVALID_T3_OBSERVATION") return rawOutput;
+    error.runtimeResult = rawOutput;
+    throw error;
   }
 }
 
@@ -811,41 +801,42 @@ function resolveCallContext(envOrOptions) {
  * @param {Record<string, unknown> | Function} [envOrOptions=process.env]
  * @returns {Promise<any>}
  */
-export async function callT3McpTool(toolName, args = {}, envOrOptions = process.env) {
+export async function callT3McpTool(toolName, args = {}, envOrOptions = process.env, evidence = {}) {
   if (!toolName || typeof toolName !== "string") {
-    throw new TypeError("toolName must be a non-empty string");
+    throw preSendFailure(new TypeError("toolName must be a non-empty string"));
   }
   const payload = args && typeof args === "object" ? args : {};
+  const operation = toolName === "t3_thread_send" ? "resume" : toolName === "t3_thread_interrupt" ? "pause" : toolName === "delegate_task" ? "dispatch" : "observation";
   const { env, transportClient, execFileImpl, cwd, timeoutMs } = resolveCallContext(envOrOptions);
 
   if (transportClient) {
     if (typeof transportClient === "function") {
       const result = await transportClient(toolName, payload, env);
-      return parseT3ToolOutput(result);
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
     }
     if (typeof transportClient.callTool === "function") {
       const result = await transportClient.callTool(toolName, payload, env);
-      return parseT3ToolOutput(result);
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
     }
     if (typeof transportClient.call === "function") {
       const result = await transportClient.call(toolName, payload, env);
-      return parseT3ToolOutput(result);
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
     }
     if (typeof transportClient[toolName] === "function") {
       const result = await transportClient[toolName](payload, env);
-      return parseT3ToolOutput(result);
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
     }
   }
 
   const nodeBin = env?.T3_ACP_MCP_NODE ? String(env.T3_ACP_MCP_NODE).trim() : "";
   if (!nodeBin) {
-    throw new Error(
-      `Cannot call T3 MCP tool "${toolName}": T3_ACP_MCP_NODE is not set in env and no transportClient was provided.`
-    );
+    throw preSendFailure(new Error(`Cannot call T3 MCP tool "${toolName}": T3_ACP_MCP_NODE is not set in env and no transportClient was provided.`), "NO_T3_TRANSPORT");
   }
 
   const entrypoint = env?.T3_ACP_MCP_ENTRYPOINT ? String(env.T3_ACP_MCP_ENTRYPOINT).trim() : "";
-  const serializedArgs = JSON.stringify(payload);
+  let serializedArgs;
+  try { serializedArgs = JSON.stringify(payload); }
+  catch (error) { throw preSendFailure(error); }
   const cliArgs = entrypoint
     ? [entrypoint, "acp-mcp-call", toolName, serializedArgs]
     : ["acp-mcp-call", toolName, serializedArgs];
@@ -866,8 +857,14 @@ export async function callT3McpTool(toolName, args = {}, envOrOptions = process.
     execOptions.timeout = timeoutMs;
   }
 
-  const { stdout } = await execFileImpl(nodeBin, cliArgs, execOptions);
-  return parseT3ToolOutput(stdout);
+  let stdout;
+  try { ({ stdout } = await execFileImpl(nodeBin, cliArgs, execOptions)); }
+  catch (error) {
+    // Numeric process exit codes and transport-thrown codes are not spawn proof.
+    if (["ENOENT", "EACCES"].includes(error.code) && String(error.syscall).startsWith("spawn")) preSendFailure(error);
+    throw error;
+  }
+  return parseT3ToolOutput(stdout, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
 }
 
 /**
@@ -1001,69 +998,73 @@ export async function getOrchestratorCapabilities(envOrOptions = process.env) {
  * @returns {Promise<any>}
  */
 export async function delegateMissionTask(params, envOrOptions = process.env) {
-  if (!params || typeof params !== "object") {
-    throw new TypeError("delegateMissionTask requires a params object");
-  }
+  let role, title, clientRequestId, isolation, mode, target, delegateArgs;
+  try {
+    if (!params || typeof params !== "object") {
+      throw new TypeError("delegateMissionTask requires a params object");
+    }
 
-  const role = normalizeDelegateRole(/** @type {string} */ (params.role ?? params.kind ?? "implementation"));
-  const title = buildMissionTaskTitle(params);
-  const clientRequestId = buildStableClientRequestId(params);
-  const isolation = params.isolation === undefined ? "worktree" : params.isolation;
-  const mode = params.mode ?? "async";
-  const taskPrompt = String(params.task ?? params.prompt ?? params.instructions ?? title).trim();
+    role = normalizeDelegateRole(/** @type {string} */ (params.role ?? params.kind ?? "implementation"));
+    title = buildMissionTaskTitle(params);
+    clientRequestId = buildStableClientRequestId(params);
+    isolation = params.isolation === undefined ? "worktree" : params.isolation;
+    mode = params.mode ?? "async";
+    const taskPrompt = String(params.task ?? params.prompt ?? params.instructions ?? title).trim();
 
-  if (!taskPrompt) {
-    throw new Error("delegateMissionTask requires a non-empty task prompt");
-  }
+    if (!taskPrompt) {
+      throw new Error("delegateMissionTask requires a non-empty task prompt");
+    }
 
-  let target = null;
-  if (params.target && typeof params.target === "object") {
-    target = normalizeTargetFromSlot(/** @type {Record<string, unknown>} */ (params.target));
-  } else if (params.slot && typeof params.slot === "object") {
-    target = normalizeTargetFromSlot(/** @type {Record<string, unknown>} */ (params.slot));
-  } else if (params.slotConfig && typeof params.slotConfig === "object") {
-    target = normalizeTargetFromSlot(/** @type {Record<string, unknown>} */ (params.slotConfig));
-  } else if (params.modelSettings && typeof params.modelSettings === "object") {
-    target = resolveTargetFromModelSettings(
-      /** @type {Record<string, unknown>} */ (params.modelSettings),
-      String(params.kind ?? role)
-    );
-  }
+    target = null;
+    if (params.target && typeof params.target === "object") {
+      target = normalizeTargetFromSlot(/** @type {Record<string, unknown>} */ (params.target));
+    } else if (params.slot && typeof params.slot === "object") {
+      target = normalizeTargetFromSlot(/** @type {Record<string, unknown>} */ (params.slot));
+    } else if (params.slotConfig && typeof params.slotConfig === "object") {
+      target = normalizeTargetFromSlot(/** @type {Record<string, unknown>} */ (params.slotConfig));
+    } else if (params.modelSettings && typeof params.modelSettings === "object") {
+      target = resolveTargetFromModelSettings(
+        /** @type {Record<string, unknown>} */ (params.modelSettings),
+        String(params.kind ?? role)
+      );
+    }
 
-  const delegateArgs = {
-    title,
-    task: taskPrompt,
-    role,
-    isolation,
-    mode,
-    clientRequestId
-  };
+    delegateArgs = {
+      title,
+      task: taskPrompt,
+      role,
+      isolation,
+      mode,
+      clientRequestId
+    };
 
-  if (target) {
-    delegateArgs.target = target;
-  }
-  if (params.runtimeMode || params.parentRuntimeMode || params.providerRuntimeModes) {
-    const rawAutonomy = params.autonomyLevel ?? params.autonomy_level;
-    delegateArgs.runtimeMode =
-      params.parentRuntimeMode || params.providerRuntimeModes
-        ? resolveEffectiveRuntimeMode({
-            requestedMode: params.runtimeMode ? String(params.runtimeMode) : undefined,
-            autonomyLevel: rawAutonomy ? String(rawAutonomy) : undefined,
-            parentRuntimeMode: params.parentRuntimeMode
-              ? String(params.parentRuntimeMode)
-              : undefined,
-            providerRuntimeModes: Array.isArray(params.providerRuntimeModes)
-              ? params.providerRuntimeModes
-              : undefined
-          })
-        : params.runtimeMode;
-  }
-  if (params.interactionMode) {
-    delegateArgs.interactionMode = params.interactionMode;
-  }
-  if (typeof params.timeoutMs === "number") {
-    delegateArgs.timeoutMs = params.timeoutMs;
-  }
+    if (target) {
+      delegateArgs.target = target;
+    }
+    if (params.runtimeMode || params.parentRuntimeMode || params.providerRuntimeModes) {
+      const rawAutonomy = params.autonomyLevel ?? params.autonomy_level;
+      delegateArgs.runtimeMode =
+        params.parentRuntimeMode || params.providerRuntimeModes
+          ? resolveEffectiveRuntimeMode({
+              requestedMode: params.runtimeMode ? String(params.runtimeMode) : undefined,
+              autonomyLevel: rawAutonomy ? String(rawAutonomy) : undefined,
+              parentRuntimeMode: params.parentRuntimeMode
+                ? String(params.parentRuntimeMode)
+                : undefined,
+              providerRuntimeModes: Array.isArray(params.providerRuntimeModes)
+                ? params.providerRuntimeModes
+                : undefined
+            })
+          : params.runtimeMode;
+    }
+    if (params.interactionMode) {
+      delegateArgs.interactionMode = params.interactionMode;
+    }
+    if (typeof params.timeoutMs === "number") {
+      delegateArgs.timeoutMs = params.timeoutMs;
+    }
+
+  } catch (error) { throw preSendFailure(error); }
 
   const response = await callT3McpTool("delegate_task", delegateArgs, envOrOptions);
   return {
@@ -1112,9 +1113,11 @@ export async function runFeature(feature, slotConfig, missionState = {}, envOrOp
   const delegation = await delegateMissionTask(
     {
       missionId: missionState?.missionId ?? "mission",
+      clientRequestId: activeWorker.clientRequestId ?? feature.clientRequestId,
       milestoneId: feature.milestoneId ?? activeWorker.milestoneId ?? "M1",
       runId,
       featureId,
+      title: feature.dispatchTitle,
       featureTitle: feature.title ?? activeWorker.featureTitle,
       kind: feature.kind ?? activeWorker.kind ?? "worker",
       workerNumber,
@@ -1127,6 +1130,9 @@ export async function runFeature(feature, slotConfig, missionState = {}, envOrOp
   const response = delegation?.response ?? delegation;
   return {
     ...delegation,
+    missionRunId: runId,
+    runtimeTransport: "t3-delegate-task",
+    featureId,
     taskId: response?.taskId ?? delegation.taskId ?? null,
     childThreadId: response?.childThreadId ?? delegation.childThreadId ?? null,
     childRunId: response?.childRunId ?? delegation.childRunId ?? null,
@@ -1347,26 +1353,19 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
       clientRequestId
     };
 
-    const response = await callT3McpTool("t3_thread_send", sendArgs, envOrOptions);
-    return {
-      resumed: true,
-      canResume: true,
-      status: "running",
-      action: "t3_thread_send",
-      threadId: childThreadId,
-      childThreadId,
-      taskId: response?.taskId ?? activeWorker.taskId ?? null,
-      childRunId: response?.childRunId ?? activeWorker.childRunId ?? null,
-      worktreePath: preflight.path ?? String(targetWorktreePath),
-      preflight,
-      gitCheck: preflight,
-      summary: preflight.summary,
-      request: sendArgs,
-      response
-    };
+    const response = await callT3McpTool("t3_thread_send", sendArgs, envOrOptions, { expected: activeWorker, retainRaw: true });
+    const verdict = classifyControlReceipt(response, "resume", activeWorker);
+    return { ...verdict.raw, response: verdict.raw, classification: verdict.classification, identity: verdict.identity, diagnostics: verdict.diagnostics, action: "t3_thread_send", preflight, gitCheck: preflight, summary: preflight.summary, request: sendArgs,
+      ...(verdict.classification !== "confirmed" ? { code: response?.code || "RESUME_UNCONFIRMED" } : {}) };
   }
 
-  // Fallback if activeWorker had no childThreadId recorded yet
+  // A known accepted task must be reconciled, never replaced by a new task.
+  if (activeWorker.taskId || activeWorker.childRunId || params.taskId || params.childRunId) {
+    return { resumed: false, canResume: false, code: "DISPATCH_BINDING_REQUIRED",
+      error: "Retry the original dispatch binding before resuming this accepted task" };
+  }
+
+  // Only an unbound legacy worker may use the delegation fallback.
   const delegated = await delegateMissionTask(
     {
       ...activeWorker,
@@ -1377,21 +1376,9 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
     envOrOptions
   );
 
-  return {
-    resumed: true,
-    canResume: true,
-    status: "running",
-    action: "delegate_task",
-    threadId: delegated.childThreadId ?? null,
-    childThreadId: delegated.childThreadId ?? null,
-    taskId: delegated.taskId ?? activeWorker.taskId ?? null,
-    childRunId: delegated.childRunId ?? activeWorker.childRunId ?? null,
-    worktreePath: delegated.worktreePath ?? preflight.path ?? String(targetWorktreePath),
-    preflight,
-    gitCheck: preflight,
-    summary: preflight.summary,
-    response: delegated
-  };
+  const verdict = decideDispatchOutcome(delegated, { operation: "resume", expectedIdentity: activeWorker });
+  return { ...verdict.raw, response: verdict.raw, classification: verdict.controlReceipt.classification, identity: verdict.identity ?? verdict.controlReceipt.identity, diagnostics: verdict.diagnostics, dispatchDecision: verdict, action: "delegate_task", preflight, gitCheck: preflight, summary: preflight.summary,
+    ...(verdict.outcome !== "ACCEPTED" ? { code: delegated?.code || "RESUME_UNCONFIRMED" } : {}) };
 }
 
 /**

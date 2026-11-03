@@ -1,3 +1,4 @@
+import * as registeredKernel from "../kernel/index.mjs";
 import assert from "node:assert/strict";
 import { execFile as execFileCallback, execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -976,11 +977,11 @@ test("VAL-BRIDGE-002: resumeWorker checks Git tree first and calls t3_thread_sen
       { transportClient }
     );
 
-    assert.equal(resumeOutcome.resumed, true);
-    assert.equal(resumeOutcome.canResume, true);
+    assert.equal(resumeOutcome.classification, "confirmed");
+    assert.equal(resumeOutcome.gitCheck.canResume, true);
     assert.equal(resumeOutcome.status, "running");
     assert.equal(resumeOutcome.action, "t3_thread_send");
-    assert.equal(resumeOutcome.threadId, "thread-existing-worker-2");
+    assert.equal(resumeOutcome.request.threadId, "thread-existing-worker-2");
     assert.equal(resumeOutcome.gitCheck.clean, true);
     assert.match(
       resumeOutcome.summary,
@@ -1248,9 +1249,13 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
   }
 });
 
-test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call for all 7 Mission tools with mock kernel", async () => {
+test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call for all registered Mission tools with mock kernel", async () => {
   const invokedTools = [];
   const mockKernel = {
+    missionTick(missionDir, input) {
+      invokedTools.push({ tool: "MissionTick", missionDir, input });
+      return { action: { type: "sleep", reason: "mock task is working" } };
+    },
     proposeMission(missionDir, input) {
       invokedTools.push({ tool: "ProposeMission", missionDir, input });
       return { status: "awaiting_input", planAccepted: false, title: input.title };
@@ -1324,8 +1329,10 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
   });
   const listedNames = listRes.result.tools.map((t) => t.name);
   assert.deepEqual(listedNames, [
+    "MissionTick",
     "ProposeMission",
     "ApproveMissionPlan",
+    "BindFeatureDispatch",
     "StartMissionRun",
     "DismissHandoffItems",
     "EndFeatureRun",
@@ -1334,7 +1341,7 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
     "WaitForApproval"
   ]);
 
-  // 3. tools/call for all 7 tools
+  // 3. tools/call for the lifecycle tools and deterministic controller.
   const toolPayloads = [
     ["ProposeMission", { missionDir: "/tmp/mock-mission", title: "Demo Mission" }],
     ["ApproveMissionPlan", { missionDir: "/tmp/mock-mission" }],
@@ -1373,7 +1380,8 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
         addFeatures: [{ id: "f2", title: "Fix issue" }]
       }
     ],
-    ["CheckMissionStateBeforeResuming", { missionDir: "/tmp/mock-mission" }]
+    ["CheckMissionStateBeforeResuming", { missionDir: "/tmp/mock-mission" }],
+    ["MissionTick", { missionDir: "/tmp/mock-mission", observations: [] }]
   ];
 
   let reqId = 10;
@@ -1389,7 +1397,7 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
     assert.ok(parsedContent && typeof parsedContent === "object");
   }
 
-  assert.equal(invokedTools.length, 7);
+  assert.equal(invokedTools.length, 8);
   assert.equal(invokedTools[2].hasAdapter, true);
 });
 
@@ -1440,7 +1448,8 @@ test("VAL-BRIDGE-003: stdio MCP Server communicates over NDJSON streams", async 
 
   assert.equal(lines.length, 2);
   assert.equal(lines[0].id, 1);
-  assert.equal(lines[0].result.tools.length, 8);
+  assert.equal(lines[0].result.tools.length, 10);
+  assert.ok(lines[0].result.tools.some(tool => tool.name === "MissionTick"));
   assert.equal(lines[1].id, 2);
   assert.equal(lines[1].result.structuredContent.planAccepted, true);
 });
@@ -1544,20 +1553,47 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
   }
 });
 
+// These lifecycle fixtures enter the runtime through a real public callback.
+async function execRegisteredRuntime(node, args, options) {
+  const dir = args[args.indexOf('--mission-dir') + 1];
+  const payload = JSON.parse(args[args.indexOf('--json') + 1]);
+  const flat = path.join(dir, 'state.json');
+  const prior = fs.existsSync(flat) ? JSON.parse(fs.readFileSync(flat, 'utf8')) : null;
+  if (!fs.existsSync(flat)) fs.writeFileSync(flat, '{}');
+  registeredKernel.proposeMission(dir, { missionId: payload.missionId, repoPath: dir, features: [payload.feature], modelSettings: { worker: payload.slotConfig ?? { providerInstanceId: 'codex', model: 'gpt-6.1-sol', options: {} } } });
+  registeredKernel.approveMissionPlan(dir);
+  await registeredKernel.startMissionRun(dir);
+  const state = registeredKernel.loadState(dir), doc = registeredKernel.loadFeaturesDoc(dir);
+  const selectedId = state.activeWorker.runId;
+  state.activeWorker.runId = payload.runId;
+  state.sessions = state.sessions.map(row => row.runId === selectedId ? { ...row, runId: payload.runId } : row);
+  doc.features[0].runId = payload.runId;
+  registeredKernel.saveState(dir, state); registeredKernel.saveFeaturesDoc(dir, doc);
+  let stdout;
+  await registeredKernel.startMissionRun(dir, {}, { runFeature: async (feature, slotConfig, current) => {
+    const runtime = { ...payload, missionId: current.missionId, runId: feature.runId, feature, slotConfig };
+    const actualArgs = [...args]; actualArgs[actualArgs.indexOf('--json') + 1] = JSON.stringify(runtime);
+    stdout = execFileSync(node, actualArgs, options);
+    return JSON.parse(stdout);
+  } });
+  if (prior && !prior.missionId) fs.writeFileSync(flat, JSON.stringify(prior));
+  return stdout;
+}
+
 test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllable LocalWorkerDaemon, transitions on PauseWorkerRuntime/ResumeWorkerRuntime, and self-terminates when missionDir is removed", async () => {
   const tempMissionDir = createTempDir("t3-runtime-cli-");
   let spawnedPid = null;
   try {
     const cleanEnv = { ...process.env, T3_ACP_MCP_NODE: "" };
 
-    // Confirm tools/list returns all 8 MCP tools (including WaitForApproval)
+    // Confirm tools/list includes the controller alongside the existing tools.
     const listStdout = execFileSync(process.execPath, [CLI_PATH, "tools/list"], {
       env: cleanEnv,
       encoding: "utf8"
     });
     const listParsed = JSON.parse(listStdout);
-    assert.equal(listParsed.tools.length, 8);
-    assert.equal(MISSION_TOOLS.length, 8);
+    assert.equal(listParsed.tools.length, 10);
+    assert.equal(MISSION_TOOLS.length, 10);
 
     // Default DispatchWorkerRuntime (without T3_ACP_MCP_NODE and without allowLocalDaemon) sets dispatchPending: true and spawns NO daemon
     const defaultDispatchStdout = execFileSync(
@@ -1591,7 +1627,7 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
     assert.equal(defaultDispatchRes.daemonStateFile, undefined);
 
     // 1. DispatchWorkerRuntime with --local-worker-daemon spawns a live detached LocalWorkerDaemon
-    const dispatchStdout = execFileSync(
+    const dispatchStdout = await execRegisteredRuntime(
       process.execPath,
       [
         CLI_PATH,
@@ -1786,7 +1822,7 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
       "utf8"
     );
 
-    const dispatchStdout = execFileSync(
+    const dispatchStdout = await execRegisteredRuntime(
       process.execPath,
       [
         CLI_PATH,
@@ -1894,7 +1930,7 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
       }
     );
 
-    // In-memory activeWorker (without workerPid/daemonStateFile/runtimeTransport: "bridge-cli-subprocess") still succeeds
+    // In-memory IDs do not confirm runtime Pause or Resume without transport.
     const inMemoryPauseOut = execFileSync(
       process.execPath,
       [
@@ -1912,7 +1948,10 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
       ],
       { env: cleanEnv, encoding: "utf8" }
     );
-    assert.equal(JSON.parse(inMemoryPauseOut).paused, true);
+    const inMemoryPause = JSON.parse(inMemoryPauseOut);
+    assert.equal(inMemoryPause.paused, false);
+    assert.equal(inMemoryPause.code, "NO_T3_TRANSPORT");
+    for (const key of ["workerPid", "daemonStateFile", "daemonStatus"]) assert.equal(Object.hasOwn(inMemoryPause, key), false);
 
     const inMemoryResumeOut = execFileSync(
       process.execPath,
@@ -1932,10 +1971,11 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
       ],
       { env: cleanEnv, encoding: "utf8" }
     );
-    assert.equal(JSON.parse(inMemoryResumeOut).resumed, true);
+    assert.equal(JSON.parse(inMemoryResumeOut).resumed, false);
+    assert.equal(JSON.parse(inMemoryResumeOut).code, "NO_T3_TRANSPORT");
 
     // Spawn a second daemon and verify it self-terminates when state.json records completed session for runId
-    const dispatchStdout2 = execFileSync(
+    const dispatchStdout2 = await execRegisteredRuntime(
       process.execPath,
       [
         CLI_PATH,

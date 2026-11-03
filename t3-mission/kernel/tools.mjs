@@ -1,7 +1,10 @@
+import { commandTransaction } from './mission-transaction.mjs';
+import { isRemoteWorker, signalOwnedLocalWorker } from "./worker-process.mjs";
 import fs from "node:fs";
 import {
   ASSERTION_STATUSES,
   createInitialState,
+  approvePlanState,
   inferFeatureKind,
   isNonEmptyLeftUndone,
   isValidatorFeature,
@@ -27,7 +30,7 @@ import {
   writeFileAtomicSync,
 } from "./store.mjs";
 
-export function proposeMission(missionDir, input = {}) {
+function proposeMissionImpl(missionDir, input = {}) {
   const paths = ensureMissionDir(missionDir);
   const existingState = tryLoadState(missionDir);
   const existingSettings = loadModelSettings(missionDir);
@@ -150,14 +153,17 @@ export function proposeMission(missionDir, input = {}) {
   };
 }
 
-export function approveMissionPlan(missionDir) {
-  const state = loadState(missionDir);
-  if (state.planAccepted === true) {
+function approveMissionPlanImpl(missionDir) {
+  const previous = loadState(missionDir);
+  const state = approvePlanState(previous);
+  const awaitingPlanApproval = ["planning", "awaiting_input"].includes(state.status);
+  if (state === previous) {
     return { ...state, state };
   }
-  state.planAccepted = true;
-  if (!state.activeWorker && state.status !== "running" && state.status !== "paused") {
-    state.status = "orchestrator_turn";
+  if (awaitingPlanApproval || (!state.activeWorker && state.status !== "running" && state.status !== "paused")) {
+    state.status = ["running", "paused"].includes(state.activeWorker?.status)
+      ? state.activeWorker.status
+      : "orchestrator_turn";
   }
   state.revision = (state.revision || 1) + 1;
   saveState(missionDir, state);
@@ -175,7 +181,7 @@ export function approveMissionPlan(missionDir) {
   };
 }
 
-export function rejectMissionPlan(missionDir, feedback = "") {
+function rejectMissionPlanImpl(missionDir, feedback = "") {
   const state = loadState(missionDir);
   state.planAccepted = false;
   state.status = "planning";
@@ -216,7 +222,7 @@ function doesDismissalMatchPending(pending, dismissal) {
   );
 }
 
-export function dismissHandoffItems(missionDir, { dismissals } = {}) {
+function dismissHandoffItemsImpl(missionDir, { dismissals } = {}) {
   const validated = validateDismissals(dismissals);
   const state = loadState(missionDir);
   const featuresDoc = loadFeaturesDoc(missionDir);
@@ -278,7 +284,7 @@ export function dismissHandoffItems(missionDir, { dismissals } = {}) {
   };
 }
 
-export function updateMissionFeatures(
+function updateMissionFeaturesImpl(
   missionDir,
   {
     features: replacementFeatures,
@@ -549,7 +555,7 @@ export function updateMissionFeatures(
   };
 }
 
-export function checkMilestoneCompletionAndInjectValidation(missionDir) {
+function checkMilestoneCompletionAndInjectValidationImpl(missionDir) {
   const state = loadState(missionDir);
   const featuresDoc = loadFeaturesDoc(missionDir);
   const modelSettings = loadModelSettings(missionDir);
@@ -684,7 +690,7 @@ export function checkMilestoneCompletionAndInjectValidation(missionDir) {
   };
 }
 
-export function endFeatureRun(missionDir, input = {}) {
+function endFeatureRunImpl(missionDir, input = {}) {
   const runId = typeof input?.runId === "string" ? input.runId.trim() : "";
   const featureId =
     typeof input?.featureId === "string" ? input.featureId.trim() : "";
@@ -750,7 +756,7 @@ export function endFeatureRun(missionDir, input = {}) {
 
   const feature = featuresDoc.features[featureIdx];
   const nowIso = new Date().toISOString();
-  const isVal = isValidatorFeature(feature);
+  const isVal = isValidatorFeature(feature) && !handoff.providerFailure;
   const milestoneAssertions = (state.assertions || []).filter(
     (a) => a.milestoneId === feature.milestoneId
   );
@@ -820,6 +826,7 @@ export function endFeatureRun(missionDir, input = {}) {
           ...assertion,
           status: nextStatus,
           ...(Object.keys(stageResults).length > 0 ? { stageResults } : {}),
+          ...(isVal && handoff.testedSha ? { stageTestedSha: { ...assertion.stageTestedSha, [stageKey]: handoff.testedSha } } : {}),
         };
       }
       return assertion;
@@ -832,17 +839,14 @@ export function endFeatureRun(missionDir, input = {}) {
       hasMissingValidatorAssertions ||
       input.validatorsPassed === false);
 
+  if (isVal && handoff.testedSha) feature.validationState = successState === "success" && !validatorFailed ? "passed" : "failed";
+
   if (successState === "success") {
     feature.status = validatorFailed ? "failed" : "completed";
   } else {
     feature.status = "pending";
   }
 
-  if (feature.daemonStatus || state.activeWorker?.daemonStatus) {
-    feature.daemonStatus = "stopped";
-  }
-
-  featuresDoc.features[featureIdx] = normalizeFeature(feature, featureIdx);
 
   const discoveredIssues = Array.isArray(handoff.discoveredIssues)
     ? handoff.discoveredIssues
@@ -953,37 +957,15 @@ export function endFeatureRun(missionDir, input = {}) {
     input.returnToOrchestrator === true ||
     hasAttentionItems;
 
+  if (isRemoteWorker(state.activeWorker)) {
+    for (const record of [state.activeWorker, feature, ...(state.sessions || []).filter(row => row.runId === state.activeWorker.runId)])
+      for (const key of ["workerPid", "daemonStateFile", "daemonStatus"]) delete record[key];
+  }
   const completedWorker = state.activeWorker;
   const workerNumber = completedWorker.workerNumber ?? 1;
 
-  const workerPidToTerminate =
-    completedWorker?.workerPid ?? feature?.workerPid;
-  if (
-    workerPidToTerminate &&
-    typeof workerPidToTerminate === "number" &&
-    workerPidToTerminate > 0 &&
-    workerPidToTerminate !== process.pid
-  ) {
-    try {
-      process.kill(workerPidToTerminate, "SIGTERM");
-    } catch {
-      // Ignore if process already exited
-    }
-  }
-  const daemonStateFileToRemove =
-    completedWorker?.daemonStateFile ?? feature?.daemonStateFile;
-  if (
-    daemonStateFileToRemove &&
-    typeof daemonStateFileToRemove === "string"
-  ) {
-    try {
-      if (fs.existsSync(daemonStateFileToRemove)) {
-        fs.unlinkSync(daemonStateFileToRemove);
-      }
-    } catch {
-      // Ignore if file already removed
-    }
-  }
+  const ownedWorkerStopped = signalOwnedLocalWorker(completedWorker, missionDir, "SIGTERM");
+  if (ownedWorkerStopped) feature.daemonStatus = "stopped";
 
   if (Array.isArray(state.sessions)) {
     state.sessions = state.sessions.map((s) =>
@@ -996,7 +978,7 @@ export function endFeatureRun(missionDir, input = {}) {
               !hasMissingValidatorAssertions
                 ? "completed"
                 : "failed",
-            ...(s.daemonStatus || completedWorker?.daemonStatus
+            ...(ownedWorkerStopped
               ? { daemonStatus: "stopped" }
               : {}),
             endedAt: nowIso,
@@ -1017,6 +999,7 @@ export function endFeatureRun(missionDir, input = {}) {
     state.status = "orchestrator_turn";
   }
 
+  featuresDoc.features[featureIdx] = normalizeFeature(feature, featureIdx);
   saveState(missionDir, state);
   saveFeaturesDoc(missionDir, {
     ...featuresDoc,
@@ -1092,4 +1075,14 @@ export function endFeatureRun(missionDir, input = {}) {
     feature: featuresDoc.features[featureIdx],
     state: loadState(missionDir),
   };
+}
+export function proposeMission(dir, ...args) { return commandTransaction(dir, 'proposeMission', args, () => proposeMissionImpl(dir, ...args), { commandId: args[0]?.commandId }); }
+export function approveMissionPlan(dir, ...args) { return commandTransaction(dir, 'approveMissionPlan', args, () => approveMissionPlanImpl(dir, ...args), { commandId: args[0]?.commandId }); }
+export function rejectMissionPlan(dir, feedback = "", options = {}) { return commandTransaction(dir, 'rejectMissionPlan', { feedback, ...options }, () => rejectMissionPlanImpl(dir, feedback), { commandId: options.commandId }); }
+export function dismissHandoffItems(dir, ...args) { return commandTransaction(dir, 'dismissHandoffItems', args, () => dismissHandoffItemsImpl(dir, ...args), { commandId: args[0]?.commandId }); }
+export function updateMissionFeatures(dir, ...args) { return commandTransaction(dir, 'updateMissionFeatures', args, () => updateMissionFeaturesImpl(dir, ...args), { commandId: args[0]?.commandId }); }
+export function checkMilestoneCompletionAndInjectValidation(dir, ...args) { return commandTransaction(dir, 'checkMilestoneCompletionAndInjectValidation', args, () => checkMilestoneCompletionAndInjectValidationImpl(dir, ...args), { commandId: args[0]?.commandId }); }
+export function endFeatureRun(dir, input = {}) {
+  const commandId = input.commandId ?? (input.runId && input.featureId ? `EndFeatureRun:${input.runId}:${input.featureId}` : undefined);
+  return commandTransaction(dir, 'endFeatureRun', input, () => endFeatureRunImpl(dir, input), { commandId });
 }

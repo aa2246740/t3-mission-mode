@@ -528,7 +528,13 @@ test("VAL-HUD-003: POST /api/mission/model-slots hot-swaps Validator model from 
 test("VAL-HUD-004: POST /api/mission/pause and POST /api/mission/resume reproduce Worker #28 pause & resume closed loop", async (t) => {
   const workspaceDir = createTempMissionWorkspace();
   const { dotMission } = writeMissionFixture(workspaceDir);
-  const hud = await createMissionHudServer({ missionDir: workspaceDir, port: 0 });
+  const hud = await createMissionHudServer({ missionDir: workspaceDir, port: 0,
+    dispatchAdapter: {
+      async pauseWorker() { return { paused: true }; },
+      async pauseMission() { return { paused: true }; },
+      async resumeWorker() { return { resumed: true }; },
+    },
+  });
   t.after(async () => {
     await hud.close();
     fs.rmSync(workspaceDir, { recursive: true, force: true });
@@ -579,7 +585,7 @@ test("VAL-HUD-004: POST /api/mission/pause and POST /api/mission/resume reproduc
   assert.equal(resumeData.state.activeWorker.resumePending, true);
 
   // 3. Verify complete progress_log.jsonl sequence:
-  // Worker #28 paused -> Mission paused -> Mission resumed -> Run started: Resume ...
+  // Mission paused -> Worker #28 paused -> Mission resumed -> Run started: Resume ...
   const logLines = fs
     .readFileSync(path.join(dotMission, "progress_log.jsonl"), "utf8")
     .trim()
@@ -591,17 +597,17 @@ test("VAL-HUD-004: POST /api/mission/pause and POST /api/mission/resume reproduc
     m.includes("Worker #28 paused M2 material test gaps")
   );
   const idxMissionPaused = messages.findIndex(
-    (m, i) => i > idxWorkerPaused && m === "Mission paused"
+    (m) => m === "Mission paused"
   );
   const idxMissionResumed = messages.findIndex(
-    (m, i) => i > idxMissionPaused && m === "Mission resumed"
+    (m, i) => i > idxWorkerPaused && m === "Mission resumed"
   );
   const idxRunStarted = messages.findIndex(
     (m, i) => i > idxMissionResumed && m.startsWith("Run started: Resume")
   );
 
   assert.ok(idxWorkerPaused !== -1, "Expected Worker #28 paused log entry");
-  assert.ok(idxMissionPaused > idxWorkerPaused, "Expected Mission paused after Worker #28 paused");
+  assert.ok(idxMissionPaused !== -1 && idxWorkerPaused > idxMissionPaused, "Expected Mission paused before Worker #28 paused");
   assert.ok(idxMissionResumed > idxMissionPaused, "Expected Mission resumed after Mission paused");
   assert.ok(idxRunStarted > idxMissionResumed, "Expected Run started: Resume after Mission resumed");
 });
@@ -662,13 +668,19 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
     JSON.stringify(staleRunningState, null, 2) + "\n"
   );
 
-  const hud = await createMissionHudServer({ missionDir: dotMission, port: 0 });
+  const hud = await createMissionHudServer({ missionDir: dotMission, port: 0,
+    dispatchAdapter: { async resumeWorker() { return { resumed: true }; } },
+  });
   t.after(async () => {
     await hud.close();
     fs.rmSync(gitRepoDir, { recursive: true, force: true });
   });
 
-  // Verify I-04: Startup reconciled running state to paused
+  // The HUD only observes. Recovery reconciliation is an explicit kernel command.
+  assert.equal((await (await fetch(`${hud.url}/api/mission/state`)).json()).state.status, "running");
+  const { reconcileMissionOnLoad } = await import("../kernel/index.mjs");
+  reconcileMissionOnLoad(dotMission);
+  // Verify I-04: explicit recovery reconciles stale state to paused
   const stateRes = await fetch(`${hud.url}/api/mission/state`);
   const snap = await stateRes.json();
   assert.equal(snap.state.status, "paused");
@@ -1170,7 +1182,9 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
   const stateAfterFailedPause = JSON.parse(
     fs.readFileSync(path.join(p22DotMission, "state.json"), "utf8")
   );
-  assert.equal(stateAfterFailedPause.status, "running");
+  assert.equal(stateAfterFailedPause.status, "paused");
+  assert.equal(stateAfterFailedPause.activeWorker.status, "running");
+  assert.equal(stateAfterFailedPause.pauseControl.phase, "unknown");
 
   // Set state to paused and test resumeWorker failure
   runningState.status = "paused";
@@ -1192,7 +1206,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
   );
   assert.equal(stateAfterFailedResume.status, "paused");
 
-  // --- P23: Across all 4 routes (approve, model-slots, pause, resume), onCommand runs BEFORE disk writes ---
+  // Pause commits its gate before notification; the other commands notify before their business commit.
   for (const route of ["approve", "model-slots", "pause", "resume"]) {
     const p23Dir = createTempMissionWorkspace();
     execFileSync("git", ["init", "-q", p23Dir]);
@@ -1324,10 +1338,16 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     assert.equal(during.type, route);
     assert.equal(
       during.diskAlreadyChanged,
-      false,
+      route === "pause",
       `Expected diskAlreadyChanged === false during onCommand for ${route}`
     );
-    assert.deepEqual(after, before, `Expected disk files unchanged after failed ${route}`);
+    if (route === "pause") {
+      const previous = JSON.parse(before.state), current = JSON.parse(after.state);
+      assert.equal(current.status, "paused"); assert.equal(current.pauseControl.phase, "unknown");
+      assert.deepEqual(current.activeWorker, previous.activeWorker); assert.deepEqual(current.sessions, previous.sessions);
+      assert.equal(after.features, before.features); assert.equal(after.modelSettings, before.modelSettings);
+      assert.equal(after.progressLog.startsWith(before.progressLog), true);
+    } else assert.deepEqual(after, before, `Expected disk files unchanged after failed ${route}`);
 
     await srv23.close();
     fs.rmSync(p23Dir, { recursive: true, force: true });
@@ -1411,11 +1431,15 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     const rejectBody = await rejectRes.json();
     assert.equal(rejectBody.ok, false);
     assert.match(rejectBody.error, /Runtime explicitly refused approval dispatch/);
-    assert.deepEqual(snapFiles(), beforeFiles, `Expected disk unchanged when ${methodKey} rejects`);
+    const committed = snapFiles();
+    assert.equal(committed.modelSettings, beforeFiles.modelSettings);
+    assert.equal(committed.progressLog.startsWith(beforeFiles.progressLog), true);
 
     const stateOnDisk = JSON.parse(fs.readFileSync(path.join(r4DotM, "state.json"), "utf8"));
-    assert.equal(stateOnDisk.planAccepted, false);
-    assert.equal(stateOnDisk.status, "awaiting_input");
+    assert.equal(stateOnDisk.planAccepted, true);
+    assert.equal(stateOnDisk.status, "running");
+    assert.equal(stateOnDisk.activeWorker.dispatchPending, true);
+    assert.equal(stateOnDisk.sessions.length, 1);
 
     await srvReject.close();
     fs.rmSync(r4ApproveDir, { recursive: true, force: true });
@@ -1590,11 +1614,15 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     assert.equal(rejectBody.ok, false);
     assert.equal(rejectBody.code, "APPROVAL_DISPATCH_REJECTED");
     assert.equal(rejectBody.error, "Rejected");
-    assert.deepEqual(snapFiles(), beforeFiles, `Expected disk unchanged when ${methodKey} returns accepted:false`);
+    const committed = snapFiles();
+    assert.equal(committed.modelSettings, beforeFiles.modelSettings);
+    assert.equal(committed.progressLog.startsWith(beforeFiles.progressLog), true);
 
     const stateOnDisk = JSON.parse(fs.readFileSync(path.join(r5DotM, "state.json"), "utf8"));
-    assert.equal(stateOnDisk.planAccepted, false);
-    assert.equal(stateOnDisk.status, "awaiting_input");
+    assert.equal(stateOnDisk.planAccepted, true);
+    assert.equal(stateOnDisk.status, "running");
+    assert.equal(stateOnDisk.activeWorker.dispatchPending, true);
+    assert.equal(stateOnDisk.sessions.length, 1);
 
     await srvReject.close();
     fs.rmSync(r5ApproveDir, { recursive: true, force: true });
@@ -1648,16 +1676,20 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
   );
 
   const daemonStateFilePath = path.join(r5DaemonDotM, "worker-daemon-state.json");
+  let metadataDaemon;
   const srvDaemon = await createMissionHudServer({
     missionDir: r5DaemonDir,
     port: 0,
     runtimeAdapter: {
-      runFeature: async () => ({
-        ok: true,
-        dispatched: true,
-        daemonStateFile: daemonStateFilePath,
-        daemonStatus: "running",
-      }),
+      runFeature: async (feature, worker) => {
+        metadataDaemon = cp.spawn(process.execPath, [fileURLToPath(new URL("../bridge/cli.mjs", import.meta.url)),
+          "LocalWorkerDaemon", "--mission-dir", r5DaemonDir, "--repo-path", r5DaemonDir,
+          "--run-id", worker.runId, "--feature-id", feature.id, "--state-file", daemonStateFilePath], { stdio: "ignore" });
+        for (let attempt = 0; attempt < 100 && !fs.existsSync(daemonStateFilePath); attempt++) await new Promise(resolve => setTimeout(resolve, 10));
+        assert.equal(fs.existsSync(daemonStateFilePath), true);
+        return { ok: true, dispatched: true, runtimeTransport: "bridge-cli-subprocess",
+          workerPid: metadataDaemon.pid, daemonStateFile: daemonStateFilePath, daemonStatus: "running" };
+      },
       pauseWorker: async () => ({
         ok: true,
         paused: true,
@@ -1689,6 +1721,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     assert.equal(resumedState.activeWorker.daemonStatus, "resumed");
   } finally {
     await srvDaemon.close();
+    if (metadataDaemon?.exitCode === null && metadataDaemon?.signalCode === null) metadataDaemon.kill("SIGTERM");
     fs.rmSync(r5DaemonDir, { recursive: true, force: true });
   }
 });
@@ -1793,11 +1826,13 @@ test("Round 6 Scrutiny Fix (F03-dead-worker-control-success): Killing default HU
   const deadPauseBody = await deadPauseRes.json();
   assert.equal(deadPauseBody.ok, false);
   assert.equal(deadPauseBody.code, "WORKER_NOT_ALIVE");
-  assert.deepEqual(
-    snapFourFiles(),
-    beforePauseFiles,
-    "Expected all 4 .mission/* files unchanged after rejected pause"
-  );
+  const afterPause = snapFourFiles();
+  const gate = JSON.parse(afterPause.state), originalWorker = JSON.parse(beforePauseFiles.state);
+  assert.equal(gate.status, "paused"); assert.equal(gate.pauseControl.phase, "rejected");
+  assert.equal(gate.pauseControl.code, "WORKER_NOT_ALIVE");
+  assert.deepEqual(gate.activeWorker, originalWorker.activeWorker); assert.deepEqual(gate.sessions, originalWorker.sessions);
+  assert.equal(afterPause.features, beforePauseFiles.features); assert.equal(afterPause.modelSettings, beforePauseFiles.modelSettings);
+  assert.equal(afterPause.progressLog.startsWith(beforePauseFiles.progressLog), true);
 
   // 2. Transition state on disk to paused (as if previously paused before daemon died) and verify POST /api/mission/resume also rejects with 409 and preserves all 4 .mission/* files
   const pausedState = structuredClone(runningState);

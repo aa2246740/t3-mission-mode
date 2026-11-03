@@ -191,10 +191,16 @@ function synthesizeSessions(state, features) {
           status === "running" ? "now" : status === "pending" ? "queued" : "done"
         ),
       childThreadId,
+      kind: s.kind || matchedFeature?.kind || (role === "Validator" ? "scrutiny" : "implementation"),
+      model: s.model || matchedFeature?.model || null,
+      providerInstanceId: s.providerInstanceId || matchedFeature?.providerInstanceId || null,
       handoff: {
         salientSummary:
           s.salientSummary ||
           h.salientSummary ||
+          s.whatWasImplemented ||
+          h.whatWasImplemented ||
+          matchedFeature?.description ||
           (status === "running"
             ? `Running ${title}`
             : status === "paused"
@@ -206,16 +212,25 @@ function synthesizeSessions(state, features) {
           s.whatWasImplemented ||
           h.whatWasImplemented ||
           "No handoff recorded yet.",
-        commandsRun: Array.isArray(s.commandsRun)
+        commandsRun: Array.isArray(s.commandsRun) && s.commandsRun.length
           ? s.commandsRun
-          : Array.isArray(h.commandsRun)
+          : Array.isArray(h.commandsRun) && h.commandsRun.length
             ? h.commandsRun
-            : [],
+            : Array.isArray(h.tests)
+              ? h.tests
+              : [],
         discoveredIssues: Array.isArray(s.discoveredIssues)
           ? s.discoveredIssues
           : Array.isArray(h.discoveredIssues)
             ? h.discoveredIssues
             : [],
+        whatWasLeftUndone: Array.isArray(h.whatWasLeftUndone)
+          ? h.whatWasLeftUndone
+          : [],
+        commit: h.commit || null,
+        branch: h.branch || null,
+        testedSha: h.testedSha || null,
+        validatorsPassed: h.validatorsPassed ?? null,
       },
     });
   }
@@ -273,17 +288,32 @@ function synthesizeSessions(state, features) {
         status === "running" ? "now" : status === "pending" ? "queued" : "done"
       ),
       childThreadId,
+      kind: f.kind || (role === "Validator" ? "scrutiny" : "implementation"),
+      model: f.model || null,
+      providerInstanceId: f.providerInstanceId || null,
       handoff: {
         salientSummary:
           h.salientSummary ||
+          h.whatWasImplemented ||
           f.description ||
           (status === "running" ? `Running ${title}` : `Scheduled ${title}`),
         whatWasImplemented:
           h.whatWasImplemented || "No handoff recorded yet.",
-        commandsRun: Array.isArray(h.commandsRun) ? h.commandsRun : [],
+        commandsRun: Array.isArray(h.commandsRun) && h.commandsRun.length
+          ? h.commandsRun
+          : Array.isArray(h.tests)
+            ? h.tests
+            : [],
         discoveredIssues: Array.isArray(h.discoveredIssues)
           ? h.discoveredIssues
           : [],
+        whatWasLeftUndone: Array.isArray(h.whatWasLeftUndone)
+          ? h.whatWasLeftUndone
+          : [],
+        commit: h.commit || null,
+        branch: h.branch || null,
+        testedSha: h.testedSha || null,
+        validatorsPassed: h.validatorsPassed ?? null,
       },
     });
   }
@@ -858,6 +888,13 @@ function renderFeaturesAndAssertions(snapshot) {
                   <span class="feature-kind-pill mono">${escapeHtml(kindLabel)}</span>
                   ${modelBadgeHtml}
                 </div>
+                ${
+                  f.lastHandoff?.whatWasImplemented
+                    ? `<div class="feature-handoff-preview">${escapeHtml(f.lastHandoff.whatWasImplemented)}</div>`
+                    : f.description
+                      ? `<div class="feature-handoff-preview muted">${escapeHtml(f.description)}</div>`
+                      : ""
+                }
                 ${valPillsHtml}
               </div>
             </div>
@@ -1045,10 +1082,12 @@ function renderCenterColumn(snapshot) {
       ? sessions.find((s) => s.id === hudState.selectedSessionId) || null
       : null;
 
+  const boardEl = document.getElementById("execution-board");
   if (handoffEl) {
     if (selectedSession) {
       inspectorEl?.classList.remove("hidden");
       handoffEl.classList.remove("hidden");
+      boardEl?.classList.add("hidden");
       const threadUri = selectedSession.childThreadId
         ? `t3-thread://v1/${selectedSession.childThreadId}`
         : "Unavailable";
@@ -1058,12 +1097,29 @@ function renderCenterColumn(snapshot) {
       const issues = Array.isArray(selectedSession.handoff?.discoveredIssues)
         ? selectedSession.handoff.discoveredIssues
         : [];
+      const leftUndone = Array.isArray(selectedSession.handoff?.whatWasLeftUndone)
+        ? selectedSession.handoff.whatWasLeftUndone
+        : [];
+      const isValidator = selectedSession.role === "Validator";
+      const kindBadge = isValidator
+        ? (selectedSession.kind === "user_testing" ? "User-Testing Validator" : "Scrutiny Validator")
+        : "Implementation Worker";
+      const shaLabel = isValidator
+        ? (selectedSession.handoff?.testedSha || selectedSession.handoff?.commit || "")
+        : (selectedSession.handoff?.commit || "");
+      const branchLabel = selectedSession.handoff?.branch || "";
+      const modelMeta = [selectedSession.providerInstanceId, selectedSession.model].filter(Boolean).join(" / ");
 
       handoffEl.innerHTML = `
         <div class="handoff-header">
           <div>
-            <span class="status-pill ${escapeHtml(selectedSession.status)}">${escapeHtml(selectedSession.role)} \u00b7 ${escapeHtml(selectedSession.status)}</span>
-            <h3 class="handoff-title" style="margin-top:6px;">${escapeHtml(selectedSession.label)}</h3>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <span class="status-pill ${escapeHtml(selectedSession.status)}">${escapeHtml(kindBadge)} \u00b7 ${escapeHtml(selectedSession.status)}</span>
+              ${modelMeta ? `<span class="feature-kind-pill mono">${escapeHtml(modelMeta)}</span>` : ""}
+              ${shaLabel ? `<span class="feature-kind-pill mono" title="${escapeHtml(shaLabel)}">${isValidator ? "Audited SHA" : "Commit"}: ${escapeHtml(shaLabel.substring(0, 8))}</span>` : ""}
+              ${branchLabel ? `<span class="feature-kind-pill mono">${escapeHtml(branchLabel)}</span>` : ""}
+            </div>
+            <h3 class="handoff-title" style="margin-top:8px;">${escapeHtml(selectedSession.label)}</h3>
           </div>
           <div class="handoff-link-chip">
             <code class="mono" id="handoff-thread-uri">${escapeHtml(threadUri)}</code>
@@ -1076,44 +1132,46 @@ function renderCenterColumn(snapshot) {
               ${hudState.copiedThreadUri === threadUri ? "\u2713 Copied" : "Copy URI"}
             </button>
             <button type="button" class="strip-btn" id="btn-back-orchestrator">
-              \u2190 Back to Board
+              \u2190 Back to Overview
             </button>
           </div>
         </div>
 
         <div>
-          <div class="handoff-section-title">Salient Summary</div>
+          <div class="handoff-section-title">${isValidator ? "Validation Verdict & Summary" : "Salient Summary"}</div>
           <div class="handoff-box" id="handoff-salient-summary">
             ${escapeHtml(selectedSession.handoff?.salientSummary || "No summary recorded.")}
           </div>
         </div>
 
         <div>
-          <div class="handoff-section-title">What Was Implemented</div>
+          <div class="handoff-section-title">${isValidator ? "Detailed Audit & Sandbox Verification Output" : "What Was Implemented (Agent Output)"}</div>
           <div class="handoff-box" id="handoff-what-was-implemented">
             ${escapeHtml(selectedSession.handoff?.whatWasImplemented || "No handoff recorded yet.")}
           </div>
         </div>
 
         <div>
-          <div class="handoff-section-title">Commands Run (${commands.length})</div>
+          <div class="handoff-section-title">${isValidator ? "Verification Checks Executed" : "Commands & Tests Run"} (${commands.length})</div>
           <div class="handoff-box mono" id="handoff-commands-run">
             ${
               commands.length
                 ? commands
-                    .map((cmd) =>
-                      typeof cmd === "string"
-                        ? `$ ${escapeHtml(cmd)}`
-                        : `$ ${escapeHtml(cmd.command || JSON.stringify(cmd))}`
-                    )
-                    .join("<br/>")
+                    .map((cmd) => {
+                      if (typeof cmd === "string") {
+                        return `<div class="cmd-line">$ ${escapeHtml(cmd)}</div>`;
+                      }
+                      const st = String(cmd.status || "passed").toUpperCase();
+                      return `<div class="cmd-line"><span class="cmd-status-badge ${escapeHtml(String(cmd.status || "passed").toLowerCase())}">[${escapeHtml(st)}]</span> $ ${escapeHtml(cmd.command || JSON.stringify(cmd))}</div>`;
+                    })
+                    .join("")
                 : "No commands recorded yet."
             }
           </div>
         </div>
 
         <div>
-          <div class="handoff-section-title">Discovered Issues (${issues.length})</div>
+          <div class="handoff-section-title">${isValidator ? "Audit Findings & Discovered Issues" : "Discovered Issues"} (${issues.length})</div>
           <div class="handoff-box" id="handoff-discovered-issues">
             ${
               issues.length
@@ -1128,6 +1186,14 @@ function renderCenterColumn(snapshot) {
             }
           </div>
         </div>
+        ${
+          leftUndone.length
+            ? `<div>
+                <div class="handoff-section-title">Notes / Deferred Items (${leftUndone.length})</div>
+                <div class="handoff-box">${leftUndone.map((item) => `\u2022 ${escapeHtml(typeof item === "string" ? item : JSON.stringify(item))}`).join("<br/>")}</div>
+              </div>`
+            : ""
+        }
       `;
 
       handoffEl.querySelector("#btn-back-orchestrator")?.addEventListener("click", () => {
@@ -1149,6 +1215,7 @@ function renderCenterColumn(snapshot) {
     } else {
       inspectorEl?.classList.add("hidden");
       handoffEl.classList.add("hidden");
+      boardEl?.classList.remove("hidden");
     }
   }
 
@@ -1293,22 +1360,46 @@ function renderRightColumn(snapshot) {
         barsEl.style.display = "";
         barsEl.removeAttribute?.("aria-hidden");
 
-        let barsHtml = "";
+        const effortLabels = {
+          1: "Minimal",
+          2: "Low",
+          3: "Medium",
+          4: "High",
+          5: "Max",
+        };
+        let optionsHtml = "";
+        let legacyBtnsHtml = "";
         for (let level = 1; level <= 5; level++) {
           const isActive = level <= currentEffort;
+          const isSelected = level === currentEffort;
           const levelName = effortLevelNames[level] || "high";
-          barsHtml += `
-          <button
-            type="button"
-            class="effort-bar-btn ${isActive ? "filled active" : ""}"
-            data-slot="${slot}"
-            data-effort="${level}"
-            title="Reasoning Effort: ${levelName} (${level}/5)"
-            aria-label="${slot} effort ${level}"
-          ></button>
-        `;
+          const displayLabel = effortLabels[level] || levelName;
+          optionsHtml += `<option value="${level}" ${isSelected ? "selected" : ""}>${displayLabel}</option>`;
+          legacyBtnsHtml += `<button type="button" class="effort-bar-btn ${isActive ? "filled active" : ""}" data-slot="${slot}" data-effort="${level}" title="Reasoning Effort: ${levelName} (${level}/5)" aria-label="${slot} effort ${level}" style="display:none;"></button>`;
         }
-        barsEl.innerHTML = barsHtml;
+        barsEl.innerHTML = `
+          <select
+            class="slot-effort-select"
+            id="effort-select-${slot}"
+            data-slot="${slot}"
+            title="Reasoning Effort"
+            aria-label="${slot} Reasoning Effort"
+          >${optionsHtml}</select>
+          ${legacyBtnsHtml}
+        `;
+
+        const effortSelectEl = barsEl.querySelector?.(".slot-effort-select");
+        effortSelectEl?.addEventListener("change", async (e) => {
+          try {
+            const newEffort = Number(e.target.value || 4);
+            await updateModelSlot(slot, {
+              model: selectEl?.value || currentModel,
+              effort: newEffort,
+            });
+          } catch (err) {
+            handleActionError(err);
+          }
+        });
 
         barsEl.querySelectorAll(".effort-bar-btn").forEach((btn) => {
           btn.addEventListener("click", async () => {

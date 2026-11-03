@@ -1,0 +1,21 @@
+{
+  "version": "baseline",
+  "kind": "thrown",
+  "calls": 1,
+  "error": {
+    "message": "Real old callback lost its reply"
+  },
+  "sourceEngine": "7ae63065c7e8db019b9633d63aff02e6801e4f69",
+  "files": {
+    "features.json": "{\n  \"features\": [\n    {\n      \"id\": \"f1\",\n      \"milestoneId\": \"m1\",\n      \"title\": \"f1\",\n      \"description\": \"\",\n      \"kind\": \"implementation\",\n      \"skillName\": \"worker-implementation\",\n      \"fulfills\": [],\n      \"status\": \"running\",\n      \"attempts\": 1,\n      \"maxAttempts\": 5,\n      \"lastHandoff\": null,\n      \"dispatchPending\": true\n    }\n  ],\n  \"updatedAt\": \"2026-10-24T10:40:13.495Z\"\n}\n",
+    "model-settings.json": "{\n  \"orchestrator\": {\n    \"providerInstanceId\": \"antigravity\",\n    \"model\": \"gemini-4-argon-high\",\n    \"options\": {}\n  },\n  \"worker\": {\n    \"providerInstanceId\": \"antigravity\",\n    \"model\": \"gemini-4-argon-high\",\n    \"options\": {}\n  },\n  \"validator\": {\n    \"providerInstanceId\": \"codex\",\n    \"model\": \"gpt-6.1-sol\",\n    \"options\": {\n      \"reasoningEffort\": \"high\"\n    },\n    \"effort\": 4,\n    \"reasoningEffort\": \"high\"\n  },\n  \"skipScrutiny\": false,\n  \"skipUserTesting\": false\n}\n",
+    "progress_log.jsonl": "{\"seq\":1,\"timestamp\":\"2026-10-24T10:40:13.490Z\",\"type\":\"propose_mission\",\"message\":\"ProposeMission submitted\",\"featureId\":null,\"workerNumber\":null}\n{\"seq\":2,\"timestamp\":\"2026-10-24T10:40:13.491Z\",\"type\":\"plan_approved\",\"message\":\"Mission plan approved\",\"featureId\":null,\"workerNumber\":null}\n{\"seq\":3,\"timestamp\":\"2026-10-24T10:40:13.493Z\",\"type\":\"run_started\",\"message\":\"Worker #1 started f1: f1\",\"featureId\":\"f1\",\"workerNumber\":1}\n",
+    "state.json": "{\n  \"initialized\": true,\n  \"missionId\": \"mission-414d44ae\",\n  \"title\": \"Real baseline provenance thrown\",\n  \"repoPath\": \"/Volumes/Workspace/Projects/T3-Runtime/worktrees/pi-durable-mission-control/t3-324657ce/.mm-a9/legacy-generation/baseline-thrown\",\n  \"status\": \"running\",\n  \"revision\": 4,\n  \"elapsedMs\": 0,\n  \"lastStartedAt\": \"2026-10-24T10:40:13.492Z\",\n  \"planAccepted\": true,\n  \"milestones\": [],\n  \"assertions\": [],\n  \"activeWorker\": {\n    \"runId\": \"run-13e9e142\",\n    \"workerNumber\": 1,\n    \"role\": \"Worker\",\n    \"featureId\": \"f1\",\n    \"featureTitle\": \"f1\",\n    \"milestoneId\": \"m1\",\n    \"kind\": \"implementation\",\n    \"skillName\": \"worker-implementation\",\n    \"slot\": \"worker\",\n    \"providerInstanceId\": \"antigravity\",\n    \"model\": \"gemini-4-argon-high\",\n    \"options\": {},\n    \"status\": \"running\",\n    \"attempt\": 1,\n    \"startedAt\": \"2026-10-24T10:40:13.493Z\",\n    \"handoff\": null,\n    \"dispatchPending\": true\n  },\n  \"sessions\": [\n    {\n      \"runId\": \"run-13e9e142\",\n      \"workerNumber\": 1,\n      \"role\": \"Worker\",\n      \"featureId\": \"f1\",\n      \"featureTitle\": \"f1\",\n      \"milestoneId\": \"m1\",\n      \"kind\": \"implementation\",\n      \"skillName\": \"worker-implementation\",\n      \"slot\": \"worker\",\n      \"providerInstanceId\": \"antigravity\",\n      \"model\": \"gemini-4-argon-high\",\n      \"options\": {},\n      \"status\": \"running\",\n      \"attempt\": 1,\n      \"startedAt\": \"2026-10-24T10:40:13.493Z\",\n      \"handoff\": null,\n      \"dispatchPending\": true\n    }\n  ],\n  \"pendingHandoffItems\": [],\n  \"lastHandoffNeedsAttention\": false,\n  \"lastHandoffSummary\": null,\n  \"lastHandoffAt\": null,\n  \"milestoneValidationTriggered\": {}\n}\n"
+  },
+  "hashes": {
+    "features.json": "5c9bb485e353e4d057d0df046737a3fc69b290166b3bf1ea5348f94b6c6545bb",
+    "model-settings.json": "f6a29f4ca26e917bc31b0eb9262666e06dc86e174b2001dbe660ba165dc1554d",
+    "progress_log.jsonl": "6ac6b9db4bf8a5aebb680796c62de93ee71407d346ba54ce9159fe86e321d7dd",
+    "state.json": "0179eebe3e0960e5dd76cd331959f4b23592c8bb2ecad17bb1917c21babdc4d7"
+  }
+}

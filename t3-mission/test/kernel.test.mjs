@@ -21,6 +21,7 @@ import {
   normalizeSlotConfig,
   readProgressLog,
   saveState,
+  saveFeaturesDoc,
   getMissionPaths,
   isValidatorFeature,
 } from "../kernel/index.mjs";
@@ -422,6 +423,8 @@ test("VAL-KERNEL-005: reconcileMissionOnLoad reconciles crashed running state to
         const st = loadState(projectDir);
         st.lastStartedAt = new Date(Date.now() - 5000).toISOString();
         saveState(projectDir, st);
+        // The fixture declares acceptance explicitly; the timestamp is not a receipt.
+        return { accepted: true, taskId: "fixture-crash-task", childThreadId: "fixture-crash-thread" };
       },
     }
   );
@@ -489,13 +492,13 @@ test("VAL-KERNEL-005: reconcileMissionOnLoad reconciles crashed running state to
   const logsAfterResume = readProgressLog(projectDir);
   assert.equal(
     logsAfterResume.some((l) => l.message === "Mission resumed"),
-    true
+    false
   );
   assert.equal(
     logsAfterResume.some(
       (l) => l.message === "Run started: Resume Long running feature"
     ),
-    true
+    false
   );
 });
 
@@ -785,6 +788,7 @@ test("F01 & F02: async delegation identity persistence, role assignment, serial 
   assert.equal(loadFeaturesDoc(projectDir).features[1].status, "pending");
 
   // Now test resumePending flag (I-06) + async resume without handoff (I-05)
+  const nextPause = loadState(projectDir); nextPause.pauseEpoch = (nextPause.pauseEpoch ?? 0) + 1; saveState(projectDir, nextPause);
   const stPending = loadState(projectDir);
   stPending.status = "running";
   stPending.activeWorker.status = "running";
@@ -802,7 +806,7 @@ test("F01 & F02: async delegation identity persistence, role assignment, serial 
           resumed: true,
           taskId: activeWorker.taskId,
           childThreadId: activeWorker.childThreadId,
-          childRunId: "crun-f1-resumed",
+          childRunId: activeWorker.childRunId,
           worktreePath: activeWorker.worktreePath,
         };
       },
@@ -817,7 +821,7 @@ test("F01 & F02: async delegation identity persistence, role assignment, serial 
   assert.equal(asyncResumedState.activeWorker.featureId, "f1");
   assert.equal(asyncResumedState.activeWorker.status, "running");
   assert.equal(asyncResumedState.activeWorker.resumePending, undefined);
-  assert.equal(asyncResumedState.activeWorker.childRunId, "crun-f1-resumed");
+  assert.equal(asyncResumedState.activeWorker.childRunId, "crun-f1-1");
   assert.equal(loadFeaturesDoc(projectDir).features[1].status, "pending");
 });
 
@@ -1168,6 +1172,8 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
   approveMissionPlan(projectDir);
 
   await startMissionRun(projectDir);
+  const uninvokedFixture = Object.fromEntries(["state.json", "features.json", "model-settings.json", "progress_log.jsonl"]
+    .map(name => [name, fs.readFileSync(path.join(projectDir, ".mission", name))]));
   // Simulate HUD default runtime having attached default identity with delegatedBy: "hud-default-runtime"
   const stRunning = loadState(projectDir);
   const runId = stRunning.activeWorker.runId;
@@ -1194,7 +1200,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
     }
   );
 
-  const stUpgraded = loadState(projectDir);
+  let stUpgraded = loadState(projectDir);
   assert.equal(stUpgraded.activeWorker.runId, runId);
   assert.equal(stUpgraded.activeWorker.attempt, 1);
   assert.equal(loadFeaturesDoc(projectDir).features.find((f) => f.id === "f1").attempts, 1);
@@ -1205,6 +1211,13 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
   assert.equal(stUpgraded.sessions[0].delegatedBy, undefined);
   assert.equal(stUpgraded.sessions[0].taskId, "upgraded-task-1");
 
+  // Each upgrade starts from the actual selection snapshot before any callback.
+  // Erasing an accepted call's journal would lose its provenance and must fence.
+  const cliProjectDir = makeTempProjectDir(t);
+  fs.mkdirSync(path.join(cliProjectDir, ".mission"));
+  for (const name of ["state.json", "features.json", "model-settings.json", "progress_log.jsonl"])
+    fs.writeFileSync(path.join(cliProjectDir, ".mission", name), uninvokedFixture[name]);
+  stUpgraded = loadState(cliProjectDir);
   // Simulate activeWorker with runtimeTransport: "bridge-cli-subprocess" (and dispatchPending: undefined)
   stUpgraded.activeWorker.runtimeTransport = "bridge-cli-subprocess";
   delete stUpgraded.activeWorker.dispatchPending;
@@ -1216,10 +1229,11 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
     }
     return s;
   });
-  saveState(projectDir, stUpgraded);
+  stUpgraded.repoPath = cliProjectDir;
+  saveState(cliProjectDir, stUpgraded);
 
   await startMissionRun(
-    projectDir,
+    cliProjectDir,
     {},
     {
       async runFeature() {
@@ -1233,7 +1247,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
     }
   );
 
-  const stCliUpgraded = loadState(projectDir);
+  let stCliUpgraded = loadState(cliProjectDir);
   assert.equal(stCliUpgraded.activeWorker.runId, runId);
   assert.equal(stCliUpgraded.activeWorker.attempt, 1);
   assert.equal(stCliUpgraded.activeWorker.runtimeTransport, undefined);
@@ -1246,21 +1260,31 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
   assert.equal(stCliUpgraded.sessions[0].runtimeTransport, undefined);
   assert.equal(stCliUpgraded.sessions[0].taskId, "upgraded-task-cli");
   assert.equal(stCliUpgraded.sessions[0].childThreadId, "upgraded-thread-cli");
-  const upgradedF1 = loadFeaturesDoc(projectDir).features.find((f) => f.id === "f1");
+  const upgradedF1 = loadFeaturesDoc(cliProjectDir).features.find((f) => f.id === "f1");
   assert.equal(upgradedF1.attempts, 1);
   assert.equal(upgradedF1.taskId, "upgraded-task-cli");
   assert.equal(upgradedF1.childThreadId, "upgraded-thread-cli");
   assert.equal(upgradedF1.childRunId, "upgraded-crun-cli");
   assert.equal(upgradedF1.worktreePath, "/tmp/upgraded-wt-cli");
 
+  // The third upgrade uses the same real uninvoked selection snapshot.
+  const hudProjectDir = makeTempProjectDir(t);
+  fs.mkdirSync(path.join(hudProjectDir, ".mission"));
+  for (const name of ["state.json", "features.json", "model-settings.json", "progress_log.jsonl"])
+    fs.writeFileSync(path.join(hudProjectDir, ".mission", name), uninvokedFixture[name]);
+  stCliUpgraded = loadState(hudProjectDir);
+  stCliUpgraded.repoPath = hudProjectDir;
   // Simulate activeWorker marked with runtimeTransport: "hud-default-runtime" and a live placeholder workerPid
   const placeholderDaemon = cp.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     stdio: "ignore",
   });
+  t.after(() => {
+    if (placeholderDaemon.exitCode === null && placeholderDaemon.signalCode === null) placeholderDaemon.kill("SIGTERM");
+  });
   const placeholderPid = placeholderDaemon.pid;
   stCliUpgraded.activeWorker.runtimeTransport = "hud-default-runtime";
   stCliUpgraded.activeWorker.workerPid = placeholderPid;
-  stCliUpgraded.activeWorker.daemonStateFile = path.join(projectDir, "daemon-state.json");
+  stCliUpgraded.activeWorker.daemonStateFile = path.join(hudProjectDir, "daemon-state.json");
   stCliUpgraded.activeWorker.daemonStatus = "running";
   delete stCliUpgraded.activeWorker.dispatchPending;
   delete stCliUpgraded.activeWorker.delegatedBy;
@@ -1270,7 +1294,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
         ...s,
         runtimeTransport: "hud-default-runtime",
         workerPid: placeholderPid,
-        daemonStateFile: path.join(projectDir, "daemon-state.json"),
+        daemonStateFile: path.join(hudProjectDir, "daemon-state.json"),
         daemonStatus: "running",
       };
       delete copy.dispatchPending;
@@ -1279,10 +1303,10 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
     }
     return s;
   });
-  saveState(projectDir, stCliUpgraded);
+  saveState(hudProjectDir, stCliUpgraded);
 
   await startMissionRun(
-    projectDir,
+    hudProjectDir,
     {},
     {
       async runFeature() {
@@ -1296,7 +1320,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
     }
   );
 
-  const stHudRtUpgraded = loadState(projectDir);
+  const stHudRtUpgraded = loadState(hudProjectDir);
   assert.equal(stHudRtUpgraded.activeWorker.runId, runId);
   assert.equal(stHudRtUpgraded.activeWorker.attempt, 1);
   assert.equal(stHudRtUpgraded.activeWorker.runtimeTransport, undefined);
@@ -1315,7 +1339,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
   assert.equal(stHudRtUpgraded.sessions[0].daemonStatus, undefined);
   assert.equal(stHudRtUpgraded.sessions[0].taskId, "upgraded-task-hud-rt");
   assert.equal(stHudRtUpgraded.sessions[0].childThreadId, "upgraded-thread-hud-rt");
-  const upgradedF1HudRt = loadFeaturesDoc(projectDir).features.find((f) => f.id === "f1");
+  const upgradedF1HudRt = loadFeaturesDoc(hudProjectDir).features.find((f) => f.id === "f1");
   assert.equal(upgradedF1HudRt.attempts, 1);
   assert.equal(upgradedF1HudRt.taskId, "upgraded-task-hud-rt");
   assert.equal(upgradedF1HudRt.childThreadId, "upgraded-thread-hud-rt");
@@ -1323,7 +1347,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
   assert.equal(upgradedF1HudRt.worktreePath, "/tmp/upgraded-wt-hud-rt");
 
   // Complete f1 with a discoveredIssue ("must-remain")
-  endFeatureRun(projectDir, {
+  endFeatureRun(hudProjectDir, {
     runId,
     featureId: "f1",
     successState: "success",
@@ -1334,35 +1358,35 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
     },
   });
 
-  assert.equal(loadState(projectDir).pendingHandoffItems.length, 1);
-  assert.equal(loadState(projectDir).lastHandoffNeedsAttention, true);
+  assert.equal(loadState(hudProjectDir).pendingHandoffItems.length, 1);
+  assert.equal(loadState(hudProjectDir).lastHandoffNeedsAttention, true);
 
   // P26: Calling updateMissionFeatures with identical full-feature replacement array preserves pendingHandoffItems
-  const currentFeatures = loadFeaturesDoc(projectDir).features;
-  updateMissionFeatures(projectDir, { features: currentFeatures });
-  const afterNoOpReplace = loadState(projectDir);
+  const currentFeatures = loadFeaturesDoc(hudProjectDir).features;
+  updateMissionFeatures(hudProjectDir, { features: currentFeatures });
+  const afterNoOpReplace = loadState(hudProjectDir);
   assert.equal(afterNoOpReplace.pendingHandoffItems.length, 1);
   assert.equal(afterNoOpReplace.pendingHandoffItems[0].id, "must-remain");
   assert.equal(afterNoOpReplace.lastHandoffNeedsAttention, true);
 
   // Calling updateMissionFeatures with full-feature replacement mutating only unrelated f2 also preserves f1's pendingHandoffItems
-  const [f1, f2] = loadFeaturesDoc(projectDir).features;
-  updateMissionFeatures(projectDir, {
+  const [f1, f2] = loadFeaturesDoc(hudProjectDir).features;
+  updateMissionFeatures(hudProjectDir, {
     features: [f1, { ...f2, title: "Unrelated change" }],
   });
-  const afterUnrelatedReplace = loadState(projectDir);
+  const afterUnrelatedReplace = loadState(hudProjectDir);
   assert.equal(afterUnrelatedReplace.pendingHandoffItems.length, 1);
   assert.equal(afterUnrelatedReplace.pendingHandoffItems[0].id, "must-remain");
   assert.equal(afterUnrelatedReplace.lastHandoffNeedsAttention, true);
 
   // Calling updateMissionFeatures with full-feature replacement appending a new repair feature clears pendingHandoffItems
-  updateMissionFeatures(projectDir, {
+  updateMissionFeatures(hudProjectDir, {
     features: [
-      ...loadFeaturesDoc(projectDir).features,
+      ...loadFeaturesDoc(hudProjectDir).features,
       { id: "f-repair", milestoneId: "m1" },
     ],
   });
-  const afterAddReplace = loadState(projectDir);
+  const afterAddReplace = loadState(hudProjectDir);
   assert.equal(afterAddReplace.pendingHandoffItems.length, 0);
   assert.equal(afterAddReplace.lastHandoffNeedsAttention, false);
 });
@@ -1386,17 +1410,18 @@ test("F03-end-feature-daemon-leak: calling endFeatureRun directly terminates act
   approveMissionPlan(projectDir);
 
   await startMissionRun(projectDir);
-  const daemonChild = cp.spawn(
-    process.execPath,
-    ["-e", "setInterval(() => {}, 1000)"],
-    { stdio: "ignore" }
-  );
-  const daemonPid = daemonChild.pid;
-  const daemonStateFile = path.join(projectDir, ".mission", "worker-daemon-state.json");
-  fs.writeFileSync(daemonStateFile, JSON.stringify({ pid: daemonPid, status: "running" }) + "\n");
-
   const st = loadState(projectDir);
   const runId = st.activeWorker.runId;
+  const daemonStateFile = path.join(projectDir, ".mission", "worker-daemon-state.json");
+  const cliPath = (await import("node:url")).fileURLToPath(new URL("../bridge/cli.mjs", import.meta.url));
+  const daemonChild = cp.spawn(process.execPath, [cliPath, "LocalWorkerDaemon", "--mission-dir", projectDir,
+    "--repo-path", projectDir, "--run-id", runId, "--feature-id", "f1", "--state-file", daemonStateFile], { stdio: "ignore" });
+  t.after(() => { if (daemonChild.exitCode === null && daemonChild.signalCode === null) daemonChild.kill("SIGTERM"); });
+  const daemonPid = daemonChild.pid;
+  const readyDeadline = Date.now() + 2000;
+  while (!fs.existsSync(daemonStateFile) && Date.now() < readyDeadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(fs.existsSync(daemonStateFile), true, "The actual owned daemon must be ready before completion");
+
   st.activeWorker.workerPid = daemonPid;
   st.activeWorker.daemonStateFile = daemonStateFile;
   st.activeWorker.daemonStatus = "running";

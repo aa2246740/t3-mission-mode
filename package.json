@@ -5,8 +5,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "node --test t3-mission/test/bridge.test.mjs t3-mission/test/hud.test.mjs t3-mission/test/kernel.test.mjs",
-    "hud": "node t3-mission/hud/server.mjs"
+    "test": "node --test t3-mission/test/*.test.mjs t3-mission/test/receipt-boundary.test.mjs",
+    "hud": "node t3-mission/hud/server.mjs",
+    "build:lock": "node t3-mission/native/build.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

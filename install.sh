@@ -10,9 +10,14 @@ echo "Installing ${SKILL_NAME}..."
 mkdir -p "${HOME}/.agents/skills"
 
 if [ "${SCRIPT_DIR}" != "${CANONICAL_DIR}" ]; then
-  rm -rf "${CANONICAL_DIR}"
-  cp -R "${SCRIPT_DIR}" "${CANONICAL_DIR}"
-  rm -rf "${CANONICAL_DIR}/.git"
+  if [ -d "${CANONICAL_DIR}/.git" ]; then
+    find "${CANONICAL_DIR}" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+    tar -C "${SCRIPT_DIR}" --exclude=".git" -cf - . | tar -C "${CANONICAL_DIR}" -xf -
+  else
+    rm -rf "${CANONICAL_DIR}"
+    cp -R "${SCRIPT_DIR}" "${CANONICAL_DIR}"
+    rm -rf "${CANONICAL_DIR}/.git"
+  fi
   echo "  -> Installed canonical skill to ${CANONICAL_DIR}"
 else
   echo "  -> Already running from canonical skill path ${CANONICAL_DIR}"

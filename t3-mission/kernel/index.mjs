@@ -54,6 +54,12 @@ export {
 export {
   resolveFeatureSlot,
   extractDelegationIdentity,
+  bindFeatureDispatch,
   dispatchFeatureToWorker,
   startMissionRun,
 } from "./runner.mjs";
+
+export { missionTick, resolveDispatchEvidence, reconcileBoundedTimer } from "./controller.mjs";
+
+export { readMissionSnapshot } from './store.mjs';
+export { withMissionTransaction, missionTransaction, commandTransaction } from './mission-transaction.mjs';
