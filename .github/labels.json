@@ -1,0 +1,31 @@
+[
+  {
+    "name": "priority: P0",
+    "color": "b60205",
+    "description": "Active integrity or security incident"
+  },
+  { "name": "priority: P1", "color": "d93f0b", "description": "Blocks a core Mission lifecycle" },
+  { "name": "priority: P2", "color": "fbca04", "description": "Impairs a supported workflow" },
+  { "name": "priority: P3", "color": "c5def5", "description": "Maintenance or small improvement" },
+  { "name": "type: bug", "color": "d73a4a", "description": "Reproducible incorrect behavior" },
+  { "name": "type: feature", "color": "a2eeef", "description": "New user-visible capability" },
+  { "name": "type: chore", "color": "ededed", "description": "Repository or tooling maintenance" },
+  {
+    "name": "area: kernel",
+    "color": "5319e7",
+    "description": "Mission decisions and lifecycle gates"
+  },
+  { "name": "area: bridge", "color": "5319e7", "description": "CLI, MCP, and T3 transport" },
+  { "name": "area: hud", "color": "5319e7", "description": "HTTP, SSE, and browser interface" },
+  { "name": "area: native", "color": "5319e7", "description": "OS lock and native build" },
+  {
+    "name": "area: tooling",
+    "color": "5319e7",
+    "description": "Build, test, CI, and release tools"
+  },
+  {
+    "name": "area: documentation",
+    "color": "5319e7",
+    "description": "Skills, agent guidance, and runbooks"
+  }
+]

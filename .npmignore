@@ -1,0 +1,16 @@
+.mission/
+node_modules/
+.git/
+.github/
+.githooks/
+.env
+.env.*
+!.env.example
+reports/
+coverage/
+artifacts/
+*.log
+*.cpuprofile
+*.tgz
+t3-mission/native/*.node
+t3-mission/native/*.node.json

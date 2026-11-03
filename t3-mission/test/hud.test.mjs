@@ -19,6 +19,13 @@ const __dirname = path.dirname(__filename);
 const SERVER_MJS_PATH = path.resolve(__dirname, "../hud/server.mjs");
 const APP_JS_PATH = path.resolve(__dirname, "../hud/public/app.js");
 
+// VM tests mask ESM/bootstrap syntax without shifting V8 coverage source offsets.
+function readHudScriptForVm(source = fs.readFileSync(APP_JS_PATH, "utf8")) {
+  const script = source.replace(/^export /m, "       ").replace(/^initHud\(\);/m, "          ");
+  assert.equal(script.length, source.length, "VM coverage must retain the asset source offsets");
+  return script;
+}
+
 function createTempMissionWorkspace() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "t3-mission-hud-test-"));
 }
@@ -105,8 +112,7 @@ function writeMissionFixture(workspaceDir) {
         status: "completed",
         childThreadId: "0199f2c0-7b1d-7000-8000-000000000027",
         salientSummary: "M2 user testing passed 27 of 36 assertions.",
-        whatWasImplemented:
-          "Executed browser user testing across M2 material attachment flows.",
+        whatWasImplemented: "Executed browser user testing across M2 material attachment flows.",
         commandsRun: ["npx playwright test"],
         discoveredIssues: ["First capability check in real run said can't see images"],
       },
@@ -212,15 +218,15 @@ function writeMissionFixture(workspaceDir) {
   fs.writeFileSync(path.join(dotMission, "state.json"), JSON.stringify(state, null, 2) + "\n");
   fs.writeFileSync(
     path.join(dotMission, "features.json"),
-    JSON.stringify(featuresDoc, null, 2) + "\n"
+    JSON.stringify(featuresDoc, null, 2) + "\n",
   );
   fs.writeFileSync(
     path.join(dotMission, "model-settings.json"),
-    JSON.stringify(modelSettings, null, 2) + "\n"
+    JSON.stringify(modelSettings, null, 2) + "\n",
   );
   fs.writeFileSync(
     path.join(dotMission, "progress_log.jsonl"),
-    initialLogs.map((l) => JSON.stringify(l)).join("\n") + "\n"
+    initialLogs.map((l) => JSON.stringify(l)).join("\n") + "\n",
   );
 
   return { dotMission, state, featuresDoc, modelSettings };
@@ -389,9 +395,7 @@ test("VAL-HUD-002: POST /api/mission/approve sets planAccepted=true, status='run
   assert.equal(data.state.revision, 2);
 
   // Verify persisted state.json on disk
-  const persistedState = JSON.parse(
-    fs.readFileSync(path.join(dotMission, "state.json"), "utf8")
-  );
+  const persistedState = JSON.parse(fs.readFileSync(path.join(dotMission, "state.json"), "utf8"));
   assert.equal(persistedState.planAccepted, true);
   assert.equal(persistedState.status, "running");
   assert.equal(persistedState.revision, 2);
@@ -444,7 +448,7 @@ test("VAL-HUD-003: POST /api/mission/model-slots hot-swaps Validator model from 
 
   // Verify persisted .mission/model-settings.json on disk
   const diskSettings = JSON.parse(
-    fs.readFileSync(path.join(dotMission, "model-settings.json"), "utf8")
+    fs.readFileSync(path.join(dotMission, "model-settings.json"), "utf8"),
   );
   assert.equal(diskSettings.validator.model, "gpt-6.1-sol");
   assert.equal(diskSettings.validator.providerInstanceId, "codex");
@@ -484,7 +488,7 @@ test("VAL-HUD-003: POST /api/mission/model-slots hot-swaps Validator model from 
   assert.equal(effortOnlyValidatorData.modelSettings.validator.options.reasoningEffort, "low");
 
   const diskSettingsAfter = JSON.parse(
-    fs.readFileSync(path.join(dotMission, "model-settings.json"), "utf8")
+    fs.readFileSync(path.join(dotMission, "model-settings.json"), "utf8"),
   );
   assert.equal(diskSettingsAfter.worker.options.reasoningEffort, "minimal");
   assert.equal(diskSettingsAfter.validator.options.reasoningEffort, "low");
@@ -514,7 +518,7 @@ test("VAL-HUD-003: POST /api/mission/model-slots hot-swaps Validator model from 
   });
   assert.equal(fixedSwitchRes.status, 200);
   const diskSettingsFixed = JSON.parse(
-    fs.readFileSync(path.join(dotMission, "model-settings.json"), "utf8")
+    fs.readFileSync(path.join(dotMission, "model-settings.json"), "utf8"),
   );
   const updatedSlot = diskSettingsFixed.validator;
   assert.equal(updatedSlot.model, "gemini-4-argon-high");
@@ -528,11 +532,19 @@ test("VAL-HUD-003: POST /api/mission/model-slots hot-swaps Validator model from 
 test("VAL-HUD-004: POST /api/mission/pause and POST /api/mission/resume reproduce Worker #28 pause & resume closed loop", async (t) => {
   const workspaceDir = createTempMissionWorkspace();
   const { dotMission } = writeMissionFixture(workspaceDir);
-  const hud = await createMissionHudServer({ missionDir: workspaceDir, port: 0,
+  const hud = await createMissionHudServer({
+    missionDir: workspaceDir,
+    port: 0,
     dispatchAdapter: {
-      async pauseWorker() { return { paused: true }; },
-      async pauseMission() { return { paused: true }; },
-      async resumeWorker() { return { resumed: true }; },
+      async pauseWorker() {
+        return { paused: true };
+      },
+      async pauseMission() {
+        return { paused: true };
+      },
+      async resumeWorker() {
+        return { resumed: true };
+      },
     },
   });
   t.after(async () => {
@@ -578,7 +590,7 @@ test("VAL-HUD-004: POST /api/mission/pause and POST /api/mission/resume reproduc
   assert.equal(resumeData.trigger, "[resume the mission]");
   assert.match(
     resumeData.diagnostic,
-    /The mission was paused .* m2-material-test-gaps .* code tree has no uncommitted changes, so I'm resuming that worker\./
+    /The mission was paused .* m2-material-test-gaps .* code tree has no uncommitted changes, so I'm resuming that worker\./,
   );
   assert.equal(resumeData.state.status, "running");
   assert.equal(resumeData.state.activeWorker.status, "running");
@@ -594,22 +606,26 @@ test("VAL-HUD-004: POST /api/mission/pause and POST /api/mission/resume reproduc
 
   const messages = logLines.map((l) => l.message);
   const idxWorkerPaused = messages.findIndex((m) =>
-    m.includes("Worker #28 paused M2 material test gaps")
+    m.includes("Worker #28 paused M2 material test gaps"),
   );
-  const idxMissionPaused = messages.findIndex(
-    (m) => m === "Mission paused"
-  );
+  const idxMissionPaused = messages.findIndex((m) => m === "Mission paused");
   const idxMissionResumed = messages.findIndex(
-    (m, i) => i > idxWorkerPaused && m === "Mission resumed"
+    (m, i) => i > idxWorkerPaused && m === "Mission resumed",
   );
   const idxRunStarted = messages.findIndex(
-    (m, i) => i > idxMissionResumed && m.startsWith("Run started: Resume")
+    (m, i) => i > idxMissionResumed && m.startsWith("Run started: Resume"),
   );
 
   assert.ok(idxWorkerPaused !== -1, "Expected Worker #28 paused log entry");
-  assert.ok(idxMissionPaused !== -1 && idxWorkerPaused > idxMissionPaused, "Expected Mission paused before Worker #28 paused");
+  assert.ok(
+    idxMissionPaused !== -1 && idxWorkerPaused > idxMissionPaused,
+    "Expected Mission paused before Worker #28 paused",
+  );
   assert.ok(idxMissionResumed > idxMissionPaused, "Expected Mission resumed after Mission paused");
-  assert.ok(idxRunStarted > idxMissionResumed, "Expected Run started: Resume after Mission resumed");
+  assert.ok(
+    idxRunStarted > idxMissionResumed,
+    "Expected Run started: Resume after Mission resumed",
+  );
 });
 
 test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnostic, Validator role synthesis, and CLI startup", async (t) => {
@@ -622,7 +638,7 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
   execFileSync(
     "git",
     ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "init"],
-    { cwd: gitRepoDir }
+    { cwd: gitRepoDir },
   );
 
   const dotMission = path.join(gitRepoDir, ".mission");
@@ -665,11 +681,17 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
   };
   fs.writeFileSync(
     path.join(dotMission, "state.json"),
-    JSON.stringify(staleRunningState, null, 2) + "\n"
+    JSON.stringify(staleRunningState, null, 2) + "\n",
   );
 
-  const hud = await createMissionHudServer({ missionDir: dotMission, port: 0,
-    dispatchAdapter: { async resumeWorker() { return { resumed: true }; } },
+  const hud = await createMissionHudServer({
+    missionDir: dotMission,
+    port: 0,
+    dispatchAdapter: {
+      async resumeWorker() {
+        return { resumed: true };
+      },
+    },
   });
   t.after(async () => {
     await hud.close();
@@ -677,7 +699,10 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
   });
 
   // The HUD only observes. Recovery reconciliation is an explicit kernel command.
-  assert.equal((await (await fetch(`${hud.url}/api/mission/state`)).json()).state.status, "running");
+  assert.equal(
+    (await (await fetch(`${hud.url}/api/mission/state`)).json()).state.status,
+    "running",
+  );
   const { reconcileMissionOnLoad } = await import("../kernel/index.mjs");
   reconcileMissionOnLoad(dotMission);
   // Verify I-04: explicit recovery reconciles stale state to paused
@@ -698,18 +723,15 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
   const dirtyResumeData = await dirtyResumeRes.json();
   assert.ok(
     !dirtyResumeData.diagnostic.includes("no uncommitted changes"),
-    `Expected dirty diagnostic, got: ${dirtyResumeData.diagnostic}`
+    `Expected dirty diagnostic, got: ${dirtyResumeData.diagnostic}`,
   );
   assert.match(dirtyResumeData.diagnostic, /has uncommitted changes \(README\.md\)/);
   assert.equal(dirtyResumeData.state.activeWorker.resumePending, true);
 
   // 2. I-03 & F11: Frontend synthesizeSessions preserves Validator role for scrutiny/user-testing and avoids fabricating handoffs
-  const appSrc = fs
-    .readFileSync(APP_JS_PATH, "utf8")
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm();
   const vmCtx = vm.createContext({});
-  vm.runInContext(appSrc, vmCtx);
+  vm.runInContext(appSrc, vmCtx, { filename: APP_JS_PATH });
   vmCtx.testState = {
     status: "running",
     activeWorker: {
@@ -738,8 +760,8 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
   const synthesized = JSON.parse(
     vm.runInContext(
       "JSON.stringify(synthesizeSessions(testState, [{ id: 'scrutiny-validator-m1', title: 'Scrutiny validation for Milestone one', status: 'running', kind: 'scrutiny', milestoneId: 'm1' }]))",
-      vmCtx
-    )
+      vmCtx,
+    ),
   );
   assert.equal(synthesized.length, 1);
   assert.equal(synthesized[0].role, "Validator");
@@ -755,7 +777,9 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
     if (cliPid) {
       try {
         process.kill(cliPid, "SIGTERM");
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
     }
     fs.rmSync(cliTempDir, { recursive: true, force: true });
   });
@@ -763,7 +787,7 @@ test("I-04, I-07, I-03, F11, F04: Startup reconciliation, real Git dirty diagnos
   const cliStdout = execFileSync(
     process.execPath,
     [SERVER_MJS_PATH, "--mission-dir", cliMissionDir, "--port", "0"],
-    { cwd: cliTempDir, timeout: 3000, encoding: "utf8" }
+    { cwd: cliTempDir, timeout: 3000, encoding: "utf8" },
   );
   assert.ok(fs.existsSync(cliMissionDir), "CLI should create .mission directory");
   const cliInfo = JSON.parse(cliStdout.trim());
@@ -809,8 +833,8 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
         pendingHandoffItems: [],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   fs.writeFileSync(
     path.join(p14DotMission, "features.json"),
@@ -823,11 +847,15 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
         updatedAt: new Date().toISOString(),
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
 
-  const srv14 = await createMissionHudServer({ missionDir: p14Dir, port: 0, allowLocalDaemon: true });
+  const srv14 = await createMissionHudServer({
+    missionDir: p14Dir,
+    port: 0,
+    allowLocalDaemon: true,
+  });
   t.after(async () => {
     await srv14.close();
     fs.rmSync(p14Dir, { recursive: true, force: true });
@@ -843,10 +871,10 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
   });
   assert.equal(approveRes.status, 200);
   const afterApproveState = JSON.parse(
-    fs.readFileSync(path.join(p14DotMission, "state.json"), "utf8")
+    fs.readFileSync(path.join(p14DotMission, "state.json"), "utf8"),
   );
   const afterApproveFeatures = JSON.parse(
-    fs.readFileSync(path.join(p14DotMission, "features.json"), "utf8")
+    fs.readFileSync(path.join(p14DotMission, "features.json"), "utf8"),
   ).features;
   const afterApproveLogs = fs
     .readFileSync(path.join(p14DotMission, "progress_log.jsonl"), "utf8")
@@ -868,12 +896,12 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
   assert.equal(typeof afterApproveState.activeWorker.workerPid, "number");
   assert.deepEqual(
     afterApproveFeatures.map((f) => f.status),
-    ["running", "pending"]
+    ["running", "pending"],
   );
   assert.equal(afterApproveFeatures[0].attempts, 1);
   assert.deepEqual(
     afterApproveLogs.map((l) => l.type),
-    ["plan_approved", "worker_selected", "worker_started"]
+    ["plan_approved", "worker_selected", "worker_started"],
   );
 
   // --- P15: onCommand throwing error rolls back disk state to paused ---
@@ -901,7 +929,7 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
   assert.match(failResumeBody.error, /Independent runtime wake failure/);
 
   const diskStateAfterFail = JSON.parse(
-    fs.readFileSync(path.join(p14DotMission, "state.json"), "utf8")
+    fs.readFileSync(path.join(p14DotMission, "state.json"), "utf8"),
   );
   assert.equal(diskStateAfterFail.status, "paused");
   assert.equal(diskStateAfterFail.activeWorker.status, "paused");
@@ -934,8 +962,8 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
         sessions: [],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
 
   const srv16 = await createMissionHudServer({ missionDir: p16Dir, port: 0 });
@@ -955,18 +983,13 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
   assert.equal(missingWtData.gitCheck.canResume, false);
   assert.equal(missingWtData.gitCheck.isGitRepo, false);
   assert.equal(missingWtData.gitCheck.clean, false);
-  const p16DiskState = JSON.parse(
-    fs.readFileSync(path.join(p16DotMission, "state.json"), "utf8")
-  );
+  const p16DiskState = JSON.parse(fs.readFileSync(path.join(p16DotMission, "state.json"), "utf8"));
   assert.equal(p16DiskState.status, "paused");
 
   // --- P18: Running retry session must NOT inherit previous attempt's handoff or commands ---
-  const appSrc = fs
-    .readFileSync(APP_JS_PATH, "utf8")
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm();
   const vmCtx = vm.createContext({});
-  vm.runInContext(appSrc, vmCtx);
+  vm.runInContext(appSrc, vmCtx, { filename: APP_JS_PATH });
   vmCtx.retryState = {
     status: "running",
     activeWorker: {
@@ -1029,7 +1052,7 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
     },
   ];
   const p18Sessions = JSON.parse(
-    vm.runInContext("JSON.stringify(synthesizeSessions(retryState, retryFeatures))", vmCtx)
+    vm.runInContext("JSON.stringify(synthesizeSessions(retryState, retryFeatures))", vmCtx),
   );
   const oldSession = p18Sessions.find((s) => s.runId === "run-attempt-1");
   const runningSession = p18Sessions.find((s) => s.runId === "run-attempt-2");
@@ -1037,7 +1060,7 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
   assert.ok(runningSession);
   assert.equal(
     oldSession.handoff.whatWasImplemented,
-    "OLD RUN SUMMARY: this handoff belongs only to the failed first attempt and must not appear as current progress."
+    "OLD RUN SUMMARY: this handoff belongs only to the failed first attempt and must not appear as current progress.",
   );
   assert.deepEqual(oldSession.handoff.commandsRun, ["old-attempt-only"]);
   assert.equal(runningSession.handoff.whatWasImplemented, "No handoff recorded yet.");
@@ -1055,7 +1078,9 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
     if (p20Pid) {
       try {
         process.kill(p20Pid, "SIGTERM");
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
     }
     fs.rmSync(p20Dir, { recursive: true, force: true });
   });
@@ -1063,7 +1088,7 @@ test("Round 2 Scrutiny Fixes (P14, P15, P16, P18, P20): Default approve feature 
   const p20Stdout = execFileSync(
     process.execPath,
     [symlinkedServerMjs, "--mission-dir", p20MissionDir, "--port", "0"],
-    { cwd: p20Dir, timeout: 4000, encoding: "utf8" }
+    { cwd: p20Dir, timeout: 4000, encoding: "utf8" },
   );
   const p20Info = JSON.parse(p20Stdout.trim().split("\n")[0]);
   p20Pid = p20Info.pid;
@@ -1125,8 +1150,8 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
         ],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
 
   const calls = [];
@@ -1162,14 +1187,12 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     fs.rmSync(p22Dir, { recursive: true, force: true });
   });
 
-  const runningState = JSON.parse(
-    fs.readFileSync(path.join(p22DotMission, "state.json"), "utf8")
-  );
+  const runningState = JSON.parse(fs.readFileSync(path.join(p22DotMission, "state.json"), "utf8"));
   runningState.status = "running";
   runningState.activeWorker.status = "running";
   fs.writeFileSync(
     path.join(p22DotMission, "state.json"),
-    JSON.stringify(runningState, null, 2) + "\n"
+    JSON.stringify(runningState, null, 2) + "\n",
   );
 
   const pauseRes = await fetch(`${srv22.url}/api/mission/pause`, {
@@ -1180,7 +1203,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
   assert.equal(pauseRes.status, 500);
   assert.ok(calls.includes("pauseWorker"), "Expected pauseWorker to be invoked");
   const stateAfterFailedPause = JSON.parse(
-    fs.readFileSync(path.join(p22DotMission, "state.json"), "utf8")
+    fs.readFileSync(path.join(p22DotMission, "state.json"), "utf8"),
   );
   assert.equal(stateAfterFailedPause.status, "paused");
   assert.equal(stateAfterFailedPause.activeWorker.status, "running");
@@ -1191,7 +1214,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
   runningState.activeWorker.status = "paused";
   fs.writeFileSync(
     path.join(p22DotMission, "state.json"),
-    JSON.stringify(runningState, null, 2) + "\n"
+    JSON.stringify(runningState, null, 2) + "\n",
   );
 
   const resumeRes = await fetch(`${srv22.url}/api/mission/resume`, {
@@ -1202,7 +1225,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
   assert.equal(resumeRes.status, 500);
   assert.ok(calls.includes("resumeWorker"), "Expected resumeWorker to be invoked");
   const stateAfterFailedResume = JSON.parse(
-    fs.readFileSync(path.join(p22DotMission, "state.json"), "utf8")
+    fs.readFileSync(path.join(p22DotMission, "state.json"), "utf8"),
   );
   assert.equal(stateAfterFailedResume.status, "paused");
 
@@ -1221,11 +1244,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     fs.mkdirSync(dotM, { recursive: true });
 
     const initialStatus =
-      route === "approve"
-        ? "awaiting_input"
-        : route === "resume"
-          ? "paused"
-          : "running";
+      route === "approve" ? "awaiting_input" : route === "resume" ? "paused" : "running";
 
     fs.writeFileSync(
       path.join(dotM, "state.json"),
@@ -1258,8 +1277,8 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
           sessions: [],
         },
         null,
-        2
-      ) + "\n"
+        2,
+      ) + "\n",
     );
     fs.writeFileSync(
       path.join(dotM, "features.json"),
@@ -1277,17 +1296,21 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
           updatedAt: new Date().toISOString(),
         },
         null,
-        2
-      ) + "\n"
+        2,
+      ) + "\n",
     );
     fs.writeFileSync(
       path.join(dotM, "model-settings.json"),
-      JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n"
+      JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n",
     );
     fs.writeFileSync(
       path.join(dotM, "progress_log.jsonl"),
-      JSON.stringify({ seq: 1, timestamp: new Date().toISOString(), type: "init", message: "init" }) +
-        "\n"
+      JSON.stringify({
+        seq: 1,
+        timestamp: new Date().toISOString(),
+        type: "init",
+        message: "init",
+      }) + "\n",
     );
 
     const snap = () => ({
@@ -1303,9 +1326,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
       missionDir: p23Dir,
       port: 0,
       onCommand: async ({ type }) => {
-        const currentState = JSON.parse(
-          fs.readFileSync(path.join(dotM, "state.json"), "utf8")
-        );
+        const currentState = JSON.parse(fs.readFileSync(path.join(dotM, "state.json"), "utf8"));
         during = {
           type,
           diskStatus: currentState.status,
@@ -1327,9 +1348,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     const res = await fetch(`${srv23.url}/api/mission/${route}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        route === "model-slots" ? { slot: "validator", effort: 2 } : {}
-      ),
+      body: JSON.stringify(route === "model-slots" ? { slot: "validator", effort: 2 } : {}),
     });
     assert.equal(res.status, 500, `Expected 500 for ${route}`);
     const after = snap();
@@ -1339,13 +1358,17 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     assert.equal(
       during.diskAlreadyChanged,
       route === "pause",
-      `Expected diskAlreadyChanged === false during onCommand for ${route}`
+      `Expected diskAlreadyChanged === false during onCommand for ${route}`,
     );
     if (route === "pause") {
-      const previous = JSON.parse(before.state), current = JSON.parse(after.state);
-      assert.equal(current.status, "paused"); assert.equal(current.pauseControl.phase, "unknown");
-      assert.deepEqual(current.activeWorker, previous.activeWorker); assert.deepEqual(current.sessions, previous.sessions);
-      assert.equal(after.features, before.features); assert.equal(after.modelSettings, before.modelSettings);
+      const previous = JSON.parse(before.state),
+        current = JSON.parse(after.state);
+      assert.equal(current.status, "paused");
+      assert.equal(current.pauseControl.phase, "unknown");
+      assert.deepEqual(current.activeWorker, previous.activeWorker);
+      assert.deepEqual(current.sessions, previous.sessions);
+      assert.equal(after.features, before.features);
+      assert.equal(after.modelSettings, before.modelSettings);
       assert.equal(after.progressLog.startsWith(before.progressLog), true);
     } else assert.deepEqual(after, before, `Expected disk files unchanged after failed ${route}`);
 
@@ -1376,8 +1399,8 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
           sessions: [],
         },
         null,
-        2
-      ) + "\n"
+        2,
+      ) + "\n",
     );
     fs.writeFileSync(
       path.join(r4DotM, "features.json"),
@@ -1389,17 +1412,21 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
           updatedAt: new Date().toISOString(),
         },
         null,
-        2
-      ) + "\n"
+        2,
+      ) + "\n",
     );
     fs.writeFileSync(
       path.join(r4DotM, "model-settings.json"),
-      JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n"
+      JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n",
     );
     fs.writeFileSync(
       path.join(r4DotM, "progress_log.jsonl"),
-      JSON.stringify({ seq: 1, timestamp: new Date().toISOString(), type: "init", message: "init" }) +
-        "\n"
+      JSON.stringify({
+        seq: 1,
+        timestamp: new Date().toISOString(),
+        type: "init",
+        message: "init",
+      }) + "\n",
     );
 
     const snapFiles = () => ({
@@ -1475,21 +1502,19 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
         sessions: [],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   fs.writeFileSync(
     path.join(r4DefaultDotM, "features.json"),
     JSON.stringify(
       {
-        features: [
-          { id: "f1", title: "First", milestoneId: "m1", status: "pending", attempts: 0 },
-        ],
+        features: [{ id: "f1", title: "First", milestoneId: "m1", status: "pending", attempts: 0 }],
         updatedAt: new Date().toISOString(),
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
 
   const nonGitProcessCalls = [];
@@ -1502,7 +1527,11 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     return origExecFile.apply(this, args);
   };
 
-  const srvDefault = await createMissionHudServer({ missionDir: r4DefaultDir, port: 0, allowLocalDaemon: true });
+  const srvDefault = await createMissionHudServer({
+    missionDir: r4DefaultDir,
+    port: 0,
+    allowLocalDaemon: true,
+  });
   try {
     const appRes = await fetch(`${srvDefault.url}/api/mission/approve`, { method: "POST" });
     assert.equal(appRes.status, 200);
@@ -1513,7 +1542,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
 
     assert.ok(
       nonGitProcessCalls.length >= 4,
-      `Expected default runtime subprocess calls for approve/pause/resume, got ${nonGitProcessCalls.length}`
+      `Expected default runtime subprocess calls for approve/pause/resume, got ${nonGitProcessCalls.length}`,
     );
     const cliCommands = nonGitProcessCalls.map((call) => call.argv[1]);
     assert.deepEqual(cliCommands, [
@@ -1525,7 +1554,7 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     for (const call of nonGitProcessCalls) {
       assert.ok(
         String(call.argv[0]).endsWith("bridge/cli.mjs"),
-        `Expected bridge/cli.mjs entrypoint, got ${call.argv[0]}`
+        `Expected bridge/cli.mjs entrypoint, got ${call.argv[0]}`,
       );
       assert.notEqual(call.argv[0], "-e");
     }
@@ -1558,8 +1587,8 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
           sessions: [],
         },
         null,
-        2
-      ) + "\n"
+        2,
+      ) + "\n",
     );
     fs.writeFileSync(
       path.join(r5DotM, "features.json"),
@@ -1571,17 +1600,21 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
           updatedAt: new Date().toISOString(),
         },
         null,
-        2
-      ) + "\n"
+        2,
+      ) + "\n",
     );
     fs.writeFileSync(
       path.join(r5DotM, "model-settings.json"),
-      JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n"
+      JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n",
     );
     fs.writeFileSync(
       path.join(r5DotM, "progress_log.jsonl"),
-      JSON.stringify({ seq: 1, timestamp: new Date().toISOString(), type: "init", message: "init" }) +
-        "\n"
+      JSON.stringify({
+        seq: 1,
+        timestamp: new Date().toISOString(),
+        type: "init",
+        message: "init",
+      }) + "\n",
     );
 
     const snapFiles = () => ({
@@ -1658,21 +1691,19 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
         sessions: [],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   fs.writeFileSync(
     path.join(r5DaemonDotM, "features.json"),
     JSON.stringify(
       {
-        features: [
-          { id: "f1", title: "First", milestoneId: "m1", status: "pending", attempts: 0 },
-        ],
+        features: [{ id: "f1", title: "First", milestoneId: "m1", status: "pending", attempts: 0 }],
         updatedAt: new Date().toISOString(),
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
 
   const daemonStateFilePath = path.join(r5DaemonDotM, "worker-daemon-state.json");
@@ -1682,13 +1713,37 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     port: 0,
     runtimeAdapter: {
       runFeature: async (feature, worker) => {
-        metadataDaemon = cp.spawn(process.execPath, [fileURLToPath(new URL("../bridge/cli.mjs", import.meta.url)),
-          "LocalWorkerDaemon", "--mission-dir", r5DaemonDir, "--repo-path", r5DaemonDir,
-          "--run-id", worker.runId, "--feature-id", feature.id, "--state-file", daemonStateFilePath], { stdio: "ignore" });
-        for (let attempt = 0; attempt < 100 && !fs.existsSync(daemonStateFilePath); attempt++) await new Promise(resolve => setTimeout(resolve, 10));
+        metadataDaemon = cp.spawn(
+          process.execPath,
+          [
+            fileURLToPath(new URL("../bridge/cli.mjs", import.meta.url)),
+            "LocalWorkerDaemon",
+            "--mission-dir",
+            r5DaemonDir,
+            "--repo-path",
+            r5DaemonDir,
+            "--run-id",
+            worker.runId,
+            "--feature-id",
+            feature.id,
+            "--state-file",
+            daemonStateFilePath,
+          ],
+          { stdio: "ignore" },
+        );
+        for (let attempt = 0; attempt < 100 && !fs.existsSync(daemonStateFilePath); attempt++)
+          await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+          });
         assert.equal(fs.existsSync(daemonStateFilePath), true);
-        return { ok: true, dispatched: true, runtimeTransport: "bridge-cli-subprocess",
-          workerPid: metadataDaemon.pid, daemonStateFile: daemonStateFilePath, daemonStatus: "running" };
+        return {
+          ok: true,
+          dispatched: true,
+          runtimeTransport: "bridge-cli-subprocess",
+          workerPid: metadataDaemon.pid,
+          daemonStateFile: daemonStateFilePath,
+          daemonStatus: "running",
+        };
       },
       pauseWorker: async () => ({
         ok: true,
@@ -1721,7 +1776,8 @@ test("Round 3, Round 4 & Round 5 Scrutiny Fixes (P22, P23, R4-approval-explicit-
     assert.equal(resumedState.activeWorker.daemonStatus, "resumed");
   } finally {
     await srvDaemon.close();
-    if (metadataDaemon?.exitCode === null && metadataDaemon?.signalCode === null) metadataDaemon.kill("SIGTERM");
+    if (metadataDaemon?.exitCode === null && metadataDaemon?.signalCode === null)
+      metadataDaemon.kill("SIGTERM");
     fs.rmSync(r5DaemonDir, { recursive: true, force: true });
   }
 });
@@ -1756,30 +1812,28 @@ test("Round 6 Scrutiny Fix (F03-dead-worker-control-success): Killing default HU
         sessions: [],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   fs.writeFileSync(
     path.join(r6DotM, "features.json"),
     JSON.stringify(
       {
-        features: [
-          { id: "f1", title: "First", milestoneId: "m1", status: "pending", attempts: 0 },
-        ],
+        features: [{ id: "f1", title: "First", milestoneId: "m1", status: "pending", attempts: 0 }],
         updatedAt: new Date().toISOString(),
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   fs.writeFileSync(
     path.join(r6DotM, "model-settings.json"),
-    JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n"
+    JSON.stringify({ validator: { model: "grok-4.7", effort: 3 } }, null, 2) + "\n",
   );
   fs.writeFileSync(
     path.join(r6DotM, "progress_log.jsonl"),
     JSON.stringify({ seq: 1, timestamp: new Date().toISOString(), type: "init", message: "init" }) +
-      "\n"
+      "\n",
   );
 
   const snapFourFiles = () => ({
@@ -1807,11 +1861,15 @@ test("Round 6 Scrutiny Fix (F03-dead-worker-control-success): Killing default HU
   // Kill the active worker daemon and remove its daemonStateFile while running
   try {
     process.kill(workerPid, "SIGKILL");
-  } catch {}
+  } catch {
+    /* Optional cleanup or data is unavailable; retain the current state. */
+  }
   for (let i = 0; i < 40; i++) {
     try {
       process.kill(workerPid, 0);
-      await new Promise((r) => setTimeout(r, 15));
+      await new Promise((r) => {
+        setTimeout(r, 15);
+      });
     } catch {
       break;
     }
@@ -1827,11 +1885,15 @@ test("Round 6 Scrutiny Fix (F03-dead-worker-control-success): Killing default HU
   assert.equal(deadPauseBody.ok, false);
   assert.equal(deadPauseBody.code, "WORKER_NOT_ALIVE");
   const afterPause = snapFourFiles();
-  const gate = JSON.parse(afterPause.state), originalWorker = JSON.parse(beforePauseFiles.state);
-  assert.equal(gate.status, "paused"); assert.equal(gate.pauseControl.phase, "rejected");
+  const gate = JSON.parse(afterPause.state),
+    originalWorker = JSON.parse(beforePauseFiles.state);
+  assert.equal(gate.status, "paused");
+  assert.equal(gate.pauseControl.phase, "rejected");
   assert.equal(gate.pauseControl.code, "WORKER_NOT_ALIVE");
-  assert.deepEqual(gate.activeWorker, originalWorker.activeWorker); assert.deepEqual(gate.sessions, originalWorker.sessions);
-  assert.equal(afterPause.features, beforePauseFiles.features); assert.equal(afterPause.modelSettings, beforePauseFiles.modelSettings);
+  assert.deepEqual(gate.activeWorker, originalWorker.activeWorker);
+  assert.deepEqual(gate.sessions, originalWorker.sessions);
+  assert.equal(afterPause.features, beforePauseFiles.features);
+  assert.equal(afterPause.modelSettings, beforePauseFiles.modelSettings);
   assert.equal(afterPause.progressLog.startsWith(beforePauseFiles.progressLog), true);
 
   // 2. Transition state on disk to paused (as if previously paused before daemon died) and verify POST /api/mission/resume also rejects with 409 and preserves all 4 .mission/* files
@@ -1849,7 +1911,7 @@ test("Round 6 Scrutiny Fix (F03-dead-worker-control-success): Killing default HU
   assert.deepEqual(
     snapFourFiles(),
     beforeResumeFiles,
-    "Expected all 4 .mission/* files unchanged after rejected resume"
+    "Expected all 4 .mission/* files unchanged after rejected resume",
   );
 });
 
@@ -1863,10 +1925,7 @@ test("Round 7 E2E Browser Contract Fixes (UI-STATUS-LABEL, UI-APPROVE-ID, RESUME
   assert.match(indexHtml, /id="assertions-list"/);
 
   // 2. Verify app.js DOM rendering for UI-STATUS-LABEL, UI-APPROVE-ID (#btn-approve), and ASSERTIONS-NOT-RENDERED (#assertions-list)
-  const appSrc = fs
-    .readFileSync(APP_JS_PATH, "utf8")
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm();
 
   const elements = new Map();
   let approvedTriggeredCount = 0;
@@ -1961,16 +2020,19 @@ test("Round 7 E2E Browser Contract Fixes (UI-STATUS-LABEL, UI-APPROVE-ID, RESUME
     },
   });
 
-  vm.runInContext(appSrc, vmCtx);
+  vm.runInContext(appSrc, vmCtx, { filename: APP_JS_PATH });
 
   // Verify getStatusBannerText returns "AWAITING INPUT" regardless of planAccepted when status === "awaiting_input"
   assert.equal(
-    vm.runInContext('getStatusBannerText({ status: "awaiting_input", planAccepted: false })', vmCtx),
-    "AWAITING INPUT"
+    vm.runInContext(
+      'getStatusBannerText({ status: "awaiting_input", planAccepted: false })',
+      vmCtx,
+    ),
+    "AWAITING INPUT",
   );
   assert.equal(
     vm.runInContext('getStatusBannerText({ status: "awaiting_input", planAccepted: true })', vmCtx),
-    "AWAITING INPUT"
+    "AWAITING INPUT",
   );
 
   // Apply snapshot and inspect rendered DOM elements
@@ -2061,8 +2123,8 @@ test("Round 7 E2E Browser Contract Fixes (UI-STATUS-LABEL, UI-APPROVE-ID, RESUME
         sessions: [],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
 
   const conflictHud = await createMissionHudServer({ missionDir: conflictDir, port: 0 });
@@ -2107,8 +2169,14 @@ test("HUD Effort Capability Fix (t3m-m1-w3-hud-effort-cap-fix-v1): Fixed-tier / 
   assert.deepEqual(opusEntry.effortLevels, ["low", "medium", "high", "xhigh", "max"]);
 
   assert.equal(doesModelSupportEffort("gemini-4-argon-high"), false);
-  assert.equal(doesModelSupportEffort({ model: "custom-model", providerInstanceId: "antigravity" }), false);
-  assert.equal(doesModelSupportEffort({ model: "custom-model-high", providerInstanceId: "openai" }), false);
+  assert.equal(
+    doesModelSupportEffort({ model: "custom-model", providerInstanceId: "antigravity" }),
+    false,
+  );
+  assert.equal(
+    doesModelSupportEffort({ model: "custom-model-high", providerInstanceId: "openai" }),
+    false,
+  );
   assert.equal(doesModelSupportEffort("gpt-6.1-sol"), true);
   assert.equal(doesModelSupportEffort("claude-opus-5-5"), true);
 
@@ -2161,10 +2229,7 @@ test("HUD Effort Capability Fix (t3m-m1-w3-hud-effort-cap-fix-v1): Fixed-tier / 
   assert.equal(normalized.validator.options.reasoningEffort, "medium");
 
   // 3. Verify HUD DOM hides #effort-bars-<slot> for gemini-4-argon-high and shows interactive bars for gpt-6.1-sol / claude-opus-5-5
-  const appSrc = fs
-    .readFileSync(APP_JS_PATH, "utf8")
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm();
 
   const elements = new Map();
   const slotUpdates = [];
@@ -2221,7 +2286,7 @@ test("HUD Effort Capability Fix (t3m-m1-w3-hud-effort-cap-fix-v1): Fixed-tier / 
         if (sel === ".effort-bar-btn") {
           const matches = [
             ...this.innerHTML.matchAll(
-              /<button[^>]*class="effort-bar-btn[^"]*"[^>]*data-slot="([^"]+)"[^>]*data-effort="(\d+)"[^>]*>/g
+              /<button[^>]*class="effort-bar-btn[^"]*"[^>]*data-slot="([^"]+)"[^>]*data-effort="(\d+)"[^>]*>/g,
             ),
           ];
           this._buttons = matches.map((m) => {
@@ -2258,7 +2323,7 @@ test("HUD Effort Capability Fix (t3m-m1-w3-hud-effort-cap-fix-v1): Fixed-tier / 
     },
   });
 
-  vm.runInContext(appSrc, vmCtx);
+  vm.runInContext(appSrc, vmCtx, { filename: APP_JS_PATH });
 
   vmCtx.snapshot = {
     initialized: true,
@@ -2314,10 +2379,7 @@ test("Validator #7 Fixes (V7-F01, V7-F05, V7-F06): UNINITIALIZED status label, c
   assert.match(indexHtml, /id="session-inspector"[\s\S]*?id="session-handoff-view"/);
 
   // 2. V7-F01, V7-F05, V7-F06 in app.js DOM execution
-  const appSrc = fs
-    .readFileSync(APP_JS_PATH, "utf8")
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm();
 
   const elements = new Map();
   function makeEl(id) {
@@ -2331,8 +2393,12 @@ test("Validator #7 Fixes (V7-F01, V7-F05, V7-F06): UNINITIALIZED status label, c
       listeners: {},
       classList: {
         classes: new Set(["hidden"]),
-        add(c) { this.classes.add(c); },
-        remove(c) { this.classes.delete(c); },
+        add(c) {
+          this.classes.add(c);
+        },
+        remove(c) {
+          this.classes.delete(c);
+        },
         toggle(c, force) {
           if (force === undefined) {
             if (this.classes.has(c)) this.classes.delete(c);
@@ -2343,13 +2409,19 @@ test("Validator #7 Fixes (V7-F01, V7-F05, V7-F06): UNINITIALIZED status label, c
             this.classes.delete(c);
           }
         },
-        contains(c) { return this.classes.has(c); }
+        contains(c) {
+          return this.classes.has(c);
+        },
       },
       addEventListener(type, fn) {
         this.listeners[type] = fn;
       },
-      querySelector() { return null; },
-      querySelectorAll() { return []; }
+      querySelector() {
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
     };
     return el;
   }
@@ -2378,37 +2450,38 @@ test("Validator #7 Fixes (V7-F01, V7-F05, V7-F06): UNINITIALIZED status label, c
     "assertions-count",
     "assertions-list",
     "progress-log-count",
-    "progress-log-list"
+    "progress-log-list",
   ]) {
     elements.set(id, makeEl(id));
   }
 
   const vmCtx = vm.createContext({
     document: {
-      getElementById: (id) => elements.get(id) || null
+      getElementById: (id) => elements.get(id) || null,
     },
     fetch: async (url) => {
       if (url === "/api/mission/resume") {
         return {
           ok: false,
           status: 409,
-          text: async () => JSON.stringify({
-            ok: false,
-            code: "GIT_RESUME_BLOCKED",
-            reasonCode: "RESUME_BLOCKED_BY_CONFLICTS",
-            error: "Unresolved git merge conflicts in working tree"
-          })
+          text: async () =>
+            JSON.stringify({
+              ok: false,
+              code: "GIT_RESUME_BLOCKED",
+              reasonCode: "RESUME_BLOCKED_BY_CONFLICTS",
+              error: "Unresolved git merge conflicts in working tree",
+            }),
         };
       }
       return {
         ok: true,
         status: 200,
-        json: async () => ({ ok: true })
+        json: async () => ({ ok: true }),
       };
-    }
+    },
   });
 
-  vm.runInContext(appSrc, vmCtx);
+  vm.runInContext(appSrc, vmCtx, { filename: APP_JS_PATH });
   vm.runInContext("bindStaticListeners()", vmCtx);
 
   // V7-F01: When snapshot.initialized === false, #status-strip-label is UNINITIALIZED
@@ -2418,7 +2491,7 @@ test("Validator #7 Fixes (V7-F01, V7-F05, V7-F06): UNINITIALIZED status label, c
     features: [],
     progressLog: [],
     modelSettings: {},
-    catalog: []
+    catalog: [],
   };
   vm.runInContext("applySnapshot(uninitSnapshot)", vmCtx);
   assert.equal(elements.get("status-strip-label").textContent, "UNINITIALIZED");
@@ -2439,20 +2512,23 @@ test("Validator #7 Fixes (V7-F01, V7-F05, V7-F06): UNINITIALIZED status label, c
           milestoneId: "m1",
           featureId: "f1",
           title: "Feature 1",
-          status: "completed"
-        }
-      ]
+          status: "completed",
+        },
+      ],
     },
     features: [{ id: "f1", title: "Feature 1", milestoneId: "m1", status: "completed" }],
     progressLog: [],
     modelSettings: {},
-    catalog: []
+    catalog: [],
   };
   vm.runInContext("applySnapshot(planningSnapshot)", vmCtx);
   assert.equal(elements.get("status-strip-label").textContent, "PLANNING");
 
   // V7-F06: Selecting a non-orchestrator session unhides both #session-inspector and #session-handoff-view
-  vm.runInContext(`hudState.selectedSessionId = "worker-1"; renderCenterColumn(hudState.snapshot);`, vmCtx);
+  vm.runInContext(
+    `hudState.selectedSessionId = "worker-1"; renderCenterColumn(hudState.snapshot);`,
+    vmCtx,
+  );
   assert.equal(elements.get("session-inspector").classList.contains("hidden"), false);
   assert.equal(elements.get("session-handoff-view").classList.contains("hidden"), false);
 
@@ -2490,21 +2566,27 @@ test("First-Principles T3-Native HUD Redesign: No fake composer/toolbar/fallback
     assert.equal(
       indexHtml.includes(banned),
       false,
-      `index.html must not contain fake/hardcoded string: ${banned}`
+      `index.html must not contain fake/hardcoded string: ${banned}`,
     );
     assert.equal(
       appRaw.includes(banned),
       false,
-      `app.js must not contain fake/hardcoded string: ${banned}`
+      `app.js must not contain fake/hardcoded string: ${banned}`,
     );
   }
-  assert.equal(stylesCss.includes("width: 65%"), false, "styles.css must not hardcode 65% bar width");
-  assert.equal(appRaw.includes(".slice(0, 8)"), false, "app.js must not truncate features or assertions to .slice(0, 8)");
+  assert.equal(
+    stylesCss.includes("width: 65%"),
+    false,
+    "styles.css must not hardcode 65% bar width",
+  );
+  assert.equal(
+    appRaw.includes(".slice(0, 8)"),
+    false,
+    "app.js must not truncate features or assertions to .slice(0, 8)",
+  );
 
   // 2. Verify DOM rendering of >8 features (with linked VAL-* pills) and >8 assertions without truncation, plus model_slots_updated spam filtering
-  const appSrc = appRaw
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm(appRaw);
 
   const elements = new Map();
   function makeEl(id) {
@@ -2518,8 +2600,12 @@ test("First-Principles T3-Native HUD Redesign: No fake composer/toolbar/fallback
       listeners: {},
       classList: {
         classes: new Set(),
-        add(c) { this.classes.add(c); },
-        remove(c) { this.classes.delete(c); },
+        add(c) {
+          this.classes.add(c);
+        },
+        remove(c) {
+          this.classes.delete(c);
+        },
         toggle(c, force) {
           if (force === undefined) {
             if (this.classes.has(c)) this.classes.delete(c);
@@ -2530,13 +2616,19 @@ test("First-Principles T3-Native HUD Redesign: No fake composer/toolbar/fallback
             this.classes.delete(c);
           }
         },
-        contains(c) { return this.classes.has(c); },
+        contains(c) {
+          return this.classes.has(c);
+        },
       },
       addEventListener(type, fn) {
         this.listeners[type] = fn;
       },
-      querySelector() { return null; },
-      querySelectorAll() { return []; },
+      querySelector() {
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
     };
   }
 
@@ -2581,7 +2673,7 @@ test("First-Principles T3-Native HUD Redesign: No fake composer/toolbar/fallback
     fetch: async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }),
   });
 
-  vm.runInContext(appSrc, vmCtx);
+  vm.runInContext(appSrc, vmCtx, { filename: APP_JS_PATH });
 
   const twelveFeatures = Array.from({ length: 12 }, (_, i) => ({
     id: `f-${i + 1}`,
@@ -2600,11 +2692,36 @@ test("First-Principles T3-Native HUD Redesign: No fake composer/toolbar/fallback
   }));
 
   const spammyLogs = [
-    { seq: 1, timestamp: new Date().toISOString(), type: "plan_proposed", message: "Proposed mission plan" },
-    { seq: 2, timestamp: new Date().toISOString(), type: "model_slots_updated", message: "Model slots updated: validator=gpt-6.1-sol (low/2)" },
-    { seq: 3, timestamp: new Date().toISOString(), type: "model_slots_updated", message: "Model slots updated: validator=gpt-6.1-sol (medium/3)" },
-    { seq: 4, timestamp: new Date().toISOString(), type: "model_slots_updated", message: "Model slots updated: validator=gpt-6.1-sol (high/4)" },
-    { seq: 5, timestamp: new Date().toISOString(), type: "model_slots_updated", message: "Model slots updated: validator=gpt-6.1-sol (max/5)" },
+    {
+      seq: 1,
+      timestamp: new Date().toISOString(),
+      type: "plan_proposed",
+      message: "Proposed mission plan",
+    },
+    {
+      seq: 2,
+      timestamp: new Date().toISOString(),
+      type: "model_slots_updated",
+      message: "Model slots updated: validator=gpt-6.1-sol (low/2)",
+    },
+    {
+      seq: 3,
+      timestamp: new Date().toISOString(),
+      type: "model_slots_updated",
+      message: "Model slots updated: validator=gpt-6.1-sol (medium/3)",
+    },
+    {
+      seq: 4,
+      timestamp: new Date().toISOString(),
+      type: "model_slots_updated",
+      message: "Model slots updated: validator=gpt-6.1-sol (high/4)",
+    },
+    {
+      seq: 5,
+      timestamp: new Date().toISOString(),
+      type: "model_slots_updated",
+      message: "Model slots updated: validator=gpt-6.1-sol (max/5)",
+    },
   ];
 
   vmCtx.largeSnapshot = {
@@ -2634,8 +2751,16 @@ test("First-Principles T3-Native HUD Redesign: No fake composer/toolbar/fallback
   for (let i = 1; i <= 12; i++) {
     const valId = `VAL-M-${String(i).padStart(3, "0")}`;
     assert.match(featuresHtml, new RegExp(`data-feature-id="f-${i}"`), `Missing feature f-${i}`);
-    assert.match(featuresHtml, new RegExp(valId), `Feature row f-${i} should render linked ${valId} pill`);
-    assert.match(assertionsHtml, new RegExp(`data-assertion-id="${valId}"`), `Missing assertion ${valId}`);
+    assert.match(
+      featuresHtml,
+      new RegExp(valId),
+      `Feature row f-${i} should render linked ${valId} pill`,
+    );
+    assert.match(
+      assertionsHtml,
+      new RegExp(`data-assertion-id="${valId}"`),
+      `Missing assertion ${valId}`,
+    );
   }
 
   // Verify #orchestrator-stream does NOT contain model_slots_updated spam
@@ -2643,14 +2768,18 @@ test("First-Principles T3-Native HUD Redesign: No fake composer/toolbar/fallback
   assert.equal(
     streamHtml.includes("model_slots_updated"),
     false,
-    "#orchestrator-stream must filter out model_slots_updated spam"
+    "#orchestrator-stream must filter out model_slots_updated spam",
   );
 
   // Verify #progress-log-list coalesces the 4 consecutive model_slots_updated entries into 1
   assert.equal(elements.get("progress-log-count").textContent, "2");
   const logHtml = elements.get("progress-log-list").innerHTML;
   assert.match(logHtml, /max\/5/);
-  assert.equal(logHtml.includes("low/2"), false, "Earlier consecutive model_slots_updated entries should be coalesced");
+  assert.equal(
+    logHtml.includes("low/2"),
+    false,
+    "Earlier consecutive model_slots_updated entries should be coalesced",
+  );
 });
 
 test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-V8-004): formatted 409 error without raw JSON dump, cleared stale resume diagnostic on running/completed, WCAG AA contrast tokens, and contextual pause/resume button disabled states", async () => {
@@ -2665,11 +2794,13 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
   assert.match(stylesCss, /--status-emerald-fg:\s*#166534/i);
   assert.match(stylesCss, /--status-rose-fg:\s*#b91c1c/i);
   assert.match(stylesCss, /--status-slate-fg:\s*#475569/i);
-  assert.equal(stylesCss.includes("#16a34a"), false, "Low-contrast #16a34a must not be used in styles.css");
+  assert.equal(
+    stylesCss.includes("#16a34a"),
+    false,
+    "Low-contrast #16a34a must not be used in styles.css",
+  );
 
-  const appSrc = appRaw
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm(appRaw);
 
   const elements = new Map();
   function makeEl(id) {
@@ -2684,8 +2815,12 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
       listeners: {},
       classList: {
         classes: new Set(),
-        add(c) { this.classes.add(c); },
-        remove(c) { this.classes.delete(c); },
+        add(c) {
+          this.classes.add(c);
+        },
+        remove(c) {
+          this.classes.delete(c);
+        },
         toggle(c, force) {
           if (force === undefined) {
             if (this.classes.has(c)) this.classes.delete(c);
@@ -2696,13 +2831,19 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
             this.classes.delete(c);
           }
         },
-        contains(c) { return this.classes.has(c); },
+        contains(c) {
+          return this.classes.has(c);
+        },
       },
       addEventListener(type, fn) {
         this.listeners[type] = fn;
       },
-      querySelector() { return null; },
-      querySelectorAll() { return []; },
+      querySelector() {
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
     };
   }
 
@@ -2745,8 +2886,12 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
     state: {
       status: "paused",
       revision: 12,
-      lastResumeDiagnostic: "Resume blocked (RESUME_BLOCKED_BY_CONFLICTS): Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
-      milestones: Array.from({ length: 4 }, (_, i) => ({ id: `m${i + 1}`, title: `Milestone ${i + 1}` })),
+      lastResumeDiagnostic:
+        "Resume blocked (RESUME_BLOCKED_BY_CONFLICTS): Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
+      milestones: Array.from({ length: 4 }, (_, i) => ({
+        id: `m${i + 1}`,
+        title: `Milestone ${i + 1}`,
+      })),
     },
     features: Array.from({ length: 20 }, (_, i) => ({
       id: `f${String(i + 1).padStart(2, "0")}`,
@@ -2767,16 +2912,19 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
           text: async () =>
             JSON.stringify({
               ok: false,
-              error: "Resume blocked (RESUME_BLOCKED_BY_CONFLICTS): Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
+              error:
+                "Resume blocked (RESUME_BLOCKED_BY_CONFLICTS): Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
               code: "GIT_RESUME_BLOCKED",
               reasonCode: "RESUME_BLOCKED_BY_CONFLICTS",
-              diagnostic: "Resume blocked (RESUME_BLOCKED_BY_CONFLICTS): Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
+              diagnostic:
+                "Resume blocked (RESUME_BLOCKED_BY_CONFLICTS): Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
               gitCheck: {
                 ok: false,
                 canResume: false,
                 status: "conflicted",
                 reasonCode: "RESUME_BLOCKED_BY_CONFLICTS",
-                summary: "Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
+                summary:
+                  "Git repository has unresolved merge conflicts (README.md). Resolve all conflicts before resuming.",
               },
               snapshot: hugeSnapshotPayload,
               state: hugeSnapshotPayload.state,
@@ -2787,7 +2935,7 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
     },
   });
 
-  vm.runInContext(appSrc, vmCtx);
+  vm.runInContext(appSrc, vmCtx, { filename: APP_JS_PATH });
   vm.runInContext("bindStaticListeners()", vmCtx);
 
   // HUD-V8-004: Verify contextual disabled state across lifecycle phases
@@ -2836,7 +2984,8 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
       status: "paused",
       planAccepted: true,
       revision: 3,
-      lastResumeDiagnostic: "The mission was paused one minute after the f01 worker started. Resume f01.",
+      lastResumeDiagnostic:
+        "The mission was paused one minute after the f01 worker started. Resume f01.",
       activeWorker: { featureId: "f01", title: "Feature 1", workerNumber: 1, status: "paused" },
     },
     features: [{ id: "f01", title: "Feature 1", status: "paused" }],
@@ -2864,7 +3013,8 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
       status: "running",
       planAccepted: true,
       revision: 4,
-      lastResumeDiagnostic: "The mission was paused one minute after the f01 worker started. Resume f01.",
+      lastResumeDiagnostic:
+        "The mission was paused one minute after the f01 worker started. Resume f01.",
       activeWorker: { featureId: "f02", title: "Feature 2", workerNumber: 2, status: "running" },
     },
     features: [
@@ -2878,9 +3028,12 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
   assert.equal(
     elements.get("orchestrator-stream").innerHTML.includes("The mission was paused one minute"),
     false,
-    "Running state on f02 must not display stale f01 lastResumeDiagnostic"
+    "Running state on f02 must not display stale f01 lastResumeDiagnostic",
   );
-  assert.match(elements.get("orchestrator-stream").innerHTML, /Worker #2 \(Feature 2\) is currently running\./);
+  assert.match(
+    elements.get("orchestrator-stream").innerHTML,
+    /Worker #2 \(Feature 2\) is currently running\./,
+  );
 
   // HUD-V8-002 & HUD-V8-004: Transitioning to completed with stale lastResumeDiagnostic shows clean completion message and disables both pause and resume buttons
   vmCtx.snapCompleted = {
@@ -2889,7 +3042,8 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
       status: "completed",
       planAccepted: true,
       revision: 5,
-      lastResumeDiagnostic: "The mission was paused one minute after the f01 worker started. Resume f01.",
+      lastResumeDiagnostic:
+        "The mission was paused one minute after the f01 worker started. Resume f01.",
       activeWorker: null,
     },
     features: [
@@ -2904,12 +3058,12 @@ test("Validator #8 Visual Polish Fixes (HUD-V8-001, HUD-V8-002, HUD-V8-003, HUD-
   const completedStreamHtml = elements.get("orchestrator-stream").innerHTML;
   assert.match(
     completedStreamHtml,
-    /All milestones, features, and validation assertions completed\./
+    /All milestones, features, and validation assertions completed\./,
   );
   assert.equal(
     completedStreamHtml.includes("The mission was paused one minute"),
     false,
-    "Completed mission must not display stale lastResumeDiagnostic"
+    "Completed mission must not display stale lastResumeDiagnostic",
   );
 });
 
@@ -2967,15 +3121,24 @@ test("Validator #8 Round 2 Fix (HUD-V8-005): SSE snapshot convergence when featu
     sessions: [],
   };
 
-  fs.writeFileSync(path.join(dotMission, "state.json"), JSON.stringify(initialState, null, 2) + "\n");
+  fs.writeFileSync(
+    path.join(dotMission, "state.json"),
+    JSON.stringify(initialState, null, 2) + "\n",
+  );
   fs.writeFileSync(
     path.join(dotMission, "features.json"),
-    JSON.stringify({ features: initialFeatures, updatedAt: new Date().toISOString() }, null, 2) + "\n"
+    JSON.stringify({ features: initialFeatures, updatedAt: new Date().toISOString() }, null, 2) +
+      "\n",
   );
   fs.writeFileSync(path.join(dotMission, "model-settings.json"), "{}\n");
   fs.writeFileSync(
     path.join(dotMission, "progress_log.jsonl"),
-    JSON.stringify({ seq: 1, timestamp: new Date().toISOString(), type: "worker_started", message: "Started f06" }) + "\n"
+    JSON.stringify({
+      seq: 1,
+      timestamp: new Date().toISOString(),
+      type: "worker_started",
+      message: "Started f06",
+    }) + "\n",
   );
 
   const hud = await createMissionHudServer({ missionDir: workspaceDir, port: 0 });
@@ -2991,8 +3154,8 @@ test("Validator #8 Round 2 Fix (HUD-V8-005): SSE snapshot convergence when featu
     const timeout = setTimeout(() => {
       reject(
         new Error(
-          `Timed out waiting for 16-feature SSE snapshot (last count: ${receivedSnapshots.at(-1)?.features?.length})`
-        )
+          `Timed out waiting for 16-feature SSE snapshot (last count: ${receivedSnapshots.at(-1)?.features?.length})`,
+        ),
       );
     }, 480);
     resolveConverged = (snap) => {
@@ -3056,7 +3219,9 @@ test("Validator #8 Round 2 Fix (HUD-V8-005): SSE snapshot convergence when featu
   fs.writeFileSync(path.join(dotMission, "state.json"), JSON.stringify(nextState, null, 2) + "\n");
 
   // Step 2: 3ms later, write features.json with 16 features (injecting scrutiny-validator-m2 & user-testing-validator-m2) WITHOUT changing state.revision
-  await new Promise((r) => setTimeout(r, 3));
+  await new Promise((r) => {
+    setTimeout(r, 3);
+  });
   const updatedFeatures = [
     ...initialFeatures.map((f) => (f.id === "f06" ? { ...f, status: "completed" } : f)),
     {
@@ -3076,7 +3241,8 @@ test("Validator #8 Round 2 Fix (HUD-V8-005): SSE snapshot convergence when featu
   ];
   fs.writeFileSync(
     path.join(dotMission, "features.json"),
-    JSON.stringify({ features: updatedFeatures, updatedAt: new Date().toISOString() }, null, 2) + "\n"
+    JSON.stringify({ features: updatedFeatures, updatedAt: new Date().toISOString() }, null, 2) +
+      "\n",
   );
 
   const convergedSnap = await convergedPromise;
@@ -3104,12 +3270,16 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
     req.on("end", () => {
       try {
         webhookEvents.push(JSON.parse(raw));
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
     });
   });
-  await new Promise((resolve) => webhookServer.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => {
+    webhookServer.listen(0, "127.0.0.1", resolve);
+  });
   const webhookPort = webhookServer.address().port;
   const notifyUrl = `http://127.0.0.1:${webhookPort}/webhook`;
 
@@ -3121,7 +3291,9 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
 
   t.after(async () => {
     await hud.close();
-    await new Promise((resolve) => webhookServer.close(resolve));
+    await new Promise((resolve) => {
+      webhookServer.close(resolve);
+    });
     fs.rmSync(workspaceDir, { recursive: true, force: true });
   });
 
@@ -3149,7 +3321,9 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
   const waitForWebhookCount = async (count) => {
     const deadline = Date.now() + 2000;
     while (webhookEvents.length < count && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 5);
+      });
     }
     assert.equal(webhookEvents.length, count);
   };
@@ -3208,10 +3382,10 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
   const approveBody = await approveRes.json();
 
   const stateAfterApprove = JSON.parse(
-    fs.readFileSync(path.join(dotMission, "state.json"), "utf8")
+    fs.readFileSync(path.join(dotMission, "state.json"), "utf8"),
   );
   const featuresAfterApprove = JSON.parse(
-    fs.readFileSync(path.join(dotMission, "features.json"), "utf8")
+    fs.readFileSync(path.join(dotMission, "features.json"), "utf8"),
   ).features;
 
   assert.equal(stateAfterApprove.planAccepted, true);
@@ -3245,10 +3419,7 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
   assert.equal(webhookEvents[1].state.planAccepted, true);
 
   // 4. Verify app.js renders "Approved — waiting for Orchestrator to dispatch" and per-feature model badges
-  const appSrc = fs
-    .readFileSync(APP_JS_PATH, "utf8")
-    .replace("export function applySnapshot", "function applySnapshot")
-    .replace(/initHud\(\);\s*$/, "");
+  const appSrc = readHudScriptForVm();
 
   const elements = new Map();
   function makeEl(id) {
@@ -3262,13 +3433,19 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
         add() {},
         remove() {},
         toggle() {},
-        contains() { return false; },
+        contains() {
+          return false;
+        },
       },
       setAttribute() {},
       removeAttribute() {},
       addEventListener() {},
-      querySelector() { return null; },
-      querySelectorAll() { return []; },
+      querySelector() {
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
     };
   }
   for (const id of [
@@ -3313,7 +3490,9 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
     window: {},
     navigator: {},
     fetch: async () => ({ ok: true, json: async () => ({}) }),
-    EventSource: class { addEventListener() {} },
+    EventSource: class {
+      addEventListener() {}
+    },
     setInterval() {},
     clearInterval() {},
     setTimeout() {},
@@ -3333,27 +3512,20 @@ test("DISPATCH-FIX-001 through DISPATCH-FIX-006: Default no-T3-transport approve
     encodeURIComponent,
   };
 
-  vm.runInNewContext(`${appSrc}\nthis.__applySnapshot = applySnapshot;`, sandbox);
+  const sandboxContext = vm.createContext(sandbox);
+  vm.runInContext(appSrc, sandboxContext, { filename: APP_JS_PATH });
+  vm.runInContext("this.__applySnapshot = applySnapshot;", sandboxContext);
   sandbox.__applySnapshot(approveBody.snapshot);
 
   assert.match(
     elements.get("status-strip-subtext").textContent,
-    /Approved — waiting for Orchestrator to dispatch/
+    /Approved — waiting for Orchestrator to dispatch/,
   );
   assert.match(
     elements.get("orchestrator-stream").innerHTML,
-    /Approved — waiting for Orchestrator to dispatch/
+    /Approved — waiting for Orchestrator to dispatch/,
   );
-  assert.match(
-    elements.get("features-list").innerHTML,
-    /data-feature-model="claude-opus-5-5"/
-  );
-  assert.match(
-    elements.get("features-list").innerHTML,
-    /data-feature-model="gpt-6.1-sol"/
-  );
-  assert.match(
-    elements.get("features-list").innerHTML,
-    /Awaiting Orchestrator Dispatch/
-  );
+  assert.match(elements.get("features-list").innerHTML, /data-feature-model="claude-opus-5-5"/);
+  assert.match(elements.get("features-list").innerHTML, /data-feature-model="gpt-6.1-sol"/);
+  assert.match(elements.get("features-list").innerHTML, /Awaiting Orchestrator Dispatch/);
 });

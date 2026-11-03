@@ -1,0 +1,848 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "T3 Mission Mode local HUD API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:43110",
+      "description": "Example loopback listener; use the actual printed URL."
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "openHud_0",
+        "summary": "Open the Mission HUD",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/index.html": {
+      "get": {
+        "operationId": "openHud_1",
+        "summary": "Open the Mission HUD",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/app.js": {
+      "get": {
+        "operationId": "getScript_2",
+        "summary": "Load the HUD script",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/javascript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/styles.css": {
+      "get": {
+        "operationId": "getStyles_3",
+        "summary": "Load HUD styles",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/style.css": {
+      "get": {
+        "operationId": "getStyles_4",
+        "summary": "Load HUD styles",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/mission/state": {
+      "get": {
+        "operationId": "getMissionState_5",
+        "summary": "Read a consistent Mission snapshot",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionSnapshot"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/mission/stream": {
+      "get": {
+        "operationId": "streamMission_6",
+        "summary": "Subscribe to Mission snapshots",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE connection; mission_snapshot events contain a snapshot.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/mission/events": {
+      "get": {
+        "operationId": "streamMission_7",
+        "summary": "Subscribe to Mission snapshots",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE connection; mission_snapshot events contain a snapshot.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/mission/approve": {
+      "post": {
+        "operationId": "approveMission_8",
+        "summary": "Approve the current plan",
+        "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mission/reject": {
+      "post": {
+        "operationId": "rejectMission_9",
+        "summary": "Request plan changes",
+        "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "feedback": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mission/model-slots": {
+      "post": {
+        "operationId": "updateModelSlots_10",
+        "summary": "Update model settings",
+        "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mission/pause": {
+      "post": {
+        "operationId": "pauseMission_11",
+        "summary": "Commit the Pause gate and request runtime control",
+        "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mission/resume": {
+      "post": {
+        "operationId": "resumeMission_12",
+        "summary": "Preflight and resume the bound run",
+        "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth_13",
+        "summary": "Check HTTP process liveness",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "getReadiness_14",
+        "summary": "Check whether a Mission snapshot can be read",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getMetrics_15",
+        "summary": "Read local aggregate Prometheus metrics",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/mission/diagnostics": {
+      "get": {
+        "operationId": "getDiagnostics_16",
+        "summary": "Read aggregate usage and recent redacted errors",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "MissionSnapshot": {
+        "type": "object",
+        "required": ["state", "features", "modelSettings", "progressLog"],
+        "properties": {
+          "state": {
+            "type": "object",
+            "properties": {
+              "initialized": {
+                "type": "boolean"
+              },
+              "missionId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "modelSettings": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "progressLog": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "const": false
+          },
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Request refused or runtime/storage unavailable. The request ID correlates diagnostics.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

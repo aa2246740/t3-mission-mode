@@ -7,7 +7,6 @@ description: Launch, orchestrate, validate, and losslessly resume durable multi-
 
 This skill turns the current T3 Code thread into a durable **Mission Orchestrator** backed by `.mission/` state files, the live **Mission HUD** preview panel, and **T3 Code Orchestration V2** (`orchestrator_capabilities`, `delegate_task`, `t3_thread_send`, `t3_thread_organize`).
 
-
 ## Installed skill paths
 
 Before running the commands below, set these values to the absolute installed skill directory and the explicitly selected target project. Resolve the skill path you read to its canonical location; do not assume that the target project contains the skill's source tree.
@@ -30,6 +29,7 @@ Every Mission uses three independent model slots configured in `.mission/model-s
 ### Provider Slot Normalization (`normalizeTargetFromSlot`) & Autonomy Mapping
 
 When dispatching via `delegate_task`, model slot settings (including numeric effort bars `1..5`: `1 -> "minimal"`, `2 -> "low"`, `3 -> "medium"`, `4 -> "high"`, `5 -> "max"`) are normalized into `target: { providerInstanceId, model, options }`:
+
 - `providerInstanceId === "codex"` -> `options.reasoningEffort` (`"minimal" | "low" | "medium" | "high" | "xhigh" | "max"`)
 - `providerInstanceId === "antigravity"` -> direct `model` ID (e.g. `"gemini-4-argon-high"`, `"claude-opus-5-5-high"`), with `supportsEffort: false` (no `effort` or `reasoningEffort` keys persisted or passed)
 - `providerInstanceId === "acpRegistry_factory_droid"` -> `options.reasoning_effort` and `options.autonomy_level` via `mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", slotConfig)` (defaults to `"auto-high"` in Mission Mode so workers do not stall in `"auto-medium"` or `"normal"`)
@@ -78,6 +78,7 @@ When any Validator (`gpt-6.1-sol`, `scrutiny-validator`, or `user-testing-valida
 When the user triggers `/mission <需求>` or asks to start a Mission ("开启 mission"):
 
 ### Step 1: Optionally open the Mission HUD
+
 1. When the user wants the observer panel, start the local Mission HUD server pointing at the repository's `.mission` directory if it is not already running. The Mission can run without a HUD:
    ```bash
    node "$T3_MISSION_SKILL_ROOT/t3-mission/hud/server.mjs" --mission-dir "$T3_MISSION_PROJECT_ROOT/.mission"
@@ -85,16 +86,18 @@ When the user triggers `/mission <需求>` or asks to start a Mission ("开启 m
 2. Check T3 preview status with `preview_status`, and open or navigate the right-side collaborative panel with `preview_open` / `preview_navigate` to the HUD URL so the user can monitor live progress, review the plan, and configure model slots.
 
 ### Step 2: Dispatch Read-Only `Explorer` Subtasks to Survey the Repository
+
 1. Query `orchestrator_capabilities` to inspect live available providers and models.
 2. Dispatch one or more read-only `Explorer` subtasks (`role: "research"`, title format `[M1] Explorer #1: <scope>`) to map the repository structure, existing conventions, test runners, and architectural boundaries.
 
 ### Step 3: Propose the Mission Plan (`ProposeMission`) & Wait for User Approval
+
 1. Synthesize the exploration findings into a structured Mission Plan containing:
    - **Milestones** (`M1`, `M2`, ...)
    - **Features** (scoped implementation units mapped to milestones and `VAL-*` assertions; supports optional per-feature model overrides via `feature.target` or `feature.workerTarget`)
    - **Validation Contract** (`VAL-*` assertions with testable acceptance criteria)
    - **Three-Role Model Settings** (`orchestrator`, `worker`, `validator`; preserves any slots the user already edited in the HUD unless `forceModelSettings: true` is passed)
-Each `VAL-*` assertion must be independently decidable within a single validation stage. Do not reference Scrutiny, User-Testing, or another stage's receipts in an assertion. The controller verifies that both stages pass on the final integration SHA.
+     Each `VAL-*` assertion must be independently decidable within a single validation stage. Do not reference Scrutiny, User-Testing, or another stage's receipts in an assertion. The controller verifies that both stages pass on the final integration SHA.
 
 2. Include `autopilot:true` and the original `ownerThreadId` in the plan payload, along with declared integration policy and permission gates. This makes HUD approval record approval without selecting or dispatching a worker. Invoke `ProposeMission` via MCP or CLI:
    ```bash
@@ -104,7 +107,7 @@ Each `VAL-*` assertion must be independently decidable within a single validatio
    ```bash
    node "$T3_MISSION_SKILL_ROOT/t3-mission/bridge/cli.mjs" WaitForApproval --mission-dir "$T3_MISSION_PROJECT_ROOT/.mission" --timeout-ms 600000
    ```
-   *(You may also pass `--notify-url <webhookUrl>` when starting `hud/server.mjs` to POST HUD command notifications to a T3 `schedule_task` webhook.)*
+   _(You may also pass `--notify-url <webhookUrl>` when starting `hud/server.mjs` to POST HUD command notifications to a T3 `schedule_task` webhook.)_
 4. **HARD GUARDRAIL (Mandatory Approval Gate)**:
    - Ask the user to approve the proposed milestones, features, assertions, model slots, integration policy and permissions in the HUD or chat. Chat approval is recorded with ApproveMissionPlan before ticking.
    - **NEVER** call `StartMissionRun` or dispatch any implementation `Worker` before the user has explicitly approved the plan (`planAccepted === true`).
@@ -180,7 +183,12 @@ Retry one logical command with its original `commandId` and identical payload. C
 
 Do not delete `.txn/`, accepted/unknown dispatch records, old intent locks or controller budgets to force progress. `TX_BUSY` allows a later retry; corrupt/foreign WAL, lock or receipt errors require preserving and inspecting the reported material. A fresh official read replays a valid committed WAL before returning a snapshot. HUD GET/SSE performs storage recovery only, never business reconciliation or worker startup. A cached fallback still needs exact approval for the current feature role at the moment of selection.
 
-
 HUD runtime-control Pause commits the paused gate and request log before control. Until control confirms, worker, session and feature retain their previous runtime state. Explicit refusal returns 409 with its original code, keeps the gate, and records pauseControl with code, at and runId. A repeated request reconciles that fact without another control call. Confirmation commits paused runtime projections in a new transaction. Runtime Resume for an already bound child follows P2: control first, commit only after confirmation, and preserve the paused gate on errors; a missing adapter returns NO_T3_TRANSPORT. A pending run with no child follows V03: directly clear the gate, return HTTP 200, perform zero external control calls, and retain its original run/intent and dispatch fence.
 
 Offline edits to the public files remain effective when no committed WAL is pending. Noncooperating old writers cannot receive cross-file guarantees. Loaded low-level documents carry stale-write checks; use an explicit transaction to compose lifecycle changes, and pass `expectedRevision` for a detached state replacement. See DESIGN-transactions.md before adding an internal writer or recovery path.
+
+## Local HUD diagnostics and repository development
+
+The loopback HUD exposes read-only `/healthz`, `/readyz`, `/metrics`, and `/api/mission/diagnostics`. These endpoints never reconcile or resume a Mission. Health confirms the HTTP layer; it does not prove provider or scheduler liveness. Keep the HUD on its loopback listener. Foreign Origin/Host requests are refused, and command JSON must be an object no larger than 1 MiB. Use the response X-Request-ID to correlate bounded, redacted local diagnostics. No analytics are exported.
+
+For changes to this skill package, read its root AGENTS.md and docs/development.md. Run the isolated `npm run qa` flow before touching an actual Mission; it uses no credentials, transport, or local worker daemon. Preserve root and packaged SKILL.md byte identity.

@@ -1,17 +1,57 @@
-import { digest as commandDigest } from '../kernel/autopilot-store.mjs';
-import { missionTransaction, readTransactionFile, writeTransactionFile, runMissionSteps, runClaimedEffect, transactionHash, afterMissionCommit, listTransactionFiles } from '../kernel/mission-transaction.mjs';
-import { isRemoteWorker, inspectOwnedLocalWorker, stripLocalWorkerMetadata } from "../kernel/worker-process.mjs";
-import { resolveFeatureSlot, workerDispatchBlockReason, settlePausedWorkerResult, resumeControlEffectId } from "../kernel/runner.mjs";
+import { createDiagnostics } from "../ops/diagnostics.mjs";
+import {
+  assertTrustedRequest,
+  readBoundedJson,
+  setSecurityHeaders,
+} from "../ops/http-security.mjs";
+import { findHudRoute } from "../ops/routes.mjs";
+import { digest as commandDigest } from "../kernel/autopilot-store.mjs";
+import {
+  missionTransaction,
+  readTransactionFile,
+  writeTransactionFile,
+  runMissionSteps,
+  runClaimedEffect,
+  transactionHash,
+  afterMissionCommit,
+  listTransactionFiles,
+} from "../kernel/mission-transaction.mjs";
+import {
+  isRemoteWorker,
+  inspectOwnedLocalWorker,
+  stripLocalWorkerMetadata,
+} from "../kernel/worker-process.mjs";
+import {
+  resolveFeatureSlot,
+  workerDispatchBlockReason,
+  settlePausedWorkerResult,
+  resumeControlEffectId,
+} from "../kernel/runner.mjs";
 import { applyAutopilotCommand } from "../kernel/autopilot-commands.mjs";
 import { preSendFailure } from "../bridge/t3-adapter.mjs";
-import { inspectDispatchIntent, inspectDispatchRecords, prepareDispatch, dispatchWithIntent, mergeDispatchReceipt, assertNoUnresolvedDispatch } from "../kernel/dispatch-journal.mjs";
+import {
+  inspectDispatchIntent,
+  inspectDispatchRecords,
+  prepareDispatch,
+  dispatchWithIntent,
+  mergeDispatchReceipt,
+  assertNoUnresolvedDispatch,
+} from "../kernel/dispatch-journal.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import cp, { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { approvePlanState, getFeatureSlotOverride, inferProviderForModel, decideDispatchOutcome, classifyControlReceipt, dispatchReceiptSources, inspectRunDispatchBinding } from "../kernel/schema.mjs";
+import {
+  approvePlanState,
+  getFeatureSlotOverride,
+  inferProviderForModel,
+  decideDispatchOutcome,
+  classifyControlReceipt,
+  dispatchReceiptSources,
+  inspectRunDispatchBinding,
+} from "../kernel/schema.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -126,7 +166,9 @@ export function effortToReasoningEffort(effort, fallback = "high") {
 }
 
 export function doesProviderDeclareEffortOption(providerInstanceId) {
-  const norm = String(providerInstanceId || "").trim().toLowerCase();
+  const norm = String(providerInstanceId || "")
+    .trim()
+    .toLowerCase();
   return (
     norm === "claudeagent" ||
     norm === "claude-code" ||
@@ -179,7 +221,7 @@ function findCatalogEntry(modelOrLabel) {
         item.id.toLowerCase() === needle ||
         item.model.toLowerCase() === needle ||
         item.label.toLowerCase() === needle ||
-        item.displayName.toLowerCase() === needle
+        item.displayName.toLowerCase() === needle,
     ) || null
   );
 }
@@ -195,9 +237,7 @@ export function doesModelSupportEffort(rawSlot, catalogEntry = null) {
   if (entry?.supportsEffort === false) return false;
   if (slotObj?.supportsEffort === false) return false;
 
-  const providerInstanceId = String(
-    slotObj?.providerInstanceId || entry?.providerInstanceId || ""
-  )
+  const providerInstanceId = String(slotObj?.providerInstanceId || entry?.providerInstanceId || "")
     .trim()
     .toLowerCase();
   if (providerInstanceId === "antigravity") return false;
@@ -296,9 +336,7 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
       ? rawSlot.effort
       : rawSlot.options?.effort;
   const explicitReasoning =
-    rawSlot.effort !== undefined &&
-    rawSlot.effort !== null &&
-    rawSlot.reasoningEffort === undefined
+    rawSlot.effort !== undefined && rawSlot.effort !== null && rawSlot.reasoningEffort === undefined
       ? undefined
       : rawSlot.reasoningEffort !== undefined && rawSlot.reasoningEffort !== null
         ? rawSlot.reasoningEffort
@@ -311,9 +349,11 @@ function normalizeSlotConfig(rawSlot, fallbackSlot) {
   const inheritEffort = !hasExplicitEffort && !hasExplicitReasoning;
 
   const { effort, reasoningEffort } = normalizeEffortPair(
-    inheritEffort ? base.effort ?? base.options?.effort ?? entry?.effort : explicitEffort,
-    inheritEffort ? base.reasoningEffort ?? base.options?.reasoningEffort ?? entry?.reasoningEffort : explicitReasoning,
-    base.effort ?? entry?.effort ?? 4
+    inheritEffort ? (base.effort ?? base.options?.effort ?? entry?.effort) : explicitEffort,
+    inheritEffort
+      ? (base.reasoningEffort ?? base.options?.reasoningEffort ?? entry?.reasoningEffort)
+      : explicitReasoning,
+    base.effort ?? entry?.effort ?? 4,
   );
 
   const slotOptions = {
@@ -371,7 +411,7 @@ export function normalizeHudModelSettings(partial = {}, base = DEFAULT_HUD_MODEL
 
   if (rawModified && rawModified.length > 0) {
     normalized.userModifiedSlots = Array.from(
-      new Set(rawModified.map((s) => String(s).trim()).filter(Boolean))
+      new Set(rawModified.map((s) => String(s).trim()).filter(Boolean)),
     );
   }
   return normalized;
@@ -415,15 +455,24 @@ export function resolveMissionPaths(missionDir) {
   };
 }
 
-function writeFileAtomicSync(filePath, content) { return writeTransactionFile(filePath, content); }
-function writeJsonAtomicSync(filePath, data) { writeFileAtomicSync(filePath, `${JSON.stringify(data, null, 2)}\n`); }
+function writeFileAtomicSync(filePath, content) {
+  return writeTransactionFile(filePath, content);
+}
+function writeJsonAtomicSync(filePath, data) {
+  writeFileAtomicSync(filePath, `${JSON.stringify(data, null, 2)}\n`);
+}
 function safeReadJsonSync(filePath, fallback = null) {
   const raw = readTransactionFile(filePath);
   return raw === null ? fallback : JSON.parse(raw);
 }
 function readProgressLogSync(filePath) {
   const raw = readTransactionFile(filePath);
-  return raw === null ? [] : raw.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+  return raw === null
+    ? []
+    : raw
+        .split(/\r?\n/)
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line));
 }
 
 function buildProgressLogEntries(existingLogs, entriesToAppend) {
@@ -454,15 +503,6 @@ function writeProgressLogEntriesSync(progressLogPath, entriesToWrite) {
   return entriesToWrite;
 }
 
-function appendProgressLogSync(progressLogPath, entryInput) {
-  const entries = readProgressLogSync(progressLogPath);
-  const [entry] = buildProgressLogEntries(entries, [entryInput]);
-  const content =
-    [...entries, entry].map((item) => JSON.stringify(item)).join("\n") + "\n";
-  writeFileAtomicSync(progressLogPath, content);
-  return entry;
-}
-
 function execRuntimeSubprocess(action, missionDir, payload = {}) {
   return new Promise((resolve, reject) => {
     const commandMap = {
@@ -489,12 +529,18 @@ function execRuntimeSubprocess(action, missionDir, payload = {}) {
       },
       (err, stdout, stderr) => {
         if (err) {
-          const rawErrText = (stderr && String(stderr).trim()) || (stdout && String(stdout).trim()) || "";
+          const rawErrText =
+            (stderr && String(stderr).trim()) || (stdout && String(stdout).trim()) || "";
           if (rawErrText.startsWith("{")) {
             try {
               const parsedErr = JSON.parse(rawErrText.split("\n").pop() || rawErrText);
               if (Object.hasOwn(parsedErr ?? {}, "runtimeResult")) {
-                reject(Object.assign(new Error(parsedErr.error || err.message), { code: parsedErr.code, runtimeResult: parsedErr.runtimeResult }));
+                reject(
+                  Object.assign(new Error(parsedErr.error || err.message), {
+                    code: parsedErr.code,
+                    runtimeResult: parsedErr.runtimeResult,
+                  }),
+                );
                 return;
               }
               if (parsedErr?.controlReceipt) {
@@ -509,8 +555,18 @@ function execRuntimeSubprocess(action, missionDir, payload = {}) {
               // Fall through to reject
             }
           }
-          const failure = Object.assign(new Error(rawErrText || err.message, { cause: err }), { code: err.code, syscall: err.syscall, path: err.path, spawnargs: err.spawnargs });
-          if (typeof err.code === "string" && ["ENOENT", "EACCES"].includes(err.code) && String(err.syscall).startsWith("spawn")) preSendFailure(failure);
+          const failure = Object.assign(new Error(rawErrText || err.message, { cause: err }), {
+            code: err.code,
+            syscall: err.syscall,
+            path: err.path,
+            spawnargs: err.spawnargs,
+          });
+          if (
+            typeof err.code === "string" &&
+            ["ENOENT", "EACCES"].includes(err.code) &&
+            String(err.syscall).startsWith("spawn")
+          )
+            preSendFailure(failure);
           reject(failure);
           return;
         }
@@ -519,7 +575,7 @@ function execRuntimeSubprocess(action, missionDir, payload = {}) {
         } catch (parseErr) {
           reject(parseErr);
         }
-      }
+      },
     );
   });
 }
@@ -546,8 +602,7 @@ function createDefaultHudRuntimeAdapter(paths, options = {}) {
         feature?.runId ||
         `run-${crypto.randomUUID().slice(0, 8)}`;
       const allowLocalDaemon = Boolean(
-        options.allowLocalDaemon === true ||
-          process.env.T3_MISSION_LOCAL_WORKER_DAEMON === "1"
+        options.allowLocalDaemon === true || process.env.T3_MISSION_LOCAL_WORKER_DAEMON === "1",
       );
       return await execRuntimeSubprocess("dispatch", paths.dotMissionDir, {
         missionId: state?.missionId || "mission",
@@ -568,7 +623,11 @@ function createDefaultHudRuntimeAdapter(paths, options = {}) {
         res.ok !== false &&
         worker &&
         typeof worker === "object" &&
-        !(process.env.T3_ACP_MCP_NODE && String(process.env.T3_ACP_MCP_NODE).trim() && worker.childThreadId) &&
+        !(
+          process.env.T3_ACP_MCP_NODE &&
+          String(process.env.T3_ACP_MCP_NODE).trim() &&
+          worker.childThreadId
+        ) &&
         (typeof worker.workerPid === "number" ||
           typeof worker.daemonStateFile === "string" ||
           worker.runtimeTransport === "bridge-cli-subprocess")
@@ -597,7 +656,10 @@ function createDefaultHudRuntimeAdapter(paths, options = {}) {
     async resumeWorker(worker, payload, state) {
       const res = await execRuntimeSubprocess("resume-worker", paths.dotMissionDir, {
         missionId: state?.missionId || "mission",
-        activeWorker: { ...worker, ...(payload?.controlRequestId ? { controlRequestId: payload.controlRequestId } : {}) },
+        activeWorker: {
+          ...worker,
+          ...(payload?.controlRequestId ? { controlRequestId: payload.controlRequestId } : {}),
+        },
         trigger: payload?.trigger || "[resume the mission]",
         diagnostic: payload?.diagnostic || "",
       });
@@ -606,7 +668,11 @@ function createDefaultHudRuntimeAdapter(paths, options = {}) {
         res.ok !== false &&
         worker &&
         typeof worker === "object" &&
-        !(process.env.T3_ACP_MCP_NODE && String(process.env.T3_ACP_MCP_NODE).trim() && worker.childThreadId) &&
+        !(
+          process.env.T3_ACP_MCP_NODE &&
+          String(process.env.T3_ACP_MCP_NODE).trim() &&
+          worker.childThreadId
+        ) &&
         (typeof worker.workerPid === "number" ||
           typeof worker.daemonStateFile === "string" ||
           worker.runtimeTransport === "bridge-cli-subprocess")
@@ -631,8 +697,11 @@ function createDefaultHudRuntimeAdapter(paths, options = {}) {
 }
 
 function isInitializedMissionState(state) {
-  return Boolean(state && state.initialized !== false &&
-    (state.initialized === true || state.missionId !== "mission-uninitialized"));
+  return Boolean(
+    state &&
+    state.initialized !== false &&
+    (state.initialized === true || state.missionId !== "mission-uninitialized"),
+  );
 }
 
 function buildUninitializedState(repoDir) {
@@ -674,29 +743,71 @@ export function validateGitPreflightTimeout(value) {
 
 function runGitPreflight(candidateDir, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", ["--no-optional-locks", "-C", candidateDir, "status", "--porcelain"],
-      { detached: true, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "", stderr = "", settled = false;
+    const child = spawn(
+      "git",
+      ["--no-optional-locks", "-C", candidateDir, "status", "--porcelain"],
+      { detached: true, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "",
+      stderr = "",
+      settled = false;
     const finish = (error) => {
       if (settled) return;
-      settled = true; clearTimeout(timer);
-      if (error) reject(error); else resolve(stdout);
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(stdout);
     };
-    const stop = () => { try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); } };
+    const stop = () => {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    };
     const timer = setTimeout(() => {
-      stop(); finish(Object.assign(new Error(`Git preflight exceeded ${timeoutMs}ms (default ${DEFAULT_GIT_PREFLIGHT_TIMEOUT_MS}ms); restart the HUD with --git-preflight-timeout-ms <1..30000> to adjust the budget`), { code: "GIT_PREFLIGHT_TIMEOUT" }));
+      stop();
+      finish(
+        Object.assign(
+          new Error(
+            `Git preflight exceeded ${timeoutMs}ms (default ${DEFAULT_GIT_PREFLIGHT_TIMEOUT_MS}ms); restart the HUD with --git-preflight-timeout-ms <1..30000> to adjust the budget`,
+          ),
+          { code: "GIT_PREFLIGHT_TIMEOUT" },
+        ),
+      );
     }, timeoutMs);
-    child.stdout.on("data", bytes => {
+    child.stdout.on("data", (bytes) => {
       stdout += bytes;
-      if (stdout.length > 4 * 1024 * 1024) { stop(); finish(Object.assign(new Error("Git status output exceeded 4 MiB"), { code: "GIT_PREFLIGHT_OUTPUT_LIMIT" })); }
+      if (stdout.length > 4 * 1024 * 1024) {
+        stop();
+        finish(
+          Object.assign(new Error("Git status output exceeded 4 MiB"), {
+            code: "GIT_PREFLIGHT_OUTPUT_LIMIT",
+          }),
+        );
+      }
     });
-    child.stderr.on("data", bytes => { if (stderr.length < 65536) stderr += bytes; });
+    child.stderr.on("data", (bytes) => {
+      if (stderr.length < 65536) stderr += bytes;
+    });
     child.on("error", finish);
-    child.on("close", code => finish(code === 0 ? null : Object.assign(new Error(stderr || `Git status exited ${code}`), { code: "GIT_PREFLIGHT_FAILED" })));
+    child.on("close", (code) =>
+      finish(
+        code === 0
+          ? null
+          : Object.assign(new Error(stderr || `Git status exited ${code}`), {
+              code: "GIT_PREFLIGHT_FAILED",
+            }),
+      ),
+    );
   });
 }
 
-async function inspectGitTreeForResume(candidateDir, featureId, { activeWorkerWorktreePath, gitPreflightTimeoutMs = DEFAULT_GIT_PREFLIGHT_TIMEOUT_MS } = {}) {
+async function inspectGitTreeForResume(
+  candidateDir,
+  featureId,
+  { activeWorkerWorktreePath, gitPreflightTimeoutMs = DEFAULT_GIT_PREFLIGHT_TIMEOUT_MS } = {},
+) {
   if (
     typeof activeWorkerWorktreePath === "string" &&
     activeWorkerWorktreePath.trim().length > 0 &&
@@ -753,16 +864,12 @@ async function inspectGitTreeForResume(candidateDir, featureId, { activeWorkerWo
 
   try {
     const rawStatus = await runGitPreflight(candidateDir, gitPreflightTimeoutMs);
-    const statusLines = rawStatus
-      .split(/\r?\n/)
-      .filter((line) => line.trim().length > 0);
+    const statusLines = rawStatus.split(/\r?\n/).filter((line) => line.trim().length > 0);
     const conflictLines = statusLines.filter((line) =>
-      /^(UU|AA|DD|AU|UA|DU|UD)/.test(line.slice(0, 2))
+      /^(UU|AA|DD|AU|UA|DU|UD)/.test(line.slice(0, 2)),
     );
     if (conflictLines.length > 0) {
-      const conflictedFiles = conflictLines
-        .map((line) => line.slice(3).trim())
-        .filter(Boolean);
+      const conflictedFiles = conflictLines.map((line) => line.slice(3).trim()).filter(Boolean);
       const diagnostic = `The mission was paused on ${featureId}, and the code tree has unresolved git merge conflicts (${conflictedFiles.join(", ")}), so resume is blocked.`;
       return {
         path: candidateDir,
@@ -779,9 +886,7 @@ async function inspectGitTreeForResume(candidateDir, featureId, { activeWorkerWo
     }
 
     if (statusLines.length > 0) {
-      const modifiedFiles = statusLines
-        .map((line) => line.slice(3).trim())
-        .filter(Boolean);
+      const modifiedFiles = statusLines.map((line) => line.slice(3).trim()).filter(Boolean);
       const diagnostic = `The mission was paused one minute after the ${featureId} worker started, and the code tree has uncommitted changes (${modifiedFiles.join(", ")}), so I'm resuming that worker.`;
       return {
         path: candidateDir,
@@ -831,36 +936,26 @@ async function inspectGitTreeForResume(candidateDir, featureId, { activeWorkerWo
   }
 }
 
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf8").trim();
-      if (!raw) {
-        resolve({});
-        return;
-      }
-      try {
-        resolve(JSON.parse(raw));
-      } catch (err) {
-        reject(new Error(`Invalid JSON body: ${err.message}`));
-      }
-    });
-    req.on("error", reject);
-  });
-}
+const readJsonBody = readBoundedJson;
 
 const hudCommandClaims = new WeakMap();
 function sendJson(res, statusCode, payload) {
   const claim = hudCommandClaims.get(res);
-  if (claim) writeTransactionFile(claim.file, JSON.stringify({ ...claim.record, phase: 'completed', responseHash: commandDigest({ statusCode, payload }), response: { statusCode, payload } }) + '\n');
+  if (claim)
+    writeTransactionFile(
+      claim.file,
+      JSON.stringify({
+        ...claim.record,
+        phase: "completed",
+        responseHash: commandDigest({ statusCode, payload }),
+        response: { statusCode, payload },
+      }) + "\n",
+    );
   const body = JSON.stringify(payload);
   afterMissionCommit(() => {
     res.writeHead(statusCode, {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
-      "Access-Control-Allow-Origin": "*",
     });
     res.end(body);
   });
@@ -876,6 +971,7 @@ export function createMissionHudServer({
   allowLocalDaemon = false,
   gitPreflightTimeoutMs = DEFAULT_GIT_PREFLIGHT_TIMEOUT_MS,
   notifyUrl = process.env.T3_MISSION_NOTIFY_URL || null,
+  diagnosticWriter,
 } = {}) {
   validateGitPreflightTimeout(gitPreflightTimeoutMs);
   const paths = resolveMissionPaths(missionDir || process.cwd());
@@ -887,6 +983,7 @@ export function createMissionHudServer({
   const resolvedNotifyUrl =
     typeof notifyUrl === "string" && notifyUrl.trim() ? notifyUrl.trim() : null;
   const sseClients = new Set();
+  const diagnostics = createDiagnostics(diagnosticWriter ? { write: diagnosticWriter } : {});
   let sseEventSeq = 1;
   let fsWatcher = null;
   let parentWatcher = null;
@@ -897,14 +994,33 @@ export function createMissionHudServer({
 
   // Loading a HUD never establishes ownership of an execution runtime.
 
-  async function handleAutopilotCommand(...args) { return runMissionSteps(paths.dotMissionDir, handleAutopilotCommandSteps(...args), { create: true }); }
-  async function handleApprove(...args) { return runMissionSteps(paths.dotMissionDir, handleApproveSteps(...args), { create: true }); }
-  async function handleReject(...args) { return runMissionSteps(paths.dotMissionDir, handleRejectSteps(...args), { create: true }); }
-  async function handleModelSlots(...args) { return runMissionSteps(paths.dotMissionDir, handleModelSlotsSteps(...args), { create: true }); }
-  async function handlePause(...args) { return runMissionSteps(paths.dotMissionDir, handlePauseSteps(...args), { create: true }); }
-  async function handleResume(...args) { return runMissionSteps(paths.dotMissionDir, handleResumeSteps(...args), { create: true }); }
+  async function handleAutopilotCommand(...args) {
+    return runMissionSteps(paths.dotMissionDir, handleAutopilotCommandSteps(...args), {
+      create: true,
+    });
+  }
+  async function handleApprove(...args) {
+    return runMissionSteps(paths.dotMissionDir, handleApproveSteps(...args), { create: true });
+  }
+  async function handleReject(...args) {
+    return runMissionSteps(paths.dotMissionDir, handleRejectSteps(...args), { create: true });
+  }
+  async function handleModelSlots(...args) {
+    return runMissionSteps(paths.dotMissionDir, handleModelSlotsSteps(...args), { create: true });
+  }
+  async function handlePause(...args) {
+    return runMissionSteps(paths.dotMissionDir, handlePauseSteps(...args), { create: true });
+  }
+  async function handleResume(...args) {
+    return runMissionSteps(paths.dotMissionDir, handleResumeSteps(...args), { create: true });
+  }
 
-  function buildInMemorySnapshot({ state: rawState, features: rawFeatures, modelSettings: rawModelSettings, progressLog }) {
+  function buildInMemorySnapshot({
+    state: rawState,
+    features: rawFeatures,
+    modelSettings: rawModelSettings,
+    progressLog,
+  }) {
     const initialized = isInitializedMissionState(rawState);
     const state = initialized
       ? {
@@ -941,7 +1057,7 @@ export function createMissionHudServer({
 
     const modelSettings = normalizeHudModelSettings(
       rawModelSettings || {},
-      DEFAULT_HUD_MODEL_SETTINGS
+      DEFAULT_HUD_MODEL_SETTINGS,
     );
 
     return {
@@ -967,13 +1083,17 @@ export function createMissionHudServer({
           modelSettings: snapshot.modelSettings,
           progressLogLen: Array.isArray(snapshot.progressLog) ? snapshot.progressLog.length : 0,
           lastLogSeq: Array.isArray(snapshot.progressLog) ? snapshot.progressLog.at(-1)?.seq : null,
-        })
+        }),
       )
       .digest("hex");
   }
 
-  function loadSnapshot() { return missionTransaction(paths.dotMissionDir, loadSnapshotImpl, { create: false }); }
-  function captureDiskBackup() { return missionTransaction(paths.dotMissionDir, captureDiskBackupImpl, { create: false }); }
+  function loadSnapshot() {
+    return missionTransaction(paths.dotMissionDir, loadSnapshotImpl, { create: false });
+  }
+  function captureDiskBackup() {
+    return missionTransaction(paths.dotMissionDir, captureDiskBackupImpl, { create: false });
+  }
   function loadSnapshotImpl() {
     const sigBefore = computeDiskSignature();
     let rawState = safeReadJsonSync(paths.statePath, null);
@@ -1023,17 +1143,18 @@ export function createMissionHudServer({
       paths.progressLogPath,
     ];
     return targets.map((filePath) => {
-      try {
-        const content = readTransactionFile(filePath);
-        if (content !== null) return { filePath, exists: true, content };
-      } catch (error) { throw error; }
+      const content = readTransactionFile(filePath);
+      if (content !== null) return { filePath, exists: true, content };
+
       return { filePath, exists: false, content: null };
     });
   }
 
   function requireUnchangedMission(backup) {
     if (diskMatchesBackup(backup)) return;
-    const error = new Error("Mission changed while waiting for runtime; current state was preserved");
+    const error = new Error(
+      "Mission changed while waiting for runtime; current state was preserved",
+    );
     error.code = "MISSION_STATE_CHANGED";
     throw error;
   }
@@ -1051,10 +1172,18 @@ export function createMissionHudServer({
   }
 
   async function awaitUnchangedWorkerResult(backup, before, worker, intent, hook) {
-    try { return await awaitUnchangedMission(backup, hook); }
-    catch (error) {
+    try {
+      return await awaitUnchangedMission(backup, hook);
+    } catch (error) {
       if (error.code === "MISSION_STATE_CHANGED" && error.runtimeResult)
-        await settlePausedWorkerResult(paths.dotMissionDir, before, worker, error.runtimeResult, intent, effectiveAdapter);
+        await settlePausedWorkerResult(
+          paths.dotMissionDir,
+          before,
+          worker,
+          error.runtimeResult,
+          intent,
+          effectiveAdapter,
+        );
       throw error;
     }
   }
@@ -1062,8 +1191,13 @@ export function createMissionHudServer({
   function respondIfDispatchBindingRequired(res, state, doc) {
     const features = Array.isArray(doc) ? doc : doc?.features || [];
     if (!inspectRunDispatchBinding(state, features).requiresBinding) return false;
-    sendJson(res, 409, { ok: false, resumed: false, code: "DISPATCH_BINDING_REQUIRED",
-      error: "Retry the original BindFeatureDispatch receipt before dispatching or resuming", state });
+    sendJson(res, 409, {
+      ok: false,
+      resumed: false,
+      code: "DISPATCH_BINDING_REQUIRED",
+      error: "Retry the original BindFeatureDispatch receipt before dispatching or resuming",
+      state,
+    });
     return true;
   }
 
@@ -1071,8 +1205,14 @@ export function createMissionHudServer({
     const features = Array.isArray(doc) ? doc : doc?.features || [];
     const reason = workerDispatchBlockReason(state, state.activeWorker, { features });
     if (!reason) return false;
-    sendJson(res, 409, { ok: false, resumed: false, code: "MISSION_NOT_DISPATCHABLE", reason,
-      error: "The current feature/run must be reconciled by its owner before dispatch", state });
+    sendJson(res, 409, {
+      ok: false,
+      resumed: false,
+      code: "MISSION_NOT_DISPATCHABLE",
+      reason,
+      error: "The current feature/run must be reconciled by its owner before dispatch",
+      state,
+    });
     return true;
   }
 
@@ -1080,7 +1220,7 @@ export function createMissionHudServer({
     return missionTransaction(paths.dotMissionDir, () => {
       for (const [filePath, value] of changes) writeJsonAtomicSync(filePath, value);
       if (logEntries.length) writeProgressLogEntriesSync(paths.progressLogPath, logEntries);
-      lastDiskSignature = '';
+      lastDiskSignature = "";
     });
   }
 
@@ -1137,7 +1277,9 @@ export function createMissionHudServer({
           fsWatcher.on("error", () => {
             try {
               fsWatcher?.close();
-            } catch {}
+            } catch {
+              /* Optional cleanup or data is unavailable; retain the current state. */
+            }
             fsWatcher = null;
           });
         } catch {
@@ -1172,11 +1314,12 @@ export function createMissionHudServer({
   }
 
   async function invokeHudHook(invoke, hookSource = "runtimeAdapter") {
-    try { return await invoke(); }
-    catch (cause) {
+    try {
+      return await invoke();
+    } catch (cause) {
       const error = new Error(cause?.message || String(cause), { cause });
       if (cause && Object.hasOwn(cause, "runtimeResult")) error.runtimeResult = cause.runtimeResult;
-      error.code = cause?.code || 'INTERNAL_ERROR';
+      error.code = cause?.code || "INTERNAL_ERROR";
       error.hudHookFailed = true;
       error.hookSource = cause?.hookSource || hookSource;
       throw error;
@@ -1214,22 +1357,40 @@ export function createMissionHudServer({
 
   function beginHudCommand(command, body, res) {
     if (body.commandId === undefined) return false;
-    if (typeof body.commandId !== 'string' || !body.commandId.trim()) throw Object.assign(new Error('commandId must be a non-empty string'), { code: 'TX_COMMAND_ID_REQUIRED' });
-    const file = path.join(paths.dotMissionDir, '.txn', 'commands', transactionHash(`hud:${body.commandId}`) + '.json');
+    if (typeof body.commandId !== "string" || !body.commandId.trim())
+      throw Object.assign(new Error("commandId must be a non-empty string"), {
+        code: "TX_COMMAND_ID_REQUIRED",
+      });
+    const file = path.join(
+      paths.dotMissionDir,
+      ".txn",
+      "commands",
+      transactionHash(`hud:${body.commandId}`) + ".json",
+    );
     const commandHash = commandDigest({ command, body });
     const raw = readTransactionFile(file);
     if (raw !== null) {
       const record = JSON.parse(raw);
-      if (record.version !== 1 || record.commandHash !== commandHash) throw Object.assign(new Error('HUD commandId belongs to a different payload'), { code: 'TX_COMMAND_ID_CONFLICT' });
-      if (record.phase === 'completed') {
-        if (record.responseHash !== commandDigest(record.response)) throw Object.assign(new Error('HUD command response checksum differs'), { code: 'TX_COMMAND_RESULT_CORRUPT' });
+      if (record.version !== 1 || record.commandHash !== commandHash)
+        throw Object.assign(new Error("HUD commandId belongs to a different payload"), {
+          code: "TX_COMMAND_ID_CONFLICT",
+        });
+      if (record.phase === "completed") {
+        if (record.responseHash !== commandDigest(record.response))
+          throw Object.assign(new Error("HUD command response checksum differs"), {
+            code: "TX_COMMAND_RESULT_CORRUPT",
+          });
         sendJson(res, record.response.statusCode, record.response.payload);
-      }
-      else sendJson(res, 409, { ok: false, code: 'COMMAND_OUTCOME_UNKNOWN', error: 'Reconcile the original command and any external runtime action before retrying' });
+      } else
+        sendJson(res, 409, {
+          ok: false,
+          code: "COMMAND_OUTCOME_UNKNOWN",
+          error: "Reconcile the original command and any external runtime action before retrying",
+        });
       return true;
     }
-    const record = { version: 1, commandHash, phase: 'requested' };
-    writeTransactionFile(file, JSON.stringify(record) + '\n');
+    const record = { version: 1, commandHash, phase: "requested" };
+    writeTransactionFile(file, JSON.stringify(record) + "\n");
     hudCommandClaims.set(res, { file, record });
     return false;
   }
@@ -1237,13 +1398,20 @@ export function createMissionHudServer({
   function* handleAutopilotCommandSteps(req, res, command) {
     if (safeReadJsonSync(paths.statePath, null)?.autopilot !== true) return false;
     const body = yield () => readJsonBody(req);
-    if (beginHudCommand('autopilot:' + command, body, res)) return true;
+    if (beginHudCommand("autopilot:" + command, body, res)) return true;
     const backup = captureDiskBackup();
-    yield () => awaitUnchangedMission(backup, () => notifyCommand(command, { body }, loadSnapshot()));
-    try { applyAutopilotCommand(paths.dotMissionDir, command, { commandId: body.commandId }); }
-    catch (error) {
+    yield () =>
+      awaitUnchangedMission(backup, () => notifyCommand(command, { body }, loadSnapshot()));
+    try {
+      applyAutopilotCommand(paths.dotMissionDir, command, { commandId: body.commandId });
+    } catch (error) {
       if (error.code !== "PLAN_ACCEPTANCE_REQUIRED") throw error;
-      sendJson(res, 409, { ok: false, code: error.code, error: error.message, state: loadSnapshot().state });
+      sendJson(res, 409, {
+        ok: false,
+        code: error.code,
+        error: error.message,
+        state: loadSnapshot().state,
+      });
       return true;
     }
     lastDiskSignature = computeDiskSignature();
@@ -1256,14 +1424,24 @@ export function createMissionHudServer({
   function* handleApproveSteps(req, res) {
     if (yield () => handleAutopilotCommand(req, res, "approve")) return;
     const body = yield () => readJsonBody(req);
-    if (beginHudCommand('approve', body, res)) return;
+    if (beginHudCommand("approve", body, res)) return;
     let backup = captureDiskBackup();
     const nowIso = new Date().toISOString();
-    const existing = safeReadJsonSync(paths.statePath, null) || buildUninitializedState(paths.repoDir);
+    const existing =
+      safeReadJsonSync(paths.statePath, null) || buildUninitializedState(paths.repoDir);
     if (existing.activeWorker && existing.planAccepted === true) {
-      const active = inspectDispatchRecords(paths.dotMissionDir).find(record => record.intent.missionId === existing.missionId && record.intent.runId === existing.activeWorker.runId);
-      if (active?.phase === 'inflight') {
-        sendJson(res, 409, { ok: false, code: 'DISPATCH_OUTCOME_UNKNOWN', error: 'Reconcile the original dispatch before approving again', state: existing });
+      const active = inspectDispatchRecords(paths.dotMissionDir).find(
+        (record) =>
+          record.intent.missionId === existing.missionId &&
+          record.intent.runId === existing.activeWorker.runId,
+      );
+      if (active?.phase === "inflight") {
+        sendJson(res, 409, {
+          ok: false,
+          code: "DISPATCH_OUTCOME_UNKNOWN",
+          error: "Reconcile the original dispatch before approving again",
+          state: existing,
+        });
         return;
       }
     }
@@ -1275,30 +1453,45 @@ export function createMissionHudServer({
         : [];
     if (respondIfDispatchBindingRequired(res, existing, featuresList)) return;
     if (existing.status === "paused" || existing.activeWorker?.status === "paused") {
-      sendJson(res, 409, { ok: false, code: "MISSION_PAUSED", error: "Resume the paused Mission explicitly", state: existing });
+      sendJson(res, 409, {
+        ok: false,
+        code: "MISSION_PAUSED",
+        error: "Resume the paused Mission explicitly",
+        state: existing,
+      });
       return;
     }
     if (existing.activeWorker) {
       // Explicit approval clears the plan wait, but never repairs stale run projections.
-      const approved = { ...existing, planAccepted: true,
-        status: ["planning", "awaiting_input"].includes(existing.status) ? existing.activeWorker.status : existing.status };
+      const approved = {
+        ...existing,
+        planAccepted: true,
+        status: ["planning", "awaiting_input"].includes(existing.status)
+          ? existing.activeWorker.status
+          : existing.status,
+      };
       if (respondIfWorkerDispatchBlocked(res, approved, featuresList)) return;
     } else if (existing.lastHandoffNeedsAttention === true) {
       sendJson(res, 409, { ok: false, code: "HANDOFF_ATTENTION_REQUIRED", state: existing });
       return;
     }
     const approvedPlan = approvePlanState(existing, nowIso);
-    const stagedDispatch = !existing.activeWorker && existing.status === "orchestrator_turn" && featuresList.some(feature => (feature.status || "pending") === "pending");
-    const pendingRuntime = existing.activeWorker && !inspectRunDispatchBinding(existing, featuresList).hasIdentity;
+    const stagedDispatch =
+      !existing.activeWorker &&
+      existing.status === "orchestrator_turn" &&
+      featuresList.some((feature) => (feature.status || "pending") === "pending");
+    const pendingRuntime =
+      existing.activeWorker && !inspectRunDispatchBinding(existing, featuresList).hasIdentity;
     if (approvedPlan === existing && !stagedDispatch && !pendingRuntime) {
-      yield () => awaitUnchangedMission(backup, () => notifyCommand("approve", { body }, loadSnapshot()));
+      yield () =>
+        awaitUnchangedMission(backup, () => notifyCommand("approve", { body }, loadSnapshot()));
       const snapshot = loadSnapshot();
       sendJson(res, 200, { ok: true, state: snapshot.state, snapshot });
       return;
     }
     const modelSettings = normalizeHudModelSettings(
       safeReadJsonSync(paths.modelSettingsPath, {}) || {},
-      DEFAULT_HUD_MODEL_SETTINGS
+      DEFAULT_HUD_MODEL_SETTINGS,
     );
     const existingLogs = readProgressLogSync(paths.progressLogPath);
 
@@ -1318,7 +1511,9 @@ export function createMissionHudServer({
       status: nextStatus,
       revision: (typeof existing.revision === "number" ? existing.revision : 0) + 1,
       lastStartedAt:
-        nextStatus === "running" ? existing.lastStartedAt || nowIso : existing.lastStartedAt ?? null,
+        nextStatus === "running"
+          ? existing.lastStartedAt || nowIso
+          : (existing.lastStartedAt ?? null),
       approvedAt: nowIso,
     };
 
@@ -1327,7 +1522,9 @@ export function createMissionHudServer({
         ...updatedState.activeWorker,
         status: "running",
       };
-      updatedState.sessions = (updatedState.sessions || []).map(row => row.runId === updatedState.activeWorker.runId ? { ...row, status: "running" } : row);
+      updatedState.sessions = (updatedState.sessions || []).map((row) =>
+        row.runId === updatedState.activeWorker.runId ? { ...row, status: "running" } : row,
+      );
     }
 
     let selectedFeature = null;
@@ -1336,8 +1533,7 @@ export function createMissionHudServer({
       const f = featuresList[pendingFeatureIdx];
       assertNoUnresolvedDispatch(paths.dotMissionDir, f.id);
       const nextAttempt = (typeof f.attempts === "number" ? f.attempts : 0) + 1;
-      const workerNumber =
-        (Array.isArray(existing.sessions) ? existing.sessions.length : 0) + 1;
+      const workerNumber = (Array.isArray(existing.sessions) ? existing.sessions.length : 0) + 1;
       const previousIntent = inspectDispatchIntent(paths.dotMissionDir, existing, f, nextAttempt);
       const runId = previousIntent?.runId || f.runId || `run-${crypto.randomUUID().slice(0, 8)}`;
       const rawKind = String(f.kind || "").toLowerCase();
@@ -1388,9 +1584,7 @@ export function createMissionHudServer({
         kind,
         skillName:
           f.skillName ||
-          (isValidator
-            ? `${kind}-validator-${f.milestoneId || "m1"}`
-            : "worker-implementation"),
+          (isValidator ? `${kind}-validator-${f.milestoneId || "m1"}` : "worker-implementation"),
         slot: slotName,
         providerInstanceId: slotCfg.providerInstanceId,
         model: slotCfg.model,
@@ -1435,7 +1629,7 @@ export function createMissionHudServer({
           message: `${selectedWorkerEntry.role} #${selectedWorkerEntry.workerNumber} started ${selectedWorkerEntry.featureTitle}`,
           featureId: selectedWorkerEntry.featureId,
           workerNumber: selectedWorkerEntry.workerNumber,
-        }
+        },
       );
     }
 
@@ -1450,7 +1644,10 @@ export function createMissionHudServer({
         progressLog: [...existingLogs, ...logEntries],
       });
 
-      yield () => awaitUnchangedMission(backup, () => notifyCommand("approve", { body, logEntry, logEntries }, preBroadcastSnapshot));
+      yield () =>
+        awaitUnchangedMission(backup, () =>
+          notifyCommand("approve", { body, logEntry, logEntries }, preBroadcastSnapshot),
+        );
 
       const applyRuntimeDaemonMetadata = (runtimeResult) => {
         if (!runtimeResult || typeof runtimeResult !== "object" || !updatedState.activeWorker) {
@@ -1462,7 +1659,8 @@ export function createMissionHudServer({
             : null;
         if (runtimeResult.daemonStateFile && typeof runtimeResult.daemonStateFile === "string") {
           updatedState.activeWorker.daemonStateFile = runtimeResult.daemonStateFile;
-          if (selectedWorkerEntry) selectedWorkerEntry.daemonStateFile = runtimeResult.daemonStateFile;
+          if (selectedWorkerEntry)
+            selectedWorkerEntry.daemonStateFile = runtimeResult.daemonStateFile;
           if (lastSession) lastSession.daemonStateFile = runtimeResult.daemonStateFile;
           if (pendingFeatureIdx !== -1 && featuresList[pendingFeatureIdx]) {
             featuresList[pendingFeatureIdx].daemonStateFile = runtimeResult.daemonStateFile;
@@ -1480,88 +1678,220 @@ export function createMissionHudServer({
 
       let receiptChangedFeatures = false;
       let approvalLogsCommitted = false;
-      const runApprovalDispatch = (feature, worker, invoke) => runMissionSteps(paths.dotMissionDir, (function* () {
-        if (respondIfWorkerDispatchBlocked(res, updatedState, featuresList)) return { rejected: true };
-        const intent = prepareDispatch(paths.dotMissionDir, { state: existing, feature, worker, target: worker });
-        const runtimeWorker = { ...intent.worker, ...intent.target, clientRequestId: intent.clientRequestId, status: worker.status, dispatchPending: true };
-        updatedState.activeWorker = runtimeWorker;
-        updatedState.sessions = (updatedState.sessions || []).map(row => row.runId === worker.runId ? { ...runtimeWorker } : row);
-        const index = featuresList.findIndex(row => row.id === intent.featureId);
-        if (index >= 0) featuresList[index] = { ...featuresList[index], runId: intent.runId, clientRequestId: intent.clientRequestId };
-        requireUnchangedMission(backup);
-        const pendingDoc = Array.isArray(rawFeatures) ? { features: featuresList, updatedAt: nowIso } : { ...rawFeatures, features: featuresList, updatedAt: nowIso };
-        commitMissionChanges([[paths.featuresPath, pendingDoc], [paths.statePath, updatedState]], approvalLogsCommitted ? [] : logEntries);
-        approvalLogsCommitted = true;
-        backup = captureDiskBackup();
-        const result = yield () => awaitUnchangedWorkerResult(backup, existing, runtimeWorker, intent, () => dispatchWithIntent(paths.dotMissionDir, intent,
-          call => {
+      const runApprovalDispatch = (feature, worker, invoke) =>
+        runMissionSteps(
+          paths.dotMissionDir,
+          (function* () {
+            if (respondIfWorkerDispatchBlocked(res, updatedState, featuresList))
+              return { rejected: true };
+            const intent = prepareDispatch(paths.dotMissionDir, {
+              state: existing,
+              feature,
+              worker,
+              target: worker,
+            });
+            const runtimeWorker = {
+              ...intent.worker,
+              ...intent.target,
+              clientRequestId: intent.clientRequestId,
+              status: worker.status,
+              dispatchPending: true,
+            };
+            updatedState.activeWorker = runtimeWorker;
+            updatedState.sessions = (updatedState.sessions || []).map((row) =>
+              row.runId === worker.runId ? { ...runtimeWorker } : row,
+            );
+            const index = featuresList.findIndex((row) => row.id === intent.featureId);
+            if (index >= 0)
+              featuresList[index] = {
+                ...featuresList[index],
+                runId: intent.runId,
+                clientRequestId: intent.clientRequestId,
+              };
             requireUnchangedMission(backup);
-            const reason = workerDispatchBlockReason(updatedState, runtimeWorker, { features: featuresList });
-            if (reason) throw Object.assign(new Error(reason), { code: "MISSION_NOT_DISPATCHABLE", runtimeResult: { accepted: false, code: "MISSION_NOT_DISPATCHABLE" } });
-            return invokeHudHook(() => invoke({ ...(featuresList[index] || feature), invocationId: call.invocationId, dispatchTitle: intent.recovery?.title }, runtimeWorker, updatedState), typeof effectiveAdapter.startMissionRun === "function" ? "startMissionRun" : "runFeature");
-          }));
-        const verdict = decideDispatchOutcome(result, { expectedIdentity: intent });
-        if (verdict.outcome === "UNKNOWN") {
-          const error = new Error("Dispatch callback returned an unknown outcome; recover the original intent");
-          error.code = "DISPATCH_OUTCOME_UNKNOWN";
-          throw error;
-        }
-        if (verdict.outcome === "NOT_ACCEPTED" && verdict.errorCode &&
-            !(effectiveAdapter.isDefaultHudRuntime && result?.preSend === true && result?.code === "NO_T3_TRANSPORT" && result?.dispatchPending === true)) {
-          sendJson(res, 409, { ok: false, code: result.code || "APPROVAL_DISPATCH_REJECTED", error: result.error || "Runtime refused approval dispatch", state: safeReadJsonSync(paths.statePath, null) });
-          return { rejected: true };
-        }
-        if (verdict.outcome === "NOT_ACCEPTED") {
-          for (const row of [updatedState.activeWorker, ...(updatedState.sessions || []).filter(row => row.runId === intent.runId), featuresList[index]]) {
-            if (!row) continue;
-            row.dispatchPending = true;
-            row.runtimeTransport = result.runtimeTransport || "orchestrator-pending";
-            for (const key of ["taskId", "childThreadId", "childRunId", "workerPid", "daemonStateFile"]) delete row[key];
-          }
-        }
-        if (verdict.outcome === "NOT_ACCEPTED") receiptChangedFeatures = true;
-        if (verdict.outcome !== "ACCEPTED") return { rejected: false };
-        const merged = mergeDispatchReceipt(updatedState, { features: featuresList }, result, intent);
-        Object.assign(updatedState, merged.state);
-        featuresList.splice(0, featuresList.length, ...merged.featuresDoc.features);
-        receiptChangedFeatures ||= merged.changed;
-        applyRuntimeDaemonMetadata(result);
-        return { rejected: false };
-      })(), { create: true });
+            const pendingDoc = Array.isArray(rawFeatures)
+              ? { features: featuresList, updatedAt: nowIso }
+              : { ...rawFeatures, features: featuresList, updatedAt: nowIso };
+            commitMissionChanges(
+              [
+                [paths.featuresPath, pendingDoc],
+                [paths.statePath, updatedState],
+              ],
+              approvalLogsCommitted ? [] : logEntries,
+            );
+            approvalLogsCommitted = true;
+            backup = captureDiskBackup();
+            const result = yield () =>
+              awaitUnchangedWorkerResult(backup, existing, runtimeWorker, intent, () =>
+                dispatchWithIntent(paths.dotMissionDir, intent, (call) => {
+                  requireUnchangedMission(backup);
+                  const reason = workerDispatchBlockReason(updatedState, runtimeWorker, {
+                    features: featuresList,
+                  });
+                  if (reason)
+                    throw Object.assign(new Error(reason), {
+                      code: "MISSION_NOT_DISPATCHABLE",
+                      runtimeResult: { accepted: false, code: "MISSION_NOT_DISPATCHABLE" },
+                    });
+                  return invokeHudHook(
+                    () =>
+                      invoke(
+                        {
+                          ...(featuresList[index] || feature),
+                          invocationId: call.invocationId,
+                          dispatchTitle: intent.recovery?.title,
+                        },
+                        runtimeWorker,
+                        updatedState,
+                      ),
+                    typeof effectiveAdapter.startMissionRun === "function"
+                      ? "startMissionRun"
+                      : "runFeature",
+                  );
+                }),
+              );
+            const verdict = decideDispatchOutcome(result, { expectedIdentity: intent });
+            if (verdict.outcome === "UNKNOWN") {
+              const error = new Error(
+                "Dispatch callback returned an unknown outcome; recover the original intent",
+              );
+              error.code = "DISPATCH_OUTCOME_UNKNOWN";
+              throw error;
+            }
+            if (
+              verdict.outcome === "NOT_ACCEPTED" &&
+              verdict.errorCode &&
+              !(
+                effectiveAdapter.isDefaultHudRuntime &&
+                result?.preSend === true &&
+                result?.code === "NO_T3_TRANSPORT" &&
+                result?.dispatchPending === true
+              )
+            ) {
+              sendJson(res, 409, {
+                ok: false,
+                code: result.code || "APPROVAL_DISPATCH_REJECTED",
+                error: result.error || "Runtime refused approval dispatch",
+                state: safeReadJsonSync(paths.statePath, null),
+              });
+              return { rejected: true };
+            }
+            if (verdict.outcome === "NOT_ACCEPTED") {
+              for (const row of [
+                updatedState.activeWorker,
+                ...(updatedState.sessions || []).filter((row) => row.runId === intent.runId),
+                featuresList[index],
+              ]) {
+                if (!row) continue;
+                row.dispatchPending = true;
+                row.runtimeTransport = result.runtimeTransport || "orchestrator-pending";
+                for (const key of [
+                  "taskId",
+                  "childThreadId",
+                  "childRunId",
+                  "workerPid",
+                  "daemonStateFile",
+                ])
+                  delete row[key];
+              }
+            }
+            if (verdict.outcome === "NOT_ACCEPTED") receiptChangedFeatures = true;
+            if (verdict.outcome !== "ACCEPTED") return { rejected: false };
+            const merged = mergeDispatchReceipt(
+              updatedState,
+              { features: featuresList },
+              result,
+              intent,
+            );
+            Object.assign(updatedState, merged.state);
+            featuresList.splice(0, featuresList.length, ...merged.featuresDoc.features);
+            receiptChangedFeatures ||= merged.changed;
+            applyRuntimeDaemonMetadata(result);
+            return { rejected: false };
+          })(),
+          { create: true },
+        );
       if (selectedFeature && selectedWorkerEntry) {
         if (hasCustomAdapter && typeof effectiveAdapter.startMissionRun === "function") {
-          const outcome = yield () => runApprovalDispatch(selectedFeature, selectedWorkerEntry,
-            (feature, worker, state) => effectiveAdapter.startMissionRun(paths.dotMissionDir, { feature, state }, effectiveAdapter));
+          const outcome = yield () =>
+            runApprovalDispatch(selectedFeature, selectedWorkerEntry, (feature, worker, state) =>
+              effectiveAdapter.startMissionRun(
+                paths.dotMissionDir,
+                { feature, state },
+                effectiveAdapter,
+              ),
+            );
           if (outcome.rejected) return;
         } else if (typeof effectiveAdapter.runFeature === "function") {
-          const outcome = yield () => runApprovalDispatch(selectedFeature, selectedWorkerEntry,
-            (feature, worker, state) => effectiveAdapter.runFeature(feature, worker, state));
+          const outcome = yield () =>
+            runApprovalDispatch(selectedFeature, selectedWorkerEntry, (feature, worker, state) =>
+              effectiveAdapter.runFeature(feature, worker, state),
+            );
           if (outcome.rejected) return;
         }
       } else {
         let worker = updatedState.activeWorker;
-        const feature = worker && featuresList.find(row => row.id === worker.featureId);
+        const feature = worker && featuresList.find((row) => row.id === worker.featureId);
         if (worker && feature && !inspectRunDispatchBinding(existing, featuresList).hasIdentity)
           worker = { ...worker, ...resolveFeatureSlot(feature, modelSettings).slotConfig };
         if (worker && feature && !inspectRunDispatchBinding(existing, featuresList).hasIdentity) {
           if (typeof effectiveAdapter.startMissionRun === "function") {
-            const outcome = yield () => runApprovalDispatch(feature, worker,
-              (feature, worker, state) => effectiveAdapter.startMissionRun(paths.dotMissionDir, { feature, state }, effectiveAdapter));
+            const outcome = yield () =>
+              runApprovalDispatch(feature, worker, (feature, worker, state) =>
+                effectiveAdapter.startMissionRun(
+                  paths.dotMissionDir,
+                  { feature, state },
+                  effectiveAdapter,
+                ),
+              );
             if (outcome.rejected) return;
           } else if (typeof effectiveAdapter.runFeature === "function") {
-            const outcome = yield () => runApprovalDispatch(feature, worker,
-              (feature, worker, state) => effectiveAdapter.runFeature(feature, worker, state));
+            const outcome = yield () =>
+              runApprovalDispatch(feature, worker, (feature, worker, state) =>
+                effectiveAdapter.runFeature(feature, worker, state),
+              );
             if (outcome.rejected) return;
           }
-        } else if (hasCustomAdapter && worker && typeof effectiveAdapter.startMissionRun === "function") {
+        } else if (
+          hasCustomAdapter &&
+          worker &&
+          typeof effectiveAdapter.startMissionRun === "function"
+        ) {
           // A known worker may use a lifecycle hook; it cannot replace task ownership.
           if (respondIfWorkerDispatchBlocked(res, updatedState, featuresList)) return;
-          const result = yield () => awaitUnchangedWorkerResult(backup, existing, worker, null, () => runClaimedEffect(paths.dotMissionDir, `approve-hook:${worker.runId}:${body.commandId ?? "implicit"}`, () => invokeHudHook(() => effectiveAdapter.startMissionRun(paths.dotMissionDir, { feature: worker || null, state: updatedState }, effectiveAdapter), "startMissionRun")));
+          const result = yield () =>
+            awaitUnchangedWorkerResult(backup, existing, worker, null, () =>
+              runClaimedEffect(
+                paths.dotMissionDir,
+                `approve-hook:${worker.runId}:${body.commandId ?? "implicit"}`,
+                () =>
+                  invokeHudHook(
+                    () =>
+                      effectiveAdapter.startMissionRun(
+                        paths.dotMissionDir,
+                        { feature: worker || null, state: updatedState },
+                        effectiveAdapter,
+                      ),
+                    "startMissionRun",
+                  ),
+              ),
+            );
           const verdict = decideDispatchOutcome(result, { expectedIdentity: worker });
-          if (verdict.outcome === "CONFLICT" || verdict.errorCode) { sendJson(res, 409, { ok: false, code: result.code || "APPROVAL_DISPATCH_REJECTED", error: result.error || "Runtime refused approval", state: safeReadJsonSync(paths.statePath, null) }); return; }
-          for (const key of ["taskId", "childThreadId"]) if (worker?.[key] && result?.[key] && worker[key] !== result[key]) {
-            const error = new Error(`Lifecycle hook changed accepted ${key}`); error.code = "DISPATCH_BINDING_CONFLICT"; throw error;
+          if (verdict.outcome === "CONFLICT" || verdict.errorCode) {
+            sendJson(res, 409, {
+              ok: false,
+              code: result.code || "APPROVAL_DISPATCH_REJECTED",
+              error: result.error || "Runtime refused approval",
+              state: safeReadJsonSync(paths.statePath, null),
+            });
+            return;
           }
+          for (const key of ["taskId", "childThreadId"])
+            if (worker?.[key] && result?.[key] && worker[key] !== result[key]) {
+              const error = new Error(`Lifecycle hook changed accepted ${key}`);
+              error.code = "DISPATCH_BINDING_CONFLICT";
+              throw error;
+            }
           if (verdict.outcome === "ACCEPTED") applyRuntimeDaemonMetadata(result);
         }
       }
@@ -1575,11 +1905,24 @@ export function createMissionHudServer({
               updatedAt: nowIso,
             };
         requireUnchangedMission(backup);
-        commitMissionChanges([[paths.featuresPath, nextFeaturesDoc], [paths.statePath, updatedState]], approvalLogsCommitted ? [] : logEntries,
-          { preserveReceipts: Boolean(updatedState.activeWorker?.taskId || updatedState.activeWorker?.childThreadId) });
+        commitMissionChanges(
+          [
+            [paths.featuresPath, nextFeaturesDoc],
+            [paths.statePath, updatedState],
+          ],
+          approvalLogsCommitted ? [] : logEntries,
+          {
+            preserveReceipts: Boolean(
+              updatedState.activeWorker?.taskId || updatedState.activeWorker?.childThreadId,
+            ),
+          },
+        );
       } else {
         requireUnchangedMission(backup);
-        commitMissionChanges([[paths.statePath, updatedState]], approvalLogsCommitted ? [] : logEntries);
+        commitMissionChanges(
+          [[paths.statePath, updatedState]],
+          approvalLogsCommitted ? [] : logEntries,
+        );
       }
 
       lastDiskSignature = computeDiskSignature();
@@ -1597,12 +1940,15 @@ export function createMissionHudServer({
 
   function* handleRejectSteps(req, res) {
     const body = yield () => readJsonBody(req);
-    if (beginHudCommand('reject', body, res)) return;
+    if (beginHudCommand("reject", body, res)) return;
     const backup = captureDiskBackup();
     const nowIso = new Date().toISOString();
-    const existing = safeReadJsonSync(paths.statePath, null) || buildUninitializedState(paths.repoDir);
+    const existing =
+      safeReadJsonSync(paths.statePath, null) || buildUninitializedState(paths.repoDir);
     const nextRevision = (typeof existing.revision === "number" ? existing.revision : 0) + 1;
-    const feedback = String(body.feedback || body.reason || body.message || "Plan changes requested");
+    const feedback = String(
+      body.feedback || body.reason || body.message || "Plan changes requested",
+    );
     const updatedState = {
       ...existing,
       planAccepted: false,
@@ -1613,14 +1959,16 @@ export function createMissionHudServer({
       revision: nextRevision,
     };
     const existingLogs = readProgressLogSync(paths.progressLogPath);
-    const logEntries = buildProgressLogEntries(existingLogs, [{
-      timestamp: nowIso,
-      type: "plan_rejected",
-      message: `Mission plan rejected: ${feedback}`,
-      details: { feedback },
-      featureId: null,
-      workerNumber: null,
-    }]);
+    const logEntries = buildProgressLogEntries(existingLogs, [
+      {
+        timestamp: nowIso,
+        type: "plan_rejected",
+        message: `Mission plan rejected: ${feedback}`,
+        details: { feedback },
+        featureId: null,
+        workerNumber: null,
+      },
+    ]);
     const logEntry = logEntries[0];
     {
       const preBroadcastSnapshot = buildInMemorySnapshot({
@@ -1629,25 +1977,34 @@ export function createMissionHudServer({
         modelSettings: safeReadJsonSync(paths.modelSettingsPath, null),
         progressLog: [...existingLogs, ...logEntries],
       });
-      yield () => awaitUnchangedMission(backup, () => notifyCommand("reject", { body, logEntry, logEntries }, preBroadcastSnapshot));
+      yield () =>
+        awaitUnchangedMission(backup, () =>
+          notifyCommand("reject", { body, logEntry, logEntries }, preBroadcastSnapshot),
+        );
       requireUnchangedMission(backup);
       commitMissionChanges([[paths.statePath, updatedState]], logEntries);
       lastDiskSignature = computeDiskSignature();
       const snapshot = broadcastSnapshot("plan_rejected");
       yield () => emitWebhookNotification("reject", { body, logEntry, logEntries }, snapshot);
-      sendJson(res, 200, { ok: true, state: snapshot?.state || updatedState, logEntry, logEntries, snapshot });
+      sendJson(res, 200, {
+        ok: true,
+        state: snapshot?.state || updatedState,
+        logEntry,
+        logEntries,
+        snapshot,
+      });
     }
   }
 
   function* handleModelSlotsSteps(req, res) {
     const body = yield () => readJsonBody(req);
-    if (beginHudCommand('model-slots', body, res)) return;
+    if (beginHudCommand("model-slots", body, res)) return;
     const backup = captureDiskBackup();
     const nowIso = new Date().toISOString();
 
     const currentSettings = normalizeHudModelSettings(
       safeReadJsonSync(paths.modelSettingsPath, {}) || {},
-      DEFAULT_HUD_MODEL_SETTINGS
+      DEFAULT_HUD_MODEL_SETTINGS,
     );
     const rawFeatures = safeReadJsonSync(paths.featuresPath, null);
     const existingLogs = readProgressLogSync(paths.progressLogPath);
@@ -1664,18 +2021,16 @@ export function createMissionHudServer({
           ? { ...incomingRaw.config, ...incomingRaw }
           : incomingRaw;
 
-      const hasEffort =
-        incoming.effort !== undefined || incoming.options?.effort !== undefined;
+      const hasEffort = incoming.effort !== undefined || incoming.options?.effort !== undefined;
       const hasReasoning =
-        incoming.reasoningEffort !== undefined ||
-        incoming.options?.reasoningEffort !== undefined;
+        incoming.reasoningEffort !== undefined || incoming.options?.reasoningEffort !== undefined;
 
       const rawEffortVal =
         incoming.effort !== undefined ? incoming.effort : incoming.options?.effort;
       const derivedReasoning =
         hasEffort && !hasReasoning
           ? effortToReasoningEffort(rawEffortVal, prevSlot?.reasoningEffort || "high")
-          : incoming.reasoningEffort ?? incoming.options?.reasoningEffort;
+          : (incoming.reasoningEffort ?? incoming.options?.reasoningEffort);
 
       const nextOptions = {
         ...(prevSlot?.options || {}),
@@ -1693,10 +2048,8 @@ export function createMissionHudServer({
         nextOptions.reasoningEffort = String(derivedReasoning).trim().toLowerCase();
       }
 
-      const modelChanged =
-        incoming.model !== undefined && incoming.model !== prevSlot?.model;
-      const incomingEntry =
-        incoming.model !== undefined ? findCatalogEntry(incoming.model) : null;
+      const modelChanged = incoming.model !== undefined && incoming.model !== prevSlot?.model;
+      const incomingEntry = incoming.model !== undefined ? findCatalogEntry(incoming.model) : null;
       const effectiveProvider =
         incoming.providerInstanceId ??
         (modelChanged ? incomingEntry?.providerInstanceId : undefined) ??
@@ -1757,7 +2110,7 @@ export function createMissionHudServer({
     }
 
     const changedRoles = Object.keys(patch).filter((k) =>
-      ["orchestrator", "worker", "validator"].includes(k)
+      ["orchestrator", "worker", "validator"].includes(k),
     );
     const modifiedKeys = [...changedRoles];
     if (typeof patch.skipScrutiny === "boolean") {
@@ -1769,31 +2122,24 @@ export function createMissionHudServer({
     const existingModified = Array.isArray(currentSettings.userModifiedSlots)
       ? currentSettings.userModifiedSlots
       : [];
-    patch.userModifiedSlots = Array.from(
-      new Set([...existingModified, ...modifiedKeys])
-    );
+    patch.userModifiedSlots = Array.from(new Set([...existingModified, ...modifiedKeys]));
 
     const updatedSettings = normalizeHudModelSettings(patch, currentSettings);
     const rawExistingState = safeReadJsonSync(paths.statePath, null);
-    const existingState =
-      rawExistingState || buildUninitializedState(paths.repoDir);
+    const existingState = rawExistingState || buildUninitializedState(paths.repoDir);
     const isUninitializedState = !isInitializedMissionState(rawExistingState);
     const updatedState = {
       ...existingState,
       initialized: isUninitializedState ? false : true,
-      missionId: isUninitializedState
-        ? "mission-uninitialized"
-        : existingState.missionId,
+      missionId: isUninitializedState ? "mission-uninitialized" : existingState.missionId,
       revision: (typeof existingState.revision === "number" ? existingState.revision : 0) + 1,
     };
-    const summaryParts = (changedRoles.length ? changedRoles : ["validator"]).map(
-      (role) => {
-        const slotCfg = updatedSettings[role];
-        return slotCfg.supportsEffort === false
-          ? `${role}=${slotCfg.model}`
-          : `${role}=${slotCfg.model} (${slotCfg.reasoningEffort}/${slotCfg.effort})`;
-      }
-    );
+    const summaryParts = (changedRoles.length ? changedRoles : ["validator"]).map((role) => {
+      const slotCfg = updatedSettings[role];
+      return slotCfg.supportsEffort === false
+        ? `${role}=${slotCfg.model}`
+        : `${role}=${slotCfg.model} (${slotCfg.reasoningEffort}/${slotCfg.effort})`;
+    });
 
     const logEntries = buildProgressLogEntries(existingLogs, [
       {
@@ -1813,14 +2159,24 @@ export function createMissionHudServer({
         progressLog: [...existingLogs, ...logEntries],
       });
 
-      yield () => awaitUnchangedMission(backup, () => notifyCommand("model-slots", { body, updatedSettings, logEntry }, preBroadcastSnapshot));
+      yield () =>
+        awaitUnchangedMission(backup, () =>
+          notifyCommand("model-slots", { body, updatedSettings, logEntry }, preBroadcastSnapshot),
+        );
 
       requireUnchangedMission(backup);
-      commitMissionChanges([[paths.modelSettingsPath, updatedSettings], [paths.statePath, updatedState]], logEntries);
+      commitMissionChanges(
+        [
+          [paths.modelSettingsPath, updatedSettings],
+          [paths.statePath, updatedState],
+        ],
+        logEntries,
+      );
 
       lastDiskSignature = computeDiskSignature();
       const snapshot = broadcastSnapshot("model_slots_updated");
-      yield () => emitWebhookNotification("model-slots", { body, updatedSettings, logEntry }, snapshot);
+      yield () =>
+        emitWebhookNotification("model-slots", { body, updatedSettings, logEntry }, snapshot);
       sendJson(res, 200, {
         ok: true,
         modelSettings: updatedSettings,
@@ -1833,21 +2189,27 @@ export function createMissionHudServer({
 
   function diskMatchesBackup(backup) {
     const current = captureDiskBackup();
-    return current.every((item, i) => item.exists === backup[i].exists && item.content === backup[i].content);
+    return current.every(
+      (item, i) => item.exists === backup[i].exists && item.content === backup[i].content,
+    );
   }
 
   function respondIfLifecycleChanged(res, backup, previousState, action) {
     if (diskMatchesBackup(backup)) return false;
     const snapshot = broadcastSnapshot("mission_state_changed") || loadSnapshot();
     const state = snapshot.state;
-    const pausedDuringResume = action === "resume" && state.status === "paused" &&
+    const pausedDuringResume =
+      action === "resume" &&
+      state.status === "paused" &&
       state.activeWorker?.runId === previousState.activeWorker?.runId &&
       (state.pausedAt !== previousState.pausedAt || state.revision !== previousState.revision);
     sendJson(res, 409, {
-      ok: false, resumed: false,
+      ok: false,
+      resumed: false,
       code: pausedDuringResume ? "MISSION_PAUSED_DURING_RESUME" : "MISSION_STATE_CHANGED",
       error: "Mission changed while waiting for runtime; current state was preserved",
-      state, snapshot,
+      state,
+      snapshot,
     });
     return true;
   }
@@ -1856,10 +2218,12 @@ export function createMissionHudServer({
     const worker = state.activeWorker;
     if (!worker) return;
     const remote = isRemoteWorker(worker) || isRemoteWorker(result);
-    const local = !remote && typeof result?.daemonStatus === "string" &&
+    const local =
+      !remote &&
+      typeof result?.daemonStatus === "string" &&
       inspectOwnedLocalWorker(worker, paths.dotMissionDir);
     if (!remote && !local) return;
-    const update = row => {
+    const update = (row) => {
       const next = { ...row };
       if (remote) {
         return stripLocalWorkerMetadata(next);
@@ -1867,7 +2231,9 @@ export function createMissionHudServer({
       return next;
     };
     state.activeWorker = update(worker);
-    state.sessions = (state.sessions || []).map(row => row.runId === worker.runId ? update(row) : row);
+    state.sessions = (state.sessions || []).map((row) =>
+      row.runId === worker.runId ? update(row) : row,
+    );
   }
 
   function commitLifecycleState(state, logEntries) {
@@ -1877,17 +2243,25 @@ export function createMissionHudServer({
       const doc = safeReadJsonSync(paths.featuresPath, { features: [] });
       const features = Array.isArray(doc) ? doc : doc.features || [];
       let changed = false;
-      const cleaned = features.map(feature => {
-        if (feature.id !== state.activeWorker.featureId ||
-            (feature.runId && feature.runId !== state.activeWorker.runId)) return feature;
+      const cleaned = features.map((feature) => {
+        if (
+          feature.id !== state.activeWorker.featureId ||
+          (feature.runId && feature.runId !== state.activeWorker.runId)
+        )
+          return feature;
         const next = { ...feature, status: state.activeWorker.status };
-        if (state.activeWorker.status === 'paused') next.pausedAt = state.activeWorker.pausedAt;
+        if (state.activeWorker.status === "paused") next.pausedAt = state.activeWorker.pausedAt;
         else delete next.pausedAt;
-        if (isRemoteWorker(state.activeWorker)) for (const key of ['workerPid', 'daemonStateFile', 'daemonStatus']) delete next[key];
+        if (isRemoteWorker(state.activeWorker))
+          for (const key of ["workerPid", "daemonStateFile", "daemonStatus"]) delete next[key];
         if (JSON.stringify(next) !== JSON.stringify(feature)) changed = true;
         return next;
       });
-      if (changed) changes.push([paths.featuresPath, Array.isArray(doc) ? cleaned : { ...doc, features: cleaned }]);
+      if (changed)
+        changes.push([
+          paths.featuresPath,
+          Array.isArray(doc) ? cleaned : { ...doc, features: cleaned },
+        ]);
     }
     commitMissionChanges(changes, logEntries);
   }
@@ -1895,135 +2269,260 @@ export function createMissionHudServer({
   function* handlePauseSteps(req, res) {
     if (yield () => handleAutopilotCommand(req, res, "pause")) return;
     const body = yield () => readJsonBody(req);
-    if (beginHudCommand('pause', body, res)) return;
+    if (beginHudCommand("pause", body, res)) return;
     const existingState = safeReadJsonSync(paths.statePath, null);
     if (!isInitializedMissionState(existingState)) {
-      sendJson(res, 409, { ok: false, code: "MISSION_NOT_INITIALIZED", error: "Cannot pause an uninitialized mission" });
+      sendJson(res, 409, {
+        ok: false,
+        code: "MISSION_NOT_INITIALIZED",
+        error: "Cannot pause an uninitialized mission",
+      });
       return;
     }
     const control = existingState.pauseControl;
-    const effectsDir = path.join(paths.dotMissionDir, '.txn', 'effects');
-    const resuming = listTransactionFiles(effectsDir).some(name => {
-      if (!/^[a-f0-9]+\.json$/.test(name)) return false;
-      const effect = JSON.parse(readTransactionFile(path.join(effectsDir, name)));
-      return effect.phase === 'requested' && ['resume:', 'resume-hook:', 'runtime-resume:'].some(prefix => effect.effectId?.startsWith(prefix)) &&
-        effect.effectId.includes(':' + existingState.activeWorker?.runId + ':');
-    }) || listTransactionFiles(paths.dotMissionDir).some(name => {
-      if (!/^dispatch-[a-f0-9]+\.json$/.test(name)) return false;
-      const record = JSON.parse(readTransactionFile(path.join(paths.dotMissionDir, name)));
-      return record.phase === 'inflight' && record.controlOperation === 'resume' &&
-        record.intent.runId === existingState.activeWorker?.runId;
-    });
-    if (existingState.status === 'paused' && control && control.epoch === existingState.pauseEpoch &&
-        control.runId === (existingState.activeWorker?.runId ?? null) && !resuming) {
-      const status = control.httpStatus ?? (control.phase === 'confirmed' ? 200 : control.phase === 'unknown' ? 500 : 409);
-      sendJson(res, status, { ok: status === 200, code: control.code, ...(control.error ? { error: control.error } : {}), state: existingState });
+    const effectsDir = path.join(paths.dotMissionDir, ".txn", "effects");
+    const resuming =
+      listTransactionFiles(effectsDir).some((name) => {
+        if (!/^[a-f0-9]+\.json$/.test(name)) return false;
+        const effect = JSON.parse(readTransactionFile(path.join(effectsDir, name)));
+        return (
+          effect.phase === "requested" &&
+          ["resume:", "resume-hook:", "runtime-resume:"].some((prefix) =>
+            effect.effectId?.startsWith(prefix),
+          ) &&
+          effect.effectId.includes(":" + existingState.activeWorker?.runId + ":")
+        );
+      }) ||
+      listTransactionFiles(paths.dotMissionDir).some((name) => {
+        if (!/^dispatch-[a-f0-9]+\.json$/.test(name)) return false;
+        const record = JSON.parse(readTransactionFile(path.join(paths.dotMissionDir, name)));
+        return (
+          record.phase === "inflight" &&
+          record.controlOperation === "resume" &&
+          record.intent.runId === existingState.activeWorker?.runId
+        );
+      });
+    if (
+      existingState.status === "paused" &&
+      control &&
+      control.epoch === existingState.pauseEpoch &&
+      control.runId === (existingState.activeWorker?.runId ?? null) &&
+      !resuming
+    ) {
+      const status =
+        control.httpStatus ??
+        (control.phase === "confirmed" ? 200 : control.phase === "unknown" ? 500 : 409);
+      sendJson(res, status, {
+        ok: status === 200,
+        code: control.code,
+        ...(control.error ? { error: control.error } : {}),
+        state: existingState,
+      });
       return;
     }
     const now = new Date().toISOString();
     const updatedState = structuredClone(existingState);
     const started = Date.parse(updatedState.lastStartedAt);
-    if (Number.isFinite(started)) updatedState.elapsedMs = (updatedState.elapsedMs || 0) + Math.max(0, Date.now() - started);
+    if (Number.isFinite(started))
+      updatedState.elapsedMs = (updatedState.elapsedMs || 0) + Math.max(0, Date.now() - started);
     updatedState.lastStartedAt = null;
-    updatedState.status = 'paused';
+    updatedState.status = "paused";
     updatedState.pausedAt = now;
     updatedState.pauseEpoch = (existingState.pauseEpoch ?? 0) + 1;
     updatedState.revision = (existingState.revision ?? 0) + 1;
-    updatedState.pauseControl = { phase: 'requested', code: 'PAUSE_CONTROL_PENDING', at: now,
-      runId: existingState.activeWorker?.runId ?? null, epoch: updatedState.pauseEpoch };
+    updatedState.pauseControl = {
+      phase: "requested",
+      code: "PAUSE_CONTROL_PENDING",
+      at: now,
+      runId: existingState.activeWorker?.runId ?? null,
+      epoch: updatedState.pauseEpoch,
+    };
     const existingLogs = readProgressLogSync(paths.progressLogPath);
-    const gateEntries = buildProgressLogEntries(existingLogs, [{ timestamp: now,
-      type: 'mission_pause_requested', message: 'Mission Pause gate committed; worker control awaits confirmation',
-      featureId: existingState.activeWorker?.featureId ?? null, workerNumber: existingState.activeWorker?.workerNumber ?? null }]);
+    const gateEntries = buildProgressLogEntries(existingLogs, [
+      {
+        timestamp: now,
+        type: "mission_pause_requested",
+        message: "Mission Pause gate committed; worker control awaits confirmation",
+        featureId: existingState.activeWorker?.featureId ?? null,
+        workerNumber: existingState.activeWorker?.workerNumber ?? null,
+      },
+    ]);
     commitMissionChanges([[paths.statePath, updatedState]], gateEntries);
     const backup = captureDiskBackup();
     const recordFailure = (phase, code, error, status, controlReceipt) => {
       const current = safeReadJsonSync(paths.statePath, null);
-      if (current.missionId === existingState.missionId && current.pauseEpoch === updatedState.pauseEpoch &&
-          current.activeWorker?.runId === existingState.activeWorker?.runId) {
+      if (
+        current.missionId === existingState.missionId &&
+        current.pauseEpoch === updatedState.pauseEpoch &&
+        current.activeWorker?.runId === existingState.activeWorker?.runId
+      ) {
         const at = new Date().toISOString();
-        current.pauseControl = { ...updatedState.pauseControl, phase, code, at, error, httpStatus: status, controlReceipt };
+        current.pauseControl = {
+          ...updatedState.pauseControl,
+          phase,
+          code,
+          at,
+          error,
+          httpStatus: status,
+          controlReceipt,
+        };
         current.revision++;
-        const entries = buildProgressLogEntries(readProgressLogSync(paths.progressLogPath), [{ timestamp: at,
-          type: phase === 'rejected' ? 'pause_control_rejected' : 'pause_control_unknown', message: error,
-          featureId: existingState.activeWorker?.featureId ?? null, details: current.pauseControl }]);
+        const entries = buildProgressLogEntries(readProgressLogSync(paths.progressLogPath), [
+          {
+            timestamp: at,
+            type: phase === "rejected" ? "pause_control_rejected" : "pause_control_unknown",
+            message: error,
+            featureId: existingState.activeWorker?.featureId ?? null,
+            details: current.pauseControl,
+          },
+        ]);
         commitMissionChanges([[paths.statePath, current]], entries);
       }
-      sendJson(res, status, { ok: false, code, error, state: safeReadJsonSync(paths.statePath, null) });
+      sendJson(res, status, {
+        ok: false,
+        code,
+        error,
+        state: safeReadJsonSync(paths.statePath, null),
+      });
     };
     const results = [];
     try {
-      yield () => notifyCommand('pause', { body, logEntries: gateEntries }, loadSnapshot());
-      if (respondIfLifecycleChanged(res, backup, existingState, 'pause')) return;
+      yield () => notifyCommand("pause", { body, logEntries: gateEntries }, loadSnapshot());
+      if (respondIfLifecycleChanged(res, backup, existingState, "pause")) return;
       const worker = existingState.activeWorker;
-      const needsWorkerControl = worker && (worker.taskId || worker.childThreadId || !worker.dispatchPending);
+      const needsWorkerControl =
+        worker && (worker.taskId || worker.childThreadId || !worker.dispatchPending);
       const controls = [];
       if (needsWorkerControl) {
-        if (typeof effectiveAdapter.pauseWorker !== 'function') {
-          recordFailure('rejected', 'NO_T3_TRANSPORT', 'No pauseWorker transport for the active run', 409);
+        if (typeof effectiveAdapter.pauseWorker !== "function") {
+          recordFailure(
+            "rejected",
+            "NO_T3_TRANSPORT",
+            "No pauseWorker transport for the active run",
+            409,
+          );
           return;
         }
-        controls.push(['worker', () => invokeHudHook(() => effectiveAdapter.pauseWorker(worker, existingState), 'pauseWorker')]);
+        controls.push([
+          "worker",
+          () =>
+            invokeHudHook(() => effectiveAdapter.pauseWorker(worker, existingState), "pauseWorker"),
+        ]);
       }
-      if (typeof effectiveAdapter.pauseMission === 'function') controls.push(['mission', () => invokeHudHook(() => effectiveAdapter.pauseMission(existingState), 'pauseMission')]);
+      if (typeof effectiveAdapter.pauseMission === "function")
+        controls.push([
+          "mission",
+          () => invokeHudHook(() => effectiveAdapter.pauseMission(existingState), "pauseMission"),
+        ]);
       for (const [kind, invoke] of controls) {
-        const effectId = `pause:${existingState.missionId}:${worker?.runId ?? 'mission'}:${updatedState.pauseEpoch}:${kind}`;
-        const result = yield () => runClaimedEffect(paths.dotMissionDir, effectId, invoke, { validate: () => requireUnchangedMission(backup) });
-        if (respondIfLifecycleChanged(res, backup, existingState, 'pause')) return;
-        const verdict = classifyControlReceipt(result, 'pause', worker ?? {});
-        if (verdict.classification === 'rejected') {
-          const code = dispatchReceiptSources(result).find(row => row.code)?.code || 'PAUSE_BLOCKED_BY_RUNTIME';
-          const error = dispatchReceiptSources(result).find(row => row.error)?.error || `Runtime pause ${kind} rejected`;
-          recordFailure('rejected', code, error, 409, verdict);
+        const effectId = `pause:${existingState.missionId}:${worker?.runId ?? "mission"}:${updatedState.pauseEpoch}:${kind}`;
+        const result = yield () =>
+          runClaimedEffect(paths.dotMissionDir, effectId, invoke, {
+            validate: () => requireUnchangedMission(backup),
+          });
+        if (respondIfLifecycleChanged(res, backup, existingState, "pause")) return;
+        const verdict = classifyControlReceipt(result, "pause", worker ?? {});
+        if (verdict.classification === "rejected") {
+          const code =
+            dispatchReceiptSources(result).find((row) => row.code)?.code ||
+            "PAUSE_BLOCKED_BY_RUNTIME";
+          const error =
+            dispatchReceiptSources(result).find((row) => row.error)?.error ||
+            `Runtime pause ${kind} rejected`;
+          recordFailure("rejected", code, error, 409, verdict);
           return;
         }
         if (verdict.classification !== "confirmed") {
-          recordFailure('unknown', 'PAUSE_UNCONFIRMED', `Runtime pause ${kind} did not confirm control`, 409, verdict);
+          recordFailure(
+            "unknown",
+            "PAUSE_UNCONFIRMED",
+            `Runtime pause ${kind} did not confirm control`,
+            409,
+            verdict,
+          );
           return;
         }
         results.push(verdict);
       }
     } catch (error) {
-      if (!error.hudHookFailed && respondIfLifecycleChanged(res, backup, existingState, 'pause')) return;
+      if (!error.hudHookFailed && respondIfLifecycleChanged(res, backup, existingState, "pause"))
+        return;
       if (!diskMatchesBackup(backup)) {
-        sendJson(res, 500, { ok: false, code: error.code || 'INTERNAL_ERROR', error: error.message });
+        sendJson(res, 500, {
+          ok: false,
+          code: error.code || "INTERNAL_ERROR",
+          error: error.message,
+        });
         return;
       }
-      recordFailure('unknown', error.code || 'PAUSE_CONTROL_FAILED', error.message, 500);
+      recordFailure("unknown", error.code || "PAUSE_CONTROL_FAILED", error.message, 500);
       return;
     }
-    if (respondIfLifecycleChanged(res, backup, existingState, 'pause')) return;
+    if (respondIfLifecycleChanged(res, backup, existingState, "pause")) return;
     const confirmedAt = new Date().toISOString();
-    updatedState.pauseControl = { ...updatedState.pauseControl, phase: 'confirmed', code: 'PAUSE_CONFIRMED', at: confirmedAt, controlReceipts: results };
+    updatedState.pauseControl = {
+      ...updatedState.pauseControl,
+      phase: "confirmed",
+      code: "PAUSE_CONFIRMED",
+      at: confirmedAt,
+      controlReceipts: results,
+    };
     updatedState.revision++;
-    const entries = [{ timestamp: confirmedAt, type: 'mission_paused', message: 'Mission paused',
-      featureId: updatedState.activeWorker?.featureId ?? null, workerNumber: updatedState.activeWorker?.workerNumber ?? null }];
+    const entries = [
+      {
+        timestamp: confirmedAt,
+        type: "mission_paused",
+        message: "Mission paused",
+        featureId: updatedState.activeWorker?.featureId ?? null,
+        workerNumber: updatedState.activeWorker?.workerNumber ?? null,
+      },
+    ];
     if (updatedState.activeWorker) {
       const runId = updatedState.activeWorker.runId;
-      const update = row => ({ ...row, status: 'paused', pausedAt: updatedState.pausedAt });
+      const update = (row) => ({ ...row, status: "paused", pausedAt: updatedState.pausedAt });
       updatedState.activeWorker = update(updatedState.activeWorker);
-      updatedState.sessions = (updatedState.sessions || []).map(row => row.runId === runId ? update(row) : row);
+      updatedState.sessions = (updatedState.sessions || []).map((row) =>
+        row.runId === runId ? update(row) : row,
+      );
       const rawFeatures = safeReadJsonSync(paths.featuresPath, null);
       const rows = Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || [];
-      const features = rows.map(row => row.id === updatedState.activeWorker.featureId && (!row.runId || row.runId === runId) ? update(row) : row);
-      if (rawFeatures) commitMissionChanges([[paths.featuresPath, Array.isArray(rawFeatures) ? features : { ...rawFeatures, features }]], []);
+      const features = rows.map((row) =>
+        row.id === updatedState.activeWorker.featureId && (!row.runId || row.runId === runId)
+          ? update(row)
+          : row,
+      );
+      if (rawFeatures)
+        commitMissionChanges(
+          [
+            [
+              paths.featuresPath,
+              Array.isArray(rawFeatures) ? features : { ...rawFeatures, features },
+            ],
+          ],
+          [],
+        );
       for (const result of results) applyWorkerControlMetadata(updatedState, result.raw);
       const worker = updatedState.activeWorker;
-      const title = worker.featureTitle || worker.title || worker.featureId || 'feature';
-      entries.push({ timestamp: confirmedAt, type: 'worker_paused', message: `Worker #${worker.workerNumber ?? 1} paused ${title}`,
-        featureId: updatedState.activeWorker.featureId, workerNumber: updatedState.activeWorker.workerNumber ?? null });
+      const title = worker.featureTitle || worker.title || worker.featureId || "feature";
+      entries.push({
+        timestamp: confirmedAt,
+        type: "worker_paused",
+        message: `Worker #${worker.workerNumber ?? 1} paused ${title}`,
+        featureId: updatedState.activeWorker.featureId,
+        workerNumber: updatedState.activeWorker.workerNumber ?? null,
+      });
     }
     const logEntries = buildProgressLogEntries(readProgressLogSync(paths.progressLogPath), entries);
     commitLifecycleState(updatedState, logEntries);
-    const snapshot = broadcastSnapshot('mission_paused');
-    yield () => emitWebhookNotification('pause', { body, logEntries }, snapshot);
+    const snapshot = broadcastSnapshot("mission_paused");
+    yield () => emitWebhookNotification("pause", { body, logEntries }, snapshot);
     sendJson(res, 200, { ok: true, state: snapshot.state, logEntries, snapshot });
   }
 
   function* handleResumeSteps(req, res) {
     if (yield () => handleAutopilotCommand(req, res, "resume")) return;
     const body = yield () => readJsonBody(req);
-    if (beginHudCommand('resume', body, res)) return;
+    if (beginHudCommand("resume", body, res)) return;
     const nowIso = new Date().toISOString();
 
     const existingState = safeReadJsonSync(paths.statePath, null);
@@ -2038,10 +2537,7 @@ export function createMissionHudServer({
       return;
     }
 
-    if (
-      existingState.status !== "paused" &&
-      existingState.activeWorker?.status !== "paused"
-    ) {
+    if (existingState.status !== "paused" && existingState.activeWorker?.status !== "paused") {
       sendJson(res, 409, {
         ok: false,
         code: "MISSION_NOT_PAUSED",
@@ -2068,30 +2564,27 @@ export function createMissionHudServer({
     if (existingState.activeWorker) {
       workerNumber = existingState.activeWorker.workerNumber ?? null;
       featureId =
-        existingState.activeWorker.featureId ||
-        existingState.activeWorker.id ||
-        "active-feature";
+        existingState.activeWorker.featureId || existingState.activeWorker.id || "active-feature";
       featureTitle =
-        existingState.activeWorker.featureTitle ||
-        existingState.activeWorker.title ||
-        featureId;
+        existingState.activeWorker.featureTitle || existingState.activeWorker.title || featureId;
     }
 
     const activeWorkerWorktreePath = existingState.activeWorker?.worktreePath || null;
-    const candidateDir =
-      activeWorkerWorktreePath ||
-      existingState.repoPath ||
-      paths.repoDir;
+    const candidateDir = activeWorkerWorktreePath || existingState.repoPath || paths.repoDir;
     const gitBackup = captureDiskBackup();
-    const gitCheck = yield () => inspectGitTreeForResume(candidateDir, featureId, { activeWorkerWorktreePath, gitPreflightTimeoutMs });
+    const gitCheck = yield () =>
+      inspectGitTreeForResume(candidateDir, featureId, {
+        activeWorkerWorktreePath,
+        gitPreflightTimeoutMs,
+      });
     if (respondIfLifecycleChanged(res, gitBackup, existingState, "resume")) return;
 
     if (!gitCheck.canResume) {
       sendJson(res, 409, {
         ok: false,
-        code: gitCheck.code || (gitCheck.hasConflicts
-          ? "GIT_RESUME_BLOCKED"
-          : "RESUME_BLOCKED_BY_GIT_ERROR"),
+        code:
+          gitCheck.code ||
+          (gitCheck.hasConflicts ? "GIT_RESUME_BLOCKED" : "RESUME_BLOCKED_BY_GIT_ERROR"),
         reasonCode: gitCheck.hasConflicts
           ? "RESUME_BLOCKED_BY_CONFLICTS"
           : "RESUME_BLOCKED_BY_GIT_ERROR",
@@ -2108,7 +2601,11 @@ export function createMissionHudServer({
     const diagnostic = body.diagnostic || gitCheck.diagnostic;
     const rawFeatures = safeReadJsonSync(paths.featuresPath, null);
     if (respondIfDispatchBindingRequired(res, existingState, rawFeatures)) return;
-    if (existingState.activeWorker && respondIfWorkerDispatchBlocked(res, existingState, rawFeatures)) return;
+    if (
+      existingState.activeWorker &&
+      respondIfWorkerDispatchBlocked(res, existingState, rawFeatures)
+    )
+      return;
     const rawModelSettings = safeReadJsonSync(paths.modelSettingsPath, null);
     const existingLogs = readProgressLogSync(paths.progressLogPath);
 
@@ -2135,7 +2632,7 @@ export function createMissionHudServer({
           s.workerNumber === workerNumber ||
           (featureId && s.featureId === featureId)
             ? { ...s, status: "running", resumePending: true, resumedAt: nowIso }
-            : s
+            : s,
         );
       }
     }
@@ -2185,39 +2682,98 @@ export function createMissionHudServer({
       progressLog: [...existingLogs, ...logEntries],
     });
 
-    yield () => notifyCommand(
-      "resume",
-      {
-        body,
-        trigger: "[resume the mission]",
-        diagnostic,
-        gitCheck,
-        logEntries,
-      },
-      preBroadcastSnapshot
-    );
+    yield () =>
+      notifyCommand(
+        "resume",
+        {
+          body,
+          trigger: "[resume the mission]",
+          diagnostic,
+          gitCheck,
+          logEntries,
+        },
+        preBroadcastSnapshot,
+      );
     if (respondIfLifecycleChanged(res, backup, existingState, "resume")) return;
 
     let legacyResumeReceipt = null;
-    const resumeCommandId = existingState.activeWorker ? resumeControlEffectId(paths.dotMissionDir, existingState.activeWorker, existingState) : "implicit";
-    const pendingDispatch = !inspectRunDispatchBinding(existingState, Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || []).hasIdentity &&
-      !existingState.activeWorker?.workerPid && !existingState.activeWorker?.daemonStateFile &&
+    const resumeCommandId = existingState.activeWorker
+      ? resumeControlEffectId(paths.dotMissionDir, existingState.activeWorker, existingState)
+      : "implicit";
+    const pendingDispatch =
+      !inspectRunDispatchBinding(
+        existingState,
+        Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || [],
+      ).hasIdentity &&
+      !existingState.activeWorker?.workerPid &&
+      !existingState.activeWorker?.daemonStateFile &&
       (existingState.activeWorker?.dispatchPending === true ||
-        (existingState.activeWorker?.runtimeTransport === "orchestrator-pending" && !existingState.activeWorker.workerPid));
-    if (!pendingDispatch && existingState.activeWorker && typeof effectiveAdapter.resumeWorker === "function") {
-      const legacyFeature = (Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || []).find(f => f.id === existingState.activeWorker.featureId);
-      const legacyIntent = !existingState.activeWorker.workerPid && !existingState.activeWorker.daemonStateFile && !inspectRunDispatchBinding(existingState, Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || []).hasIdentity
-        ? prepareDispatch(paths.dotMissionDir, { state: existingState, feature: legacyFeature, worker: existingState.activeWorker, target: existingState.activeWorker }) : null;
-      const invoke = call => {
+        (existingState.activeWorker?.runtimeTransport === "orchestrator-pending" &&
+          !existingState.activeWorker.workerPid));
+    if (
+      !pendingDispatch &&
+      existingState.activeWorker &&
+      typeof effectiveAdapter.resumeWorker === "function"
+    ) {
+      const legacyFeature = (
+        Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || []
+      ).find((f) => f.id === existingState.activeWorker.featureId);
+      const legacyIntent =
+        !existingState.activeWorker.workerPid &&
+        !existingState.activeWorker.daemonStateFile &&
+        !inspectRunDispatchBinding(
+          existingState,
+          Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || [],
+        ).hasIdentity
+          ? prepareDispatch(paths.dotMissionDir, {
+              state: existingState,
+              feature: legacyFeature,
+              worker: existingState.activeWorker,
+              target: existingState.activeWorker,
+            })
+          : null;
+      const invoke = (call) => {
         requireUnchangedMission(backup);
-        return invokeHudHook(() => effectiveAdapter.resumeWorker(
-          { ...existingState.activeWorker, ...(legacyIntent ? { clientRequestId: legacyIntent.clientRequestId, invocationId: call.invocationId } : {}) },
-          { trigger: "[resume the mission]", diagnostic, gitCheck, body, controlRequestId: resumeCommandId }, existingState), "resumeWorker");
+        return invokeHudHook(
+          () =>
+            effectiveAdapter.resumeWorker(
+              {
+                ...existingState.activeWorker,
+                ...(legacyIntent
+                  ? {
+                      clientRequestId: legacyIntent.clientRequestId,
+                      invocationId: call.invocationId,
+                    }
+                  : {}),
+              },
+              {
+                trigger: "[resume the mission]",
+                diagnostic,
+                gitCheck,
+                body,
+                controlRequestId: resumeCommandId,
+              },
+              existingState,
+            ),
+          "resumeWorker",
+        );
       };
-      const rwRes = yield () => legacyIntent ? dispatchWithIntent(paths.dotMissionDir, legacyIntent, invoke, { operation: "resume" }) : runClaimedEffect(paths.dotMissionDir, resumeCommandId, invoke);
+      const rwRes = yield () =>
+        legacyIntent
+          ? dispatchWithIntent(paths.dotMissionDir, legacyIntent, invoke, { operation: "resume" })
+          : runClaimedEffect(paths.dotMissionDir, resumeCommandId, invoke);
       if (legacyIntent) legacyResumeReceipt = { result: rwRes, intent: legacyIntent };
       if (!diskMatchesBackup(backup)) {
-        yield () => settlePausedWorkerResult(paths.dotMissionDir, existingState, existingState.activeWorker, rwRes, legacyIntent, effectiveAdapter, "resume");
+        yield () =>
+          settlePausedWorkerResult(
+            paths.dotMissionDir,
+            existingState,
+            existingState.activeWorker,
+            rwRes,
+            legacyIntent,
+            effectiveAdapter,
+            "resume",
+          );
         respondIfLifecycleChanged(res, backup, existingState, "resume");
         return;
       }
@@ -2233,20 +2789,61 @@ export function createMissionHudServer({
         return;
       }
       applyWorkerControlMetadata(updatedState, rwRes);
-    } else if (!pendingDispatch && existingState.activeWorker && typeof effectiveAdapter.startMissionRun === "function") {
+    } else if (
+      !pendingDispatch &&
+      existingState.activeWorker &&
+      typeof effectiveAdapter.startMissionRun === "function"
+    ) {
       requireUnchangedMission(backup);
-      const legacyFeature = (Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || []).find(f => f.id === existingState.activeWorker.featureId);
-      const legacyIntent = !existingState.activeWorker.workerPid && !existingState.activeWorker.daemonStateFile && !inspectRunDispatchBinding(existingState, Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || []).hasIdentity
-        ? prepareDispatch(paths.dotMissionDir, { state: existingState, feature: legacyFeature, worker: existingState.activeWorker, target: existingState.activeWorker }) : null;
-      const invoke = call => invokeHudHook(() => effectiveAdapter.startMissionRun(
-        paths.dotMissionDir,
-        { trigger: "[resume the mission]", diagnostic, gitCheck, body, invocationId: call?.invocationId },
-        effectiveAdapter
-      ), "startMissionRun");
-      const smRes = yield () => legacyIntent ? dispatchWithIntent(paths.dotMissionDir, legacyIntent, invoke, { operation: "resume" }) : runClaimedEffect(paths.dotMissionDir, resumeCommandId, invoke);
+      const legacyFeature = (
+        Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || []
+      ).find((f) => f.id === existingState.activeWorker.featureId);
+      const legacyIntent =
+        !existingState.activeWorker.workerPid &&
+        !existingState.activeWorker.daemonStateFile &&
+        !inspectRunDispatchBinding(
+          existingState,
+          Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || [],
+        ).hasIdentity
+          ? prepareDispatch(paths.dotMissionDir, {
+              state: existingState,
+              feature: legacyFeature,
+              worker: existingState.activeWorker,
+              target: existingState.activeWorker,
+            })
+          : null;
+      const invoke = (call) =>
+        invokeHudHook(
+          () =>
+            effectiveAdapter.startMissionRun(
+              paths.dotMissionDir,
+              {
+                trigger: "[resume the mission]",
+                diagnostic,
+                gitCheck,
+                body,
+                invocationId: call?.invocationId,
+              },
+              effectiveAdapter,
+            ),
+          "startMissionRun",
+        );
+      const smRes = yield () =>
+        legacyIntent
+          ? dispatchWithIntent(paths.dotMissionDir, legacyIntent, invoke, { operation: "resume" })
+          : runClaimedEffect(paths.dotMissionDir, resumeCommandId, invoke);
       if (legacyIntent) legacyResumeReceipt = { result: smRes, intent: legacyIntent };
       if (!diskMatchesBackup(backup)) {
-        yield () => settlePausedWorkerResult(paths.dotMissionDir, existingState, existingState.activeWorker, smRes, null, effectiveAdapter, "resume");
+        yield () =>
+          settlePausedWorkerResult(
+            paths.dotMissionDir,
+            existingState,
+            existingState.activeWorker,
+            smRes,
+            null,
+            effectiveAdapter,
+            "resume",
+          );
         respondIfLifecycleChanged(res, backup, existingState, "resume");
         return;
       }
@@ -2263,19 +2860,41 @@ export function createMissionHudServer({
       }
       applyWorkerControlMetadata(updatedState, smRes);
     } else if (!pendingDispatch && existingState.activeWorker) {
-      sendJson(res, 409, { ok: false, code: 'NO_T3_TRANSPORT', error: 'No adapter can resume the active run', state: existingState });
+      sendJson(res, 409, {
+        ok: false,
+        code: "NO_T3_TRANSPORT",
+        error: "No adapter can resume the active run",
+        state: existingState,
+      });
       return;
     }
 
     if (respondIfLifecycleChanged(res, backup, existingState, "resume")) return;
     delete updatedState.pauseControl;
     if (legacyResumeReceipt) {
-      const merged = mergeDispatchReceipt(updatedState, { features: Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || [] }, legacyResumeReceipt.result, legacyResumeReceipt.intent);
-      commitMissionChanges([[paths.featuresPath, merged.featuresDoc], [paths.statePath, merged.state]], logEntries, { preserveReceipts: true });
+      const merged = mergeDispatchReceipt(
+        updatedState,
+        { features: Array.isArray(rawFeatures) ? rawFeatures : rawFeatures?.features || [] },
+        legacyResumeReceipt.result,
+        legacyResumeReceipt.intent,
+      );
+      commitMissionChanges(
+        [
+          [paths.featuresPath, merged.featuresDoc],
+          [paths.statePath, merged.state],
+        ],
+        logEntries,
+        { preserveReceipts: true },
+      );
       lastDiskSignature = computeDiskSignature();
     } else commitLifecycleState(updatedState, logEntries);
     const snapshot = broadcastSnapshot("mission_resumed");
-    yield () => emitWebhookNotification("resume", { body, trigger: "[resume the mission]", diagnostic, gitCheck, logEntries }, snapshot);
+    yield () =>
+      emitWebhookNotification(
+        "resume",
+        { body, trigger: "[resume the mission]", diagnostic, gitCheck, logEntries },
+        snapshot,
+      );
     sendJson(res, 200, {
       ok: true,
       trigger: "[resume the mission]",
@@ -2302,18 +2921,62 @@ export function createMissionHudServer({
   }
 
   const server = http.createServer(async (req, res) => {
+    setSecurityHeaders(res);
+    const route = findHudRoute((req.method || "GET").toUpperCase(), (req.url || "/").split("?")[0]);
+    const requestContext = diagnostics.beginRequest(req, res, route?.operationId || "unknown");
     try {
+      assertTrustedRequest(req, { host, port: api.port });
       const urlObj = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
       const pathname = urlObj.pathname;
       const method = (req.method || "GET").toUpperCase();
 
       if (method === "OPTIONS") {
         res.writeHead(204, {
-          "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Last-Event-ID",
+          "Access-Control-Allow-Headers": "Content-Type, Last-Event-ID, X-Request-ID",
         });
         res.end();
+        return;
+      }
+
+      if (method === "GET" && pathname === "/healthz") {
+        sendJson(res, 200, {
+          ok: true,
+          status: "alive",
+          uptimeSeconds: diagnostics.snapshot().uptimeSeconds,
+        });
+        return;
+      }
+
+      if (method === "GET" && pathname === "/readyz") {
+        try {
+          const snapshot = loadSnapshot();
+          sendJson(res, 200, {
+            ok: true,
+            status: snapshot.state.initialized ? "ready" : "onboarding",
+          });
+        } catch (error) {
+          diagnostics.recordError(error, requestContext);
+          sendJson(res, 503, {
+            ok: false,
+            code: "MISSION_NOT_READY",
+            requestId: requestContext.requestId,
+          });
+        }
+        return;
+      }
+
+      if (method === "GET" && pathname === "/metrics") {
+        res.writeHead(200, {
+          "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        res.end(diagnostics.metrics());
+        return;
+      }
+
+      if (method === "GET" && pathname === "/api/mission/diagnostics") {
+        sendJson(res, 200, diagnostics.snapshot());
         return;
       }
 
@@ -2338,7 +3001,10 @@ export function createMissionHudServer({
         return;
       }
 
-      if (method === "GET" && (pathname === "/api/mission/stream" || pathname === "/api/mission/events")) {
+      if (
+        method === "GET" &&
+        (pathname === "/api/mission/stream" || pathname === "/api/mission/events")
+      ) {
         const lastEventIdHeader =
           req.headers["last-event-id"] || urlObj.searchParams.get("lastEventId") || null;
 
@@ -2347,7 +3013,6 @@ export function createMissionHudServer({
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
           "X-Accel-Buffering": "no",
-          "Access-Control-Allow-Origin": "*",
         });
 
         res.write(": connected\n\n");
@@ -2365,7 +3030,7 @@ export function createMissionHudServer({
             reason: "initial",
             emittedAt: new Date().toISOString(),
           },
-          eventId
+          eventId,
         );
 
         req.on("close", () => {
@@ -2402,16 +3067,33 @@ export function createMissionHudServer({
       sendJson(res, 404, { error: `Route not found: ${method} ${pathname}` });
     } catch (err) {
       hudCommandClaims.delete(res);
+      const errorStatus =
+        Number.isInteger(err?.statusCode) && err.statusCode >= 400 && err.statusCode <= 599
+          ? err.statusCode
+          : 500;
+      if (errorStatus >= 500) diagnostics.recordError(err, requestContext);
       // An unknown dispatch outcome stays fenced for recover_dispatch; report it as a conflict, not a server fault.
-      if (["MISSION_STATE_CHANGED", "DISPATCH_OUTCOME_UNKNOWN"].includes(err?.code) && !err.hudHookFailed) {
+      if (
+        ["MISSION_STATE_CHANGED", "DISPATCH_OUTCOME_UNKNOWN"].includes(err?.code) &&
+        !err.hudHookFailed
+      ) {
         const snapshot = broadcastSnapshot(err.code.toLowerCase()) || loadSnapshot();
-        sendJson(res, 409, { ok: false, code: err.code, error: err.message,
-          runtimeResult: err.runtimeResult, state: snapshot.state, snapshot });
+        sendJson(res, 409, {
+          ok: false,
+          code: err.code,
+          error: err.message,
+          runtimeResult: err.runtimeResult,
+          state: snapshot.state,
+          snapshot,
+        });
         return;
       }
-      sendJson(res, 500, {
-        ok: false, code: err?.code || "INTERNAL_ERROR",
-        error: err?.message || "Internal server error", runtimeResult: err?.runtimeResult,
+      sendJson(res, errorStatus, {
+        ok: false,
+        code: err?.code || "INTERNAL_ERROR",
+        error: err?.message || "Internal server error",
+        runtimeResult: err?.runtimeResult,
+        requestId: requestContext.requestId,
       });
     }
   });
@@ -2425,7 +3107,10 @@ export function createMissionHudServer({
       const onError = (err) => {
         server.removeListener("listening", onListening);
         server.removeListener("error", onError);
-        closeServer().then(() => reject(err), () => reject(err));
+        closeServer().then(
+          () => reject(err),
+          () => reject(err),
+        );
       };
       const onListening = () => {
         server.removeListener("error", onError);
@@ -2433,8 +3118,11 @@ export function createMissionHudServer({
       };
       server.once("error", onError);
       server.once("listening", onListening);
-      try { server.listen(port, host); }
-      catch (error) { onError(error); }
+      try {
+        server.listen(port, host);
+      } catch (error) {
+        onError(error);
+      }
     });
     return listenPromise;
   }
@@ -2449,23 +3137,31 @@ export function createMissionHudServer({
     if (fsWatcher) {
       try {
         fsWatcher.close();
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
       fsWatcher = null;
     }
     if (parentWatcher) {
       try {
         parentWatcher.close();
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
       parentWatcher = null;
     }
     for (const client of sseClients) {
       try {
         client.end();
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
     }
     sseClients.clear();
     if (server.listening) {
-      await new Promise((resolve) => server.close(() => resolve()));
+      await new Promise((resolve) => {
+        server.close(() => resolve());
+      });
     }
   }
 
@@ -2580,15 +3276,11 @@ async function runCli() {
   fs.mkdirSync(paths.dotMissionDir, { recursive: true });
 
   if (!foreground) {
-    const child = spawn(
-      process.execPath,
-      [__filename, ...process.argv.slice(2), "--foreground"],
-      {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      }
-    );
+    const child = spawn(process.execPath, [__filename, ...process.argv.slice(2), "--foreground"], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
     const startupLine = await new Promise((resolve, reject) => {
       let stdoutBuf = "";
@@ -2629,7 +3321,9 @@ async function runCli() {
 
     try {
       fs.writeFileSync(path.join(paths.dotMissionDir, "hud.pid"), `${child.pid}\n`, "utf8");
-    } catch {}
+    } catch {
+      /* Optional cleanup or data is unavailable; retain the current state. */
+    }
 
     process.stdout.write(`${startupLine}\n`);
     child.stdout.destroy();
@@ -2701,10 +3395,7 @@ function resolveRealOrAbsPath(targetPath) {
   }
 }
 
-if (
-  process.argv[1] &&
-  resolveRealOrAbsPath(process.argv[1]) === resolveRealOrAbsPath(__filename)
-) {
+if (process.argv[1] && resolveRealOrAbsPath(process.argv[1]) === resolveRealOrAbsPath(__filename)) {
   runCli().catch((err) => {
     process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
     process.exit(1);

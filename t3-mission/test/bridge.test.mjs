@@ -11,42 +11,31 @@ import { promisify } from "node:util";
 
 import { DISMISSAL_TYPES } from "../kernel/schema.mjs";
 import {
-  buildMissionTaskTitle,
-  buildStableClientRequestId,
   callT3McpTool,
   checkGitTreeBeforeResume,
   createT3Adapter,
   delegateMissionTask,
   DROID_AUTONOMY_TO_T3_RUNTIME_MODE,
   EFFORT_LEVEL_TO_STRING,
-  getOrchestratorCapabilities,
   mapApprovalModeToProviderAutonomy,
   normalizeTargetFromSlot,
   resolveEffectiveRuntimeMode,
   resolveTargetFromModelSettings,
   resumeWorker,
   runFeature,
-  settleCompletedMilestoneThreads,
   T3_APPROVAL_TO_DROID_AUTONOMY,
-  VALID_CODEX_REASONING_EFFORTS
+  VALID_CODEX_REASONING_EFFORTS,
 } from "../bridge/t3-adapter.mjs";
 
 import {
   callMissionTool,
-  createBridgeDispatchAdapter,
   createMissionMcpServer,
-  handleJsonRpcMessage,
   isExecutedAsMain as isMcpExecutedAsMain,
-  MISSION_TOOL_NAMES,
   MISSION_TOOLS,
-  startStdioMcpServer
+  startStdioMcpServer,
 } from "../bridge/mcp-server.mjs";
 
-import {
-  isExecutedAsMain as isCliExecutedAsMain,
-  parseCliArgs,
-  runCli
-} from "../bridge/cli.mjs";
+import { isExecutedAsMain as isCliExecutedAsMain, runCli } from "../bridge/cli.mjs";
 
 const execFileAsync = promisify(execFileCallback);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -67,14 +56,14 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps codex reasoningEffort correct
     const target = normalizeTargetFromSlot({
       providerInstanceId: "codex",
       model: "gpt-5.4",
-      effort: level
+      effort: level,
     });
     assert.deepEqual(target, {
       providerInstanceId: "codex",
       model: "gpt-5.4",
       options: {
-        reasoningEffort: level
-      }
+        reasoningEffort: level,
+      },
     });
   }
 
@@ -83,16 +72,16 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps codex reasoningEffort correct
     model: "gpt-6-1-sol",
     reasoningEffort: "high",
     options: {
-      fastMode: true
-    }
+      fastMode: true,
+    },
   });
   assert.deepEqual(fromNestedOptions, {
     providerInstanceId: "codex",
     model: "gpt-6-1-sol",
     options: {
       fastMode: true,
-      reasoningEffort: "high"
-    }
+      reasoningEffort: "high",
+    },
   });
 });
 
@@ -102,7 +91,7 @@ test("F09 & I-02: normalizeTargetFromSlot maps numeric effort 1..5 to reasoningE
     2: "low",
     3: "medium",
     4: "high",
-    5: "max"
+    5: "max",
   });
   assert.ok(VALID_CODEX_REASONING_EFFORTS.has("minimal"));
 
@@ -111,7 +100,7 @@ test("F09 & I-02: normalizeTargetFromSlot maps numeric effort 1..5 to reasoningE
     [2, "low"],
     [3, "medium"],
     [4, "high"],
-    [5, "max"]
+    [5, "max"],
   ];
 
   for (const [level, expected] of expectedByLevel) {
@@ -124,16 +113,16 @@ test("F09 & I-02: normalizeTargetFromSlot maps numeric effort 1..5 to reasoningE
       options: {
         reasoningEffort: "high",
         effort: level,
-        testMarker: "worker"
-      }
+        testMarker: "worker",
+      },
     });
     assert.deepEqual(fromTopLevel, {
       providerInstanceId: "codex",
       model: "gpt-6.1-sol",
       options: {
         testMarker: "worker",
-        reasoningEffort: expected
-      }
+        reasoningEffort: expected,
+      },
     });
 
     // Kernel-reloaded slot (where only options survive) still derives from options.effort
@@ -143,16 +132,16 @@ test("F09 & I-02: normalizeTargetFromSlot maps numeric effort 1..5 to reasoningE
       options: {
         reasoningEffort: "high",
         effort: level,
-        testMarker: "worker"
-      }
+        testMarker: "worker",
+      },
     });
     assert.deepEqual(fromKernelStore, {
       providerInstanceId: "codex",
       model: "gpt-6.1-sol",
       options: {
         testMarker: "worker",
-        reasoningEffort: expected
-      }
+        reasoningEffort: expected,
+      },
     });
   }
 
@@ -161,14 +150,14 @@ test("F09 & I-02: normalizeTargetFromSlot maps numeric effort 1..5 to reasoningE
     providerInstanceId: "codex",
     model: "gpt-5.4",
     effort: 5,
-    reasoningEffort: "xhigh"
+    reasoningEffort: "xhigh",
   });
   assert.deepEqual(xhighSlot, {
     providerInstanceId: "codex",
     model: "gpt-5.4",
     options: {
-      reasoningEffort: "xhigh"
-    }
+      reasoningEffort: "xhigh",
+    },
   });
 });
 
@@ -176,22 +165,22 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps antigravity direct model IDs"
   const geminiTarget = normalizeTargetFromSlot({
     providerInstanceId: "antigravity",
     model: "gemini-4-argon-high",
-    effort: "high"
+    effort: "high",
   });
   assert.deepEqual(geminiTarget, {
     providerInstanceId: "antigravity",
     model: "gemini-4-argon-high",
-    options: {}
+    options: {},
   });
 
   const claudeTarget = normalizeTargetFromSlot({
     providerInstanceId: "antigravity",
-    model: "claude-opus-5-5-high"
+    model: "claude-opus-5-5-high",
   });
   assert.deepEqual(claudeTarget, {
     providerInstanceId: "antigravity",
     model: "claude-opus-5-5-high",
-    options: {}
+    options: {},
   });
 });
 
@@ -199,29 +188,29 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid rea
   const droidTarget = normalizeTargetFromSlot({
     providerInstanceId: "acpRegistry_factory_droid",
     model: "claude-opus-4-6",
-    effort: "high"
+    effort: "high",
   });
   assert.deepEqual(droidTarget, {
     providerInstanceId: "acpRegistry_factory_droid",
     model: "claude-opus-4-6",
     options: {
       reasoning_effort: "high",
-      autonomy_level: "auto-high"
-    }
+      autonomy_level: "auto-high",
+    },
   });
 
   const droidWithExplicitReasoning = normalizeTargetFromSlot({
     providerInstanceId: "acpRegistry_factory_droid",
     model: "gpt-5.4",
-    reasoningEffort: "max"
+    reasoningEffort: "max",
   });
   assert.deepEqual(droidWithExplicitReasoning, {
     providerInstanceId: "acpRegistry_factory_droid",
     model: "gpt-5.4",
     options: {
       reasoning_effort: "max",
-      autonomy_level: "auto-high"
-    }
+      autonomy_level: "auto-high",
+    },
   });
 });
 
@@ -229,27 +218,27 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps pi thinking option", () => {
   const piTarget = normalizeTargetFromSlot({
     providerInstanceId: "pi",
     model: "claude-sonnet-4-5",
-    thinking: "high"
+    thinking: "high",
   });
   assert.deepEqual(piTarget, {
     providerInstanceId: "pi",
     model: "claude-sonnet-4-5",
     options: {
-      thinking: "high"
-    }
+      thinking: "high",
+    },
   });
 
   const piFromEffort = normalizeTargetFromSlot({
     providerInstanceId: "pi",
     model: "claude-opus-4-6",
-    effort: "max"
+    effort: "max",
   });
   assert.deepEqual(piFromEffort, {
     providerInstanceId: "pi",
     model: "claude-opus-4-6",
     options: {
-      thinking: "max"
-    }
+      thinking: "max",
+    },
   });
 });
 
@@ -259,7 +248,7 @@ test("VAL-BRIDGE-001: bidirectional Droid autonomy <-> T3 runtimeMode mapping an
     "approval-required": "normal",
     "auto-accept-edits": "auto-low",
     auto: "auto-high",
-    "full-access": "auto-high"
+    "full-access": "auto-high",
   });
 
   assert.deepEqual(DROID_AUTONOMY_TO_T3_RUNTIME_MODE, {
@@ -267,85 +256,81 @@ test("VAL-BRIDGE-001: bidirectional Droid autonomy <-> T3 runtimeMode mapping an
     normal: "approval-required",
     "auto-low": "auto-accept-edits",
     "auto-medium": "auto",
-    "auto-high": "full-access"
+    "auto-high": "full-access",
   });
 
   // mapApprovalModeToProviderAutonomy for Factory Droid
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "plan"), {
+    autonomy_level: "spec",
+  });
   assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "plan"),
-    { autonomy_level: "spec" }
-  );
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", { interactionMode: "plan", runtimeMode: "auto" }),
-    { autonomy_level: "spec" }
+    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", {
+      interactionMode: "plan",
+      runtimeMode: "auto",
+    }),
+    { autonomy_level: "spec" },
   );
   assert.deepEqual(
     mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "approval-required"),
-    { autonomy_level: "normal" }
+    { autonomy_level: "normal" },
   );
   assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", { approvalMode: "approval-required" }),
-    { autonomy_level: "normal" }
+    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", {
+      approvalMode: "approval-required",
+    }),
+    { autonomy_level: "normal" },
   );
   assert.deepEqual(
     mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "auto-accept-edits"),
-    { autonomy_level: "auto-low" }
+    { autonomy_level: "auto-low" },
   );
   assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", { autonomy_level: "auto-medium", runtimeMode: "auto" }),
-    { autonomy_level: "auto-medium" }
+    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", {
+      autonomy_level: "auto-medium",
+      runtimeMode: "auto",
+    }),
+    { autonomy_level: "auto-medium" },
   );
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "auto"),
-    { autonomy_level: "auto-high" }
-  );
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "full-access"),
-    { autonomy_level: "auto-high" }
-  );
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid"),
-    { autonomy_level: "auto-high" }
-  );
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "auto"), {
+    autonomy_level: "auto-high",
+  });
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid", "full-access"), {
+    autonomy_level: "auto-high",
+  });
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_factory_droid"), {
+    autonomy_level: "auto-high",
+  });
 
   // mapApprovalModeToProviderAutonomy for Devin
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_devin"),
-    { mode: "bypass" }
-  );
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_devin", "auto"),
-    { mode: "bypass" }
-  );
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_devin"), { mode: "bypass" });
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_devin", "auto"), {
+    mode: "bypass",
+  });
   assert.deepEqual(
     mapApprovalModeToProviderAutonomy("acpRegistry_devin", { interactionMode: "plan" }),
-    { mode: "plan" }
+    { mode: "plan" },
   );
   assert.deepEqual(
     mapApprovalModeToProviderAutonomy("acpRegistry_devin", { runtimeMode: "approval-required" }),
-    { mode: "ask" }
+    { mode: "ask" },
   );
   assert.deepEqual(
     mapApprovalModeToProviderAutonomy("acpRegistry_devin", { runtimeMode: "auto-accept-edits" }),
-    { mode: "accept-edits" }
+    { mode: "accept-edits" },
   );
 
   // mapApprovalModeToProviderAutonomy for Cursor
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_cursor"),
-    { mode: "agent" }
-  );
-  assert.deepEqual(
-    mapApprovalModeToProviderAutonomy("acpRegistry_cursor", "auto"),
-    { mode: "agent" }
-  );
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_cursor"), { mode: "agent" });
+  assert.deepEqual(mapApprovalModeToProviderAutonomy("acpRegistry_cursor", "auto"), {
+    mode: "agent",
+  });
   assert.deepEqual(
     mapApprovalModeToProviderAutonomy("acpRegistry_cursor", { interactionMode: "plan" }),
-    { mode: "plan" }
+    { mode: "plan" },
   );
   assert.deepEqual(
     mapApprovalModeToProviderAutonomy("acpRegistry_cursor", { runtimeMode: "approval-required" }),
-    { mode: "ask" }
+    { mode: "ask" },
   );
 
   // resolveEffectiveRuntimeMode hierarchy, ceiling, and providerRuntimeModes filtering
@@ -357,22 +342,22 @@ test("VAL-BRIDGE-001: bidirectional Droid autonomy <-> T3 runtimeMode mapping an
   assert.equal(resolveEffectiveRuntimeMode({ autonomyLevel: "auto-high" }), "full-access");
   assert.equal(
     resolveEffectiveRuntimeMode({ requestedMode: "full-access", parentRuntimeMode: "auto" }),
-    "auto"
+    "auto",
   );
   assert.equal(
     resolveEffectiveRuntimeMode({
       autonomyLevel: "auto-high",
       parentRuntimeMode: "auto",
-      providerRuntimeModes: ["approval-required", "auto-accept-edits", "full-access"]
+      providerRuntimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     }),
-    "auto-accept-edits"
+    "auto-accept-edits",
   );
   assert.equal(
     resolveEffectiveRuntimeMode({
       parentRuntimeMode: "full-access",
-      providerRuntimeModes: ["approval-required", "auto-accept-edits", "full-access"]
+      providerRuntimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     }),
-    "full-access"
+    "full-access",
   );
 });
 
@@ -383,61 +368,61 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
       effort: 4,
-      runtimeMode: "approval-required"
+      runtimeMode: "approval-required",
     }),
     {
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
       options: {
         reasoning_effort: "high",
-        autonomy_level: "normal"
-      }
-    }
+        autonomy_level: "normal",
+      },
+    },
   );
 
   assert.deepEqual(
     normalizeTargetFromSlot({
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
-      interactionMode: "plan"
+      interactionMode: "plan",
     }),
     {
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
       options: {
-        autonomy_level: "spec"
-      }
-    }
+        autonomy_level: "spec",
+      },
+    },
   );
 
   assert.deepEqual(
     normalizeTargetFromSlot({
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
-      runtimeMode: "auto-accept-edits"
+      runtimeMode: "auto-accept-edits",
     }),
     {
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
       options: {
-        autonomy_level: "auto-low"
-      }
-    }
+        autonomy_level: "auto-low",
+      },
+    },
   );
 
   assert.deepEqual(
     normalizeTargetFromSlot({
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
-      autonomy_level: "auto-medium"
+      autonomy_level: "auto-medium",
     }),
     {
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
       options: {
-        autonomy_level: "auto-medium"
-      }
-    }
+        autonomy_level: "auto-medium",
+      },
+    },
   );
 
   // Devin: mode defaults to "bypass" and effort maps to thought_level ("medium" | "high" | "max")
@@ -450,22 +435,22 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
     ["max", "max"],
     [1, "medium"],
     [4, "high"],
-    [5, "max"]
+    [5, "max"],
   ]) {
     assert.deepEqual(
       normalizeTargetFromSlot({
         providerInstanceId: "acpRegistry_devin",
         model: "claude-opus-4-6",
-        effort: inputEffort
+        effort: inputEffort,
       }),
       {
         providerInstanceId: "acpRegistry_devin",
         model: "claude-opus-4-6",
         options: {
           mode: "bypass",
-          thought_level: expectedThought
-        }
-      }
+          thought_level: expectedThought,
+        },
+      },
     );
   }
 
@@ -474,16 +459,16 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
       providerInstanceId: "acpRegistry_devin",
       model: "claude-opus-4-6",
       runtimeMode: "auto-accept-edits",
-      effort: "high"
+      effort: "high",
     }),
     {
       providerInstanceId: "acpRegistry_devin",
       model: "claude-opus-4-6",
       options: {
         mode: "accept-edits",
-        thought_level: "high"
-      }
-    }
+        thought_level: "high",
+      },
+    },
   );
 
   // Cursor: mode defaults to "agent" and effort maps to reasoning_effort + effort
@@ -496,14 +481,14 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
     ["max", "xhigh", "max"],
     [1, "low", "low"],
     [4, "high", "high"],
-    [5, "xhigh", "max"]
+    [5, "xhigh", "max"],
   ];
   for (const [inputEffort, expectedReasoning, expectedEffort] of cursorMatrix) {
     assert.deepEqual(
       normalizeTargetFromSlot({
         providerInstanceId: "acpRegistry_cursor",
         model: "claude-4.6-opus-max-thinking",
-        effort: inputEffort
+        effort: inputEffort,
       }),
       {
         providerInstanceId: "acpRegistry_cursor",
@@ -511,9 +496,9 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
         options: {
           mode: "agent",
           reasoning_effort: expectedReasoning,
-          effort: expectedEffort
-        }
-      }
+          effort: expectedEffort,
+        },
+      },
     );
   }
 
@@ -522,7 +507,7 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
       providerInstanceId: "acpRegistry_cursor",
       model: "claude-4.6-opus-max-thinking",
       interactionMode: "plan",
-      effort: "high"
+      effort: "high",
     }),
     {
       providerInstanceId: "acpRegistry_cursor",
@@ -530,9 +515,9 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
       options: {
         mode: "plan",
         reasoning_effort: "high",
-        effort: "high"
-      }
-    }
+        effort: "high",
+      },
+    },
   );
 
   // Grok & CPA (grok-*): reasoningEffort clamps minimal -> low and max -> xhigh
@@ -541,45 +526,45 @@ test("VAL-BRIDGE-001: normalizeTargetFromSlot maps acpRegistry_factory_droid, ac
       normalizeTargetFromSlot({
         providerInstanceId: provider,
         model: "grok-4.7",
-        effort: "minimal"
+        effort: "minimal",
       }),
       {
         providerInstanceId: provider,
         model: "grok-4.7",
         options: {
-          reasoningEffort: "low"
-        }
-      }
+          reasoningEffort: "low",
+        },
+      },
     );
 
     assert.deepEqual(
       normalizeTargetFromSlot({
         providerInstanceId: provider,
         model: "grok-4.7",
-        effort: "max"
+        effort: "max",
       }),
       {
         providerInstanceId: provider,
         model: "grok-4.7",
         options: {
-          reasoningEffort: "xhigh"
-        }
-      }
+          reasoningEffort: "xhigh",
+        },
+      },
     );
 
     assert.deepEqual(
       normalizeTargetFromSlot({
         providerInstanceId: provider,
         model: "grok-4.6",
-        effort: "high"
+        effort: "high",
       }),
       {
         providerInstanceId: provider,
         model: "grok-4.6",
         options: {
-          reasoningEffort: "high"
-        }
-      }
+          reasoningEffort: "high",
+        },
+      },
     );
   }
 });
@@ -589,29 +574,29 @@ test("VAL-BRIDGE-001: resolveTargetFromModelSettings resolves worker, validator,
     orchestrator: {
       providerInstanceId: "acpRegistry_factory_droid",
       model: "claude-opus-4-6",
-      effort: "high"
+      effort: "high",
     },
     worker: {
       providerInstanceId: "antigravity",
-      model: "gemini-4-argon-high"
+      model: "gemini-4-argon-high",
     },
     validator: {
       providerInstanceId: "codex",
       model: "gpt-6-1-sol",
-      reasoningEffort: "high"
-    }
+      reasoningEffort: "high",
+    },
   };
 
   assert.deepEqual(resolveTargetFromModelSettings(modelSettings, "implementation"), {
     providerInstanceId: "antigravity",
     model: "gemini-4-argon-high",
-    options: {}
+    options: {},
   });
 
   assert.deepEqual(resolveTargetFromModelSettings(modelSettings, "scrutiny"), {
     providerInstanceId: "codex",
     model: "gpt-6-1-sol",
-    options: { reasoningEffort: "high" }
+    options: { reasoningEffort: "high" },
   });
 
   assert.deepEqual(resolveTargetFromModelSettings(modelSettings, "orchestrator"), {
@@ -619,8 +604,8 @@ test("VAL-BRIDGE-001: resolveTargetFromModelSettings resolves worker, validator,
     model: "claude-opus-4-6",
     options: {
       reasoning_effort: "high",
-      autonomy_level: "auto-high"
-    }
+      autonomy_level: "auto-high",
+    },
   });
 });
 
@@ -636,9 +621,9 @@ test("callT3McpTool invokes execFile with array arguments and ELECTRON_RUN_AS_NO
       stdout: JSON.stringify({
         taskId: "task-99",
         childThreadId: "thread-99",
-        status: "running"
+        status: "running",
       }),
-      stderr: ""
+      stderr: "",
     };
   };
 
@@ -649,10 +634,10 @@ test("callT3McpTool invokes execFile with array arguments and ELECTRON_RUN_AS_NO
     {
       env: {
         T3_ACP_MCP_NODE: "/Applications/T3 Code.app/Contents/MacOS/T3 Code",
-        T3_ACP_MCP_ENTRYPOINT: "/Applications/T3 Code.app/Contents/Resources/app.asar/dist/mcp.cjs"
+        T3_ACP_MCP_ENTRYPOINT: "/Applications/T3 Code.app/Contents/Resources/app.asar/dist/mcp.cjs",
       },
-      execFileImpl: fakeExecFile
-    }
+      execFileImpl: fakeExecFile,
+    },
   );
 
   assert.equal(capturedCalls.length, 1);
@@ -661,7 +646,7 @@ test("callT3McpTool invokes execFile with array arguments and ELECTRON_RUN_AS_NO
     "/Applications/T3 Code.app/Contents/Resources/app.asar/dist/mcp.cjs",
     "acp-mcp-call",
     "delegate_task",
-    JSON.stringify({ task: dangerousPrompt })
+    JSON.stringify({ task: dangerousPrompt }),
   ]);
   assert.equal(capturedCalls[0].options.env.ELECTRON_RUN_AS_NODE, "1");
   assert.equal(result.taskId, "task-99");
@@ -674,7 +659,7 @@ test("delegateMissionTask formats standardized titles, roles, worktree isolation
     calls.push({ toolName, args });
     return {
       taskId: `task-${calls.length}`,
-      childThreadId: `thread-${calls.length}`
+      childThreadId: `thread-${calls.length}`,
     };
   };
 
@@ -690,10 +675,10 @@ test("delegateMissionTask formats standardized titles, roles, worktree isolation
       slot: {
         providerInstanceId: "codex",
         model: "gpt-5.4",
-        effort: "xhigh"
-      }
+        effort: "xhigh",
+      },
     },
-    { transportClient }
+    { transportClient },
   );
 
   assert.equal(workerRes.title, "[M1] Worker #3: Hub attachment UI");
@@ -701,14 +686,11 @@ test("delegateMissionTask formats standardized titles, roles, worktree isolation
   assert.equal(calls[0].args.title, "[M1] Worker #3: Hub attachment UI");
   assert.equal(calls[0].args.role, "implementation");
   assert.equal(calls[0].args.isolation, "worktree");
-  assert.equal(
-    calls[0].args.clientRequestId,
-    "t3m:m-100:m1:hub-attachment-ui:implementation:r1"
-  );
+  assert.equal(calls[0].args.clientRequestId, "t3m:m-100:m1:hub-attachment-ui:implementation:r1");
   assert.deepEqual(calls[0].args.target, {
     providerInstanceId: "codex",
     model: "gpt-5.4",
-    options: { reasoningEffort: "xhigh" }
+    options: { reasoningEffort: "xhigh" },
   });
 
   const validatorRes = await delegateMissionTask(
@@ -723,10 +705,10 @@ test("delegateMissionTask formats standardized titles, roles, worktree isolation
       slot: {
         providerInstanceId: "codex",
         model: "gpt-6-1-sol",
-        reasoningEffort: "high"
-      }
+        reasoningEffort: "high",
+      },
     },
-    { transportClient }
+    { transportClient },
   );
 
   assert.equal(validatorRes.title, "[M1] Validator #5: Scrutiny intake");
@@ -735,7 +717,7 @@ test("delegateMissionTask formats standardized titles, roles, worktree isolation
   assert.deepEqual(calls[1].args.target, {
     providerInstanceId: "codex",
     model: "gpt-6-1-sol",
-    options: { reasoningEffort: "high" }
+    options: { reasoningEffort: "high" },
   });
 });
 
@@ -747,16 +729,16 @@ test("F01 & I-01: runFeature and StartMissionRun propagate and persist taskId, c
       { providerInstanceId: "antigravity", model: "gemini-4-argon-high" },
       {
         missionId: "m-direct",
-        activeWorker: { runId: "run-direct-0", workerNumber: 1, attempt: 1 }
+        activeWorker: { runId: "run-direct-0", workerNumber: 1, attempt: 1 },
       },
       {
         transportClient: async () => ({
           taskId: "task-direct-1",
           childThreadId: "thread-direct-1",
           childRunId: "run-direct-1",
-          worktreePath: "/tmp/worktree-direct-1"
-        })
-      }
+          worktreePath: "/tmp/worktree-direct-1",
+        }),
+      },
     );
     assert.equal(directRes.taskId, "task-direct-1");
     assert.equal(directRes.childThreadId, "thread-direct-1");
@@ -770,7 +752,7 @@ test("F01 & I-01: runFeature and StartMissionRun propagate and persist taskId, c
       title: "F01 Persistence Test",
       milestones: [{ id: "m1", title: "M1" }],
       features: [{ id: "f1", milestoneId: "m1", title: "Feature 1" }],
-      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Check" }]
+      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Check" }],
     });
     await callMissionTool("ApproveMissionPlan", { missionDir: tempMissionDir });
 
@@ -779,14 +761,14 @@ test("F01 & I-01: runFeature and StartMissionRun propagate and persist taskId, c
         taskId: "task-persisted-1",
         childThreadId: "thread-persisted-1",
         childRunId: "crun-persisted-1",
-        worktreePath: "/tmp/isolated-worktree-1"
-      })
+        worktreePath: "/tmp/isolated-worktree-1",
+      }),
     });
 
     const startRes = await callMissionTool(
       "StartMissionRun",
       { missionDir: tempMissionDir },
-      { adapter }
+      { adapter },
     );
 
     assert.equal(startRes.activeWorker.taskId, "task-persisted-1");
@@ -795,7 +777,7 @@ test("F01 & I-01: runFeature and StartMissionRun propagate and persist taskId, c
     assert.equal(startRes.activeWorker.worktreePath, "/tmp/isolated-worktree-1");
 
     const diskState = JSON.parse(
-      fs.readFileSync(path.join(tempMissionDir, ".mission", "state.json"), "utf8")
+      fs.readFileSync(path.join(tempMissionDir, ".mission", "state.json"), "utf8"),
     );
     assert.equal(diskState.activeWorker.taskId, "task-persisted-1");
     assert.equal(diskState.activeWorker.childThreadId, "thread-persisted-1");
@@ -819,7 +801,7 @@ test("getOrchestratorCapabilities and settleCompletedMilestoneThreads invoke exp
         return { providers: [{ id: "codex" }, { id: "antigravity" }] };
       }
       return { settled: true };
-    }
+    },
   });
 
   const caps = await adapter.getOrchestratorCapabilities();
@@ -828,18 +810,18 @@ test("getOrchestratorCapabilities and settleCompletedMilestoneThreads invoke exp
   const settleRes = await adapter.settleCompletedMilestoneThreads([
     "thread-a",
     { childThreadId: "thread-b" },
-    "thread-a" // duplicate should be deduped
+    "thread-a", // duplicate should be deduped
   ]);
 
   assert.deepEqual(settleRes.settledThreadIds, ["thread-a", "thread-b"]);
   assert.equal(calls.length, 3);
   assert.deepEqual(calls[1], {
     toolName: "t3_thread_organize",
-    args: { action: "settle", threadId: "thread-a" }
+    args: { action: "settle", threadId: "thread-a" },
   });
   assert.deepEqual(calls[2], {
     toolName: "t3_thread_organize",
-    args: { action: "settle", threadId: "thread-b" }
+    args: { action: "settle", threadId: "thread-b" },
   });
 });
 
@@ -867,7 +849,7 @@ test("VAL-BRIDGE-002: checkGitTreeBeforeResume detects clean, dirty, and conflic
     assert.equal(cleanCheck.canResume, true);
     assert.match(
       cleanCheck.summary,
-      /The mission was paused.*and the code tree has no uncommitted changes, so I'm resuming that worker\./
+      /The mission was paused.*and the code tree has no uncommitted changes, so I'm resuming that worker\./,
     );
 
     // 2. Dirty working tree (uncommitted modification, no conflicts)
@@ -887,7 +869,7 @@ test("VAL-BRIDGE-002: checkGitTreeBeforeResume detects clean, dirty, and conflic
           return { stdout: "UU src/conflict.js\n M index.js\n", stderr: "" };
         }
         return { stdout: "main\n", stderr: "" };
-      }
+      },
     });
     assert.equal(conflictCheck.hasConflicts, true);
     assert.equal(conflictCheck.canResume, false);
@@ -901,7 +883,7 @@ test("F13 & F02: checkGitTreeBeforeResume fails closed on Git errors and resumeW
   const gitFailure = await checkGitTreeBeforeResume("/missing/repository", {
     execFileImpl: async () => {
       throw new Error("permission denied");
-    }
+    },
   });
 
   assert.equal(gitFailure.isGitRepo, false);
@@ -910,7 +892,7 @@ test("F13 & F02: checkGitTreeBeforeResume fails closed on Git errors and resumeW
   assert.equal(gitFailure.error, "permission denied");
   assert.equal(
     gitFailure.summary,
-    "Cannot resume mission: Git inspection failed (permission denied)."
+    "Cannot resume mission: Git inspection failed (permission denied).",
   );
 
   const mcpCalls = [];
@@ -920,8 +902,8 @@ test("F13 & F02: checkGitTreeBeforeResume fails closed on Git errors and resumeW
       worktreePath: "/missing/repository",
       activeWorker: {
         featureId: "f-git-err",
-        childThreadId: "thread-git-err-1"
-      }
+        childThreadId: "thread-git-err-1",
+      },
     },
     {
       transportClient: async (toolName, args) => {
@@ -930,8 +912,8 @@ test("F13 & F02: checkGitTreeBeforeResume fails closed on Git errors and resumeW
       },
       execFileImpl: async () => {
         throw new Error("permission denied");
-      }
-    }
+      },
+    },
   );
 
   assert.equal(blockedByGitError.resumed, false);
@@ -939,7 +921,7 @@ test("F13 & F02: checkGitTreeBeforeResume fails closed on Git errors and resumeW
   assert.equal(blockedByGitError.status, "blocked_by_git_error");
   assert.equal(
     blockedByGitError.reason,
-    "Cannot resume mission: Git inspection failed (permission denied)."
+    "Cannot resume mission: Git inspection failed (permission denied).",
   );
   assert.equal(blockedByGitError.preflight.canResume, false);
   assert.equal(mcpCalls.length, 0);
@@ -971,10 +953,10 @@ test("VAL-BRIDGE-002: resumeWorker checks Git tree first and calls t3_thread_sen
           featureId: "w2-bridge",
           featureTitle: "T3 Orchestration V2 Bridge",
           childThreadId: "thread-existing-worker-2",
-          status: "paused"
-        }
+          status: "paused",
+        },
       },
-      { transportClient }
+      { transportClient },
     );
 
     assert.equal(resumeOutcome.classification, "confirmed");
@@ -985,7 +967,7 @@ test("VAL-BRIDGE-002: resumeWorker checks Git tree first and calls t3_thread_sen
     assert.equal(resumeOutcome.gitCheck.clean, true);
     assert.match(
       resumeOutcome.summary,
-      /The mission was paused.*and the code tree has no uncommitted changes, so I'm resuming that worker\./
+      /The mission was paused.*and the code tree has no uncommitted changes, so I'm resuming that worker\./,
     );
 
     // Must ONLY call t3_thread_send, never delegate_task
@@ -995,7 +977,7 @@ test("VAL-BRIDGE-002: resumeWorker checks Git tree first and calls t3_thread_sen
     assert.match(mcpCalls[0].args.message, /\[resume the mission\]/);
     assert.match(
       mcpCalls[0].args.message,
-      /and the code tree has no uncommitted changes, so I'm resuming that worker\./
+      /and the code tree has no uncommitted changes, so I'm resuming that worker\./,
     );
   } finally {
     fs.rmSync(tempRepo, { recursive: true, force: true });
@@ -1010,8 +992,8 @@ test("VAL-BRIDGE-002: resumeWorker blocks resume when Git tree has unresolved me
       worktreePath: "/tmp/conflict-tree",
       activeWorker: {
         featureId: "f-conflict",
-        childThreadId: "thread-conflict-1"
-      }
+        childThreadId: "thread-conflict-1",
+      },
     },
     {
       transportClient: async (toolName, args) => {
@@ -1023,8 +1005,8 @@ test("VAL-BRIDGE-002: resumeWorker blocks resume when Git tree has unresolved me
           return { stdout: "UU t3-mission/bridge/t3-adapter.mjs\n", stderr: "" };
         }
         return { stdout: "t3m/w2-bridge\n", stderr: "" };
-      }
-    }
+      },
+    },
   );
 
   assert.equal(outcome.resumed, false);
@@ -1042,12 +1024,7 @@ test("VAL-BRIDGE-002: resumeWorker blocks resume when Git tree has unresolved me
 test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forward feature/milestone/assertion updates, and enforce both runId and featureId on EndFeatureRun", async () => {
   const dismissTool = MISSION_TOOLS.find((t) => t.name === "DismissHandoffItems");
   const itemSchema = dismissTool.inputSchema.properties.dismissals.items;
-  assert.deepEqual(itemSchema.required, [
-    "type",
-    "sourceFeatureId",
-    "summary",
-    "justification"
-  ]);
+  assert.deepEqual(itemSchema.required, ["type", "sourceFeatureId", "summary", "justification"]);
   assert.deepEqual(itemSchema.properties.type.enum, DISMISSAL_TYPES);
   assert.deepEqual(
     new Set(itemSchema.properties.type.enum),
@@ -1056,8 +1033,8 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
       "non_interactive_check",
       "incomplete_work",
       "validator_failure",
-      "critical_context"
-    ])
+      "critical_context",
+    ]),
   );
   assert.equal(itemSchema.properties.type.enum.includes("handoff_attention"), false);
   assert.equal(itemSchema.properties.justification.minLength, 20);
@@ -1065,12 +1042,7 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
   assert.ok(itemSchema.properties.reason);
 
   const endTool = MISSION_TOOLS.find((t) => t.name === "EndFeatureRun");
-  assert.deepEqual(endTool.inputSchema.required, [
-    "missionDir",
-    "runId",
-    "featureId",
-    "handoff"
-  ]);
+  assert.deepEqual(endTool.inputSchema.required, ["missionDir", "runId", "featureId", "handoff"]);
   assert.ok(endTool.inputSchema.properties.runId);
 
   const updateTool = MISSION_TOOLS.find((t) => t.name === "UpdateMissionFeatures");
@@ -1082,53 +1054,53 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
     "modelSettings",
     "bonusAttempts",
     "milestones",
-    "assertions"
+    "assertions",
   ]) {
     assert.ok(
       updateTool.inputSchema.properties[field],
-      `UpdateMissionFeatures schema should include ${field}`
+      `UpdateMissionFeatures schema should include ${field}`,
     );
   }
 
   // F12: EndFeatureRun requires BOTH runId and featureId; missing either throws MISSING_RUN_IDENTITY
   const validHandoff = {
     whatWasImplemented:
-      "Implemented feature with more than fifty characters of detailed summary text."
+      "Implemented feature with more than fifty characters of detailed summary text.",
   };
   await assert.rejects(
     () =>
       callMissionTool("EndFeatureRun", {
         missionDir: "/tmp/no-identity",
-        handoff: validHandoff
+        handoff: validHandoff,
       }),
     (err) => {
       assert.equal(err.code, "MISSING_RUN_IDENTITY");
       return true;
-    }
+    },
   );
   await assert.rejects(
     () =>
       callMissionTool("EndFeatureRun", {
         missionDir: "/tmp/no-run-id",
         featureId: "f1",
-        handoff: validHandoff
+        handoff: validHandoff,
       }),
     (err) => {
       assert.equal(err.code, "MISSING_RUN_IDENTITY");
       return true;
-    }
+    },
   );
   await assert.rejects(
     () =>
       callMissionTool("EndFeatureRun", {
         missionDir: "/tmp/no-feature-id",
         runId: "run-1",
-        handoff: validHandoff
+        handoff: validHandoff,
       }),
     (err) => {
       assert.equal(err.code, "MISSING_RUN_IDENTITY");
       return true;
-    }
+    },
   );
 
   // F05 & F06 against real kernel in a temporary mission directory
@@ -1140,9 +1112,9 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
       milestones: [{ id: "m1", title: "M1" }],
       features: [
         { id: "f1", milestoneId: "m1", title: "F1" },
-        { id: "f2", milestoneId: "m1", title: "F2" }
+        { id: "f2", milestoneId: "m1", title: "F2" },
       ],
-      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Initial assertion" }]
+      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Initial assertion" }],
     });
     await callMissionTool("ApproveMissionPlan", { missionDir: tempMissionDir });
 
@@ -1157,8 +1129,8 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
       validatorsPassed: true,
       handoff: {
         ...validHandoff,
-        whatWasLeftUndone: "Remaining edge case deferred to follow-up"
-      }
+        whatWasLeftUndone: "Remaining edge case deferred to follow-up",
+      },
     });
 
     // F05: Dismissing incomplete_work succeeds, while handoff_attention is rejected with INVALID_DISMISSAL_TYPE
@@ -1169,9 +1141,9 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
           type: "incomplete_work",
           sourceFeatureId: "f1",
           summary: "Remaining edge case deferred to follow-up",
-          justification: "Explicitly deferred with more than twenty characters of justification."
-        }
-      ]
+          justification: "Explicitly deferred with more than twenty characters of justification.",
+        },
+      ],
     });
     assert.equal(dismissIncomplete.state.lastHandoffNeedsAttention, false);
 
@@ -1184,14 +1156,14 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
               type: "handoff_attention",
               sourceFeatureId: "f1",
               summary: "Anything",
-              justification: "A justification string that is longer than twenty characters."
-            }
-          ]
+              justification: "A justification string that is longer than twenty characters.",
+            },
+          ],
         }),
       (err) => {
         assert.equal(err.code, "INVALID_DISMISSAL_TYPE");
         return true;
-      }
+      },
     );
 
     // Legacy aliases (itemId -> summary, reason -> justification) normalize at Bridge boundary
@@ -1205,23 +1177,23 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
             type: "discovered_issue",
             sourceFeatureId: "f1",
             itemId: "iss-legacy-1",
-            reason: "This legacy reason string is at least twenty characters."
-          }
-        ]
+            reason: "This legacy reason string is at least twenty characters.",
+          },
+        ],
       },
       {
         kernel: {
           dismissHandoffItems(_dir, payload) {
             capturedDismissals = payload.dismissals;
             return { ok: true, dismissals: payload.dismissals };
-          }
-        }
-      }
+          },
+        },
+      },
     );
     assert.equal(capturedDismissals[0].summary, "iss-legacy-1");
     assert.equal(
       capturedDismissals[0].justification,
-      "This legacy reason string is at least twenty characters."
+      "This legacy reason string is at least twenty characters.",
     );
 
     // F06: Replacement features, milestones, assertions + bonusAttempts/updateAssertions/modelSettings
@@ -1229,20 +1201,20 @@ test("F05, F06, F12: MCP schemas and Bridge boundary normalize dismissals, forwa
       missionDir: tempMissionDir,
       features: [{ id: "replacement-f1", milestoneId: "m2", title: "Replacement Feature" }],
       milestones: [{ id: "m2", title: "Milestone 2" }],
-      assertions: [{ id: "VAL-NEW", milestoneId: "m2", description: "New assertion" }]
+      assertions: [{ id: "VAL-NEW", milestoneId: "m2", description: "New assertion" }],
     });
 
     assert.deepEqual(
       updateRes.features.map((f) => f.id),
-      ["replacement-f1"]
+      ["replacement-f1"],
     );
     assert.deepEqual(
       updateRes.state.milestones.map((m) => m.id),
-      ["m2"]
+      ["m2"],
     );
     assert.deepEqual(
       updateRes.state.assertions.map((a) => a.id),
-      ["VAL-NEW"]
+      ["VAL-NEW"],
     );
   } finally {
     fs.rmSync(tempMissionDir, { recursive: true, force: true });
@@ -1269,7 +1241,7 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
         tool: "StartMissionRun",
         missionDir,
         input,
-        hasAdapter: typeof adapter?.resumeWorker === "function"
+        hasAdapter: typeof adapter?.resumeWorker === "function",
       });
       return { status: "running", activeWorker: { featureId: "f1" } };
     },
@@ -1293,10 +1265,10 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
           featureId: "f1",
           featureTitle: "Feature 1",
           childThreadId: "thread-f1",
-          status: "paused"
-        }
+          status: "paused",
+        },
       };
-    }
+    },
   };
 
   const server = createMissionMcpServer({
@@ -1307,7 +1279,7 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
         return { stdout: "", stderr: "" };
       }
       return { stdout: "main\n", stderr: "" };
-    }
+    },
   });
 
   // 1. initialize
@@ -1315,7 +1287,7 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
-    params: { protocolVersion: "2024-11-05" }
+    params: { protocolVersion: "2024-11-05" },
   });
   assert.equal(initRes.id, 1);
   assert.equal(initRes.result.protocolVersion, "2024-11-05");
@@ -1325,10 +1297,11 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
   const listRes = await server.handleRequest({
     jsonrpc: "2.0",
     id: 2,
-    method: "tools/list"
+    method: "tools/list",
   });
   const listedNames = listRes.result.tools.map((t) => t.name);
   assert.deepEqual(listedNames, [
+    "ReconcileBoundedTimer",
     "MissionTick",
     "ProposeMission",
     "ApproveMissionPlan",
@@ -1338,7 +1311,7 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
     "EndFeatureRun",
     "UpdateMissionFeatures",
     "CheckMissionStateBeforeResuming",
-    "WaitForApproval"
+    "WaitForApproval",
   ]);
 
   // 3. tools/call for the lifecycle tools and deterministic controller.
@@ -1355,10 +1328,10 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
             type: "discovered_issue",
             sourceFeatureId: "f1",
             summary: "iss-1",
-            justification: "Non-blocking issue with twenty plus characters."
-          }
-        ]
-      }
+            justification: "Non-blocking issue with twenty plus characters.",
+          },
+        ],
+      },
     ],
     [
       "EndFeatureRun",
@@ -1369,19 +1342,19 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
         validatorsPassed: true,
         handoff: {
           whatWasImplemented:
-            "Implemented the complete T3 Orchestration V2 bridge adapter, MCP server, and CLI."
-        }
-      }
+            "Implemented the complete T3 Orchestration V2 bridge adapter, MCP server, and CLI.",
+        },
+      },
     ],
     [
       "UpdateMissionFeatures",
       {
         missionDir: "/tmp/mock-mission",
-        addFeatures: [{ id: "f2", title: "Fix issue" }]
-      }
+        addFeatures: [{ id: "f2", title: "Fix issue" }],
+      },
     ],
     ["CheckMissionStateBeforeResuming", { missionDir: "/tmp/mock-mission" }],
-    ["MissionTick", { missionDir: "/tmp/mock-mission", observations: [] }]
+    ["MissionTick", { missionDir: "/tmp/mock-mission", observations: [] }],
   ];
 
   let reqId = 10;
@@ -1390,7 +1363,7 @@ test("VAL-BRIDGE-003: MCP Server handles initialize, tools/list, and tools/call 
       jsonrpc: "2.0",
       id: reqId++,
       method: "tools/call",
-      params: { name, arguments: args }
+      params: { name, arguments: args },
     });
     assert.equal(callRes.result.isError, false, `Tool ${name} should succeed`);
     const parsedContent = JSON.parse(callRes.result.content[0].text);
@@ -1425,8 +1398,8 @@ test("VAL-BRIDGE-003: stdio MCP Server communicates over NDJSON streams", async 
     kernel: {
       approveMissionPlan(missionDir) {
         return { missionDir, planAccepted: true, status: "orchestrator_turn" };
-      }
-    }
+      },
+    },
   });
 
   input.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })}\n`);
@@ -1437,19 +1410,21 @@ test("VAL-BRIDGE-003: stdio MCP Server communicates over NDJSON streams", async 
       method: "tools/call",
       params: {
         name: "ApproveMissionPlan",
-        arguments: { missionDir: "/tmp/stdio-mission" }
-      }
-    })}\n`
+        arguments: { missionDir: "/tmp/stdio-mission" },
+      },
+    })}\n`,
   );
   input.end();
 
-  await new Promise((resolve) => setTimeout(resolve, 60));
+  await new Promise((resolve) => {
+    setTimeout(resolve, 60);
+  });
   await stdioServer.close();
 
   assert.equal(lines.length, 2);
   assert.equal(lines[0].id, 1);
-  assert.equal(lines[0].result.tools.length, 10);
-  assert.ok(lines[0].result.tools.some(tool => tool.name === "MissionTick"));
+  assert.equal(lines[0].result.tools.length, 11);
+  assert.ok(lines[0].result.tools.some((tool) => tool.name === "MissionTick"));
   assert.equal(lines[1].id, 2);
   assert.equal(lines[1].result.structuredContent.planAccepted, true);
 });
@@ -1459,7 +1434,9 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
   const tempSymlinkDir = createTempDir("t3-symlink-entrypoint-");
   try {
     await execFileAsync("git", ["init"], { cwd: tempMissionDir });
-    await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: tempMissionDir });
+    await execFileAsync("git", ["config", "user.email", "test@example.com"], {
+      cwd: tempMissionDir,
+    });
     await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: tempMissionDir });
     fs.writeFileSync(path.join(tempMissionDir, ".gitignore"), ".mission/\n", "utf8");
     await execFileAsync("git", ["add", ".gitignore"], { cwd: tempMissionDir });
@@ -1470,13 +1447,10 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
     const symlinkCliPath = path.join(symlinkBridgeDir, "cli.mjs");
     const symlinkMcpPath = path.join(symlinkBridgeDir, "mcp-server.mjs");
 
-    assert.equal(
-      isCliExecutedAsMain(new URL(`file://${CLI_PATH}`).href, symlinkCliPath),
-      true
-    );
+    assert.equal(isCliExecutedAsMain(new URL(`file://${CLI_PATH}`).href, symlinkCliPath), true);
     assert.equal(
       isMcpExecutedAsMain(new URL(`file://${MCP_SERVER_PATH}`).href, symlinkMcpPath),
-      true
+      true,
     );
 
     // 1. ProposeMission via symlinked CLI subprocess
@@ -1489,16 +1463,16 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
           id: "f1",
           milestoneId: "M1",
           title: "Implement Bridge",
-          description: "Bridge implementation"
-        }
+          description: "Bridge implementation",
+        },
       ],
       assertions: [
         {
           id: "VAL-BRIDGE-001",
           milestoneId: "M1",
-          description: "Slot normalization"
-        }
-      ]
+          description: "Slot normalization",
+        },
+      ],
     });
 
     const { stdout: proposeStdout } = await execFileAsync("node", [
@@ -1507,7 +1481,7 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
       "--mission-dir",
       tempMissionDir,
       "--json",
-      proposePayload
+      proposePayload,
     ]);
     const proposeResult = JSON.parse(proposeStdout);
     assert.equal(proposeResult.state.planAccepted, false);
@@ -1518,7 +1492,7 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
       CLI_PATH,
       "ApproveMissionPlan",
       "--mission-dir",
-      tempMissionDir
+      tempMissionDir,
     ]);
     const approveResult = JSON.parse(approveStdout);
     assert.equal(approveResult.planAccepted, true);
@@ -1528,7 +1502,7 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
       CLI_PATH,
       "StartMissionRun",
       "--mission-dir",
-      tempMissionDir
+      tempMissionDir,
     ]);
     const startResult = JSON.parse(startStdout);
     assert.equal(startResult.status, "running");
@@ -1539,7 +1513,7 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
       CLI_PATH,
       "CheckMissionStateBeforeResuming",
       "--mission-dir",
-      tempMissionDir
+      tempMissionDir,
     ]);
     const checkResult = JSON.parse(checkStdout);
     assert.equal(checkResult.ok, true);
@@ -1555,27 +1529,55 @@ test("VAL-BRIDGE-003 & O01: CLI and MCP Server entrypoints execute main via both
 
 // These lifecycle fixtures enter the runtime through a real public callback.
 async function execRegisteredRuntime(node, args, options) {
-  const dir = args[args.indexOf('--mission-dir') + 1];
-  const payload = JSON.parse(args[args.indexOf('--json') + 1]);
-  const flat = path.join(dir, 'state.json');
-  const prior = fs.existsSync(flat) ? JSON.parse(fs.readFileSync(flat, 'utf8')) : null;
-  if (!fs.existsSync(flat)) fs.writeFileSync(flat, '{}');
-  registeredKernel.proposeMission(dir, { missionId: payload.missionId, repoPath: dir, features: [payload.feature], modelSettings: { worker: payload.slotConfig ?? { providerInstanceId: 'codex', model: 'gpt-6.1-sol', options: {} } } });
+  const dir = args[args.indexOf("--mission-dir") + 1];
+  const payload = JSON.parse(args[args.indexOf("--json") + 1]);
+  const flat = path.join(dir, "state.json");
+  const prior = fs.existsSync(flat) ? JSON.parse(fs.readFileSync(flat, "utf8")) : null;
+  if (!fs.existsSync(flat)) fs.writeFileSync(flat, "{}");
+  registeredKernel.proposeMission(dir, {
+    missionId: payload.missionId,
+    repoPath: dir,
+    features: [payload.feature],
+    modelSettings: {
+      worker: payload.slotConfig ?? {
+        providerInstanceId: "codex",
+        model: "gpt-6.1-sol",
+        options: {},
+      },
+    },
+  });
   registeredKernel.approveMissionPlan(dir);
   await registeredKernel.startMissionRun(dir);
-  const state = registeredKernel.loadState(dir), doc = registeredKernel.loadFeaturesDoc(dir);
+  const state = registeredKernel.loadState(dir),
+    doc = registeredKernel.loadFeaturesDoc(dir);
   const selectedId = state.activeWorker.runId;
   state.activeWorker.runId = payload.runId;
-  state.sessions = state.sessions.map(row => row.runId === selectedId ? { ...row, runId: payload.runId } : row);
+  state.sessions = state.sessions.map((row) =>
+    row.runId === selectedId ? { ...row, runId: payload.runId } : row,
+  );
   doc.features[0].runId = payload.runId;
-  registeredKernel.saveState(dir, state); registeredKernel.saveFeaturesDoc(dir, doc);
+  registeredKernel.saveState(dir, state);
+  registeredKernel.saveFeaturesDoc(dir, doc);
   let stdout;
-  await registeredKernel.startMissionRun(dir, {}, { runFeature: async (feature, slotConfig, current) => {
-    const runtime = { ...payload, missionId: current.missionId, runId: feature.runId, feature, slotConfig };
-    const actualArgs = [...args]; actualArgs[actualArgs.indexOf('--json') + 1] = JSON.stringify(runtime);
-    stdout = execFileSync(node, actualArgs, options);
-    return JSON.parse(stdout);
-  } });
+  await registeredKernel.startMissionRun(
+    dir,
+    {},
+    {
+      runFeature: async (feature, slotConfig, current) => {
+        const runtime = {
+          ...payload,
+          missionId: current.missionId,
+          runId: feature.runId,
+          feature,
+          slotConfig,
+        };
+        const actualArgs = [...args];
+        actualArgs[actualArgs.indexOf("--json") + 1] = JSON.stringify(runtime);
+        stdout = execFileSync(node, actualArgs, options);
+        return JSON.parse(stdout);
+      },
+    },
+  );
   if (prior && !prior.missionId) fs.writeFileSync(flat, JSON.stringify(prior));
   return stdout;
 }
@@ -1589,11 +1591,11 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
     // Confirm tools/list includes the controller alongside the existing tools.
     const listStdout = execFileSync(process.execPath, [CLI_PATH, "tools/list"], {
       env: cleanEnv,
-      encoding: "utf8"
+      encoding: "utf8",
     });
     const listParsed = JSON.parse(listStdout);
-    assert.equal(listParsed.tools.length, 10);
-    assert.equal(MISSION_TOOLS.length, 10);
+    assert.equal(listParsed.tools.length, 11);
+    assert.equal(MISSION_TOOLS.length, 11);
 
     // Default DispatchWorkerRuntime (without T3_ACP_MCP_NODE and without allowLocalDaemon) sets dispatchPending: true and spawns NO daemon
     const defaultDispatchStdout = execFileSync(
@@ -1609,10 +1611,10 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
           runId: "run-rt-0",
           repoPath: tempMissionDir,
           feature: { id: "f-rt-0", title: "Default No Transport" },
-          slotConfig: { providerInstanceId: "codex", model: "gpt-5.4" }
-        })
+          slotConfig: { providerInstanceId: "codex", model: "gpt-5.4" },
+        }),
       ],
-      { env: { ...cleanEnv, T3_MISSION_LOCAL_WORKER_DAEMON: "" }, encoding: "utf8" }
+      { env: { ...cleanEnv, T3_MISSION_LOCAL_WORKER_DAEMON: "" }, encoding: "utf8" },
     );
     const defaultDispatchRes = JSON.parse(defaultDispatchStdout);
     assert.equal(defaultDispatchRes.ok, true);
@@ -1641,10 +1643,10 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
           runId: "run-rt-1",
           repoPath: tempMissionDir,
           feature: { id: "f-rt-1", title: "Runtime Feature" },
-          slotConfig: { providerInstanceId: "codex", model: "gpt-5.4" }
-        })
+          slotConfig: { providerInstanceId: "codex", model: "gpt-5.4" },
+        }),
       ],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     const dispatchRes = JSON.parse(dispatchStdout);
     spawnedPid = dispatchRes.workerPid;
@@ -1684,11 +1686,11 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
             taskId: dispatchRes.taskId,
             childThreadId: dispatchRes.childThreadId,
             workerPid: dispatchRes.workerPid,
-            daemonStateFile: dispatchRes.daemonStateFile
-          }
-        })
+            daemonStateFile: dispatchRes.daemonStateFile,
+          },
+        }),
       ],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     const pauseWorkerRes = JSON.parse(pauseWorkerStdout);
     assert.equal(pauseWorkerRes.ok, true);
@@ -1707,7 +1709,7 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
     const pauseMissionStdout = execFileSync(
       process.execPath,
       [CLI_PATH, "PauseMissionRuntime", "--mission-dir", tempMissionDir],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     const pauseMissionRes = JSON.parse(pauseMissionStdout);
     assert.equal(pauseMissionRes.ok, true);
@@ -1730,13 +1732,13 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
             childThreadId: dispatchRes.childThreadId,
             workerPid: dispatchRes.workerPid,
             daemonStateFile: dispatchRes.daemonStateFile,
-            worktreePath: tempMissionDir
+            worktreePath: tempMissionDir,
           },
           trigger: "[resume the mission]",
-          diagnostic: "Tree is clean."
-        })
+          diagnostic: "Tree is clean.",
+        }),
       ],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     const resumeRes = JSON.parse(resumeStdout);
     assert.equal(resumeRes.ok, true);
@@ -1767,11 +1769,11 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
               activeWorker: {
                 taskId: dispatchRes.taskId,
                 childThreadId: dispatchRes.childThreadId,
-                worktreePath: path.join(tempMissionDir, "non-existent-worktree")
-              }
-            })
+                worktreePath: path.join(tempMissionDir, "non-existent-worktree"),
+              },
+            }),
           ],
-          { env: cleanEnv, encoding: "utf8" }
+          { env: cleanEnv, encoding: "utf8" },
         );
       },
       (err) => {
@@ -1782,7 +1784,7 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
         assert.equal(parsedErr.canResume, false);
         assert.equal(parsedErr.error, "Active worker worktree path does not exist");
         return true;
-      }
+      },
     );
 
     // 6. Removing tempMissionDir causes LocalWorkerDaemon to self-terminate
@@ -1791,7 +1793,9 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
     for (let i = 0; i < 40; i++) {
       try {
         process.kill(dispatchRes.workerPid, 0);
-        await new Promise((r) => setTimeout(r, 25));
+        await new Promise((r) => {
+          setTimeout(r, 25);
+        });
       } catch {
         exited = true;
         break;
@@ -1803,7 +1807,9 @@ test("CLI runtime execution subcommands: DispatchWorkerRuntime spawns controllab
     if (spawnedPid) {
       try {
         process.kill(spawnedPid, "SIGTERM");
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
     }
     fs.rmSync(tempMissionDir, { recursive: true, force: true });
   }
@@ -1819,7 +1825,7 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
     fs.writeFileSync(
       path.join(tempMissionDir, "state.json"),
       JSON.stringify({ activeWorker: null, sessions: [] }),
-      "utf8"
+      "utf8",
     );
 
     const dispatchStdout = await execRegisteredRuntime(
@@ -1834,16 +1840,18 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
           missionId: "m-f03",
           runId: "run-f03-1",
           repoPath: tempMissionDir,
-          feature: { id: "f-f03-1", title: "F03 Feature" }
-        })
+          feature: { id: "f-f03-1", title: "F03 Feature" },
+        }),
       ],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     const dispatchRes = JSON.parse(dispatchStdout);
     spawnedPid = dispatchRes.workerPid;
 
     // Daemon stays alive when activeWorker is null and sessions does not yet have a completed/failed entry for runId
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => {
+      setTimeout(r, 150);
+    });
     assert.doesNotThrow(() => process.kill(dispatchRes.workerPid, 0));
 
     // Kill the local worker daemon process
@@ -1851,7 +1859,9 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
     for (let i = 0; i < 40; i++) {
       try {
         process.kill(dispatchRes.workerPid, 0);
-        await new Promise((r) => setTimeout(r, 20));
+        await new Promise((r) => {
+          setTimeout(r, 20);
+        });
       } catch {
         break;
       }
@@ -1874,11 +1884,11 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
                 childThreadId: dispatchRes.childThreadId,
                 workerPid: dispatchRes.workerPid,
                 daemonStateFile: dispatchRes.daemonStateFile,
-                runtimeTransport: "bridge-cli-subprocess"
-              }
-            })
+                runtimeTransport: "bridge-cli-subprocess",
+              },
+            }),
           ],
-          { env: cleanEnv, encoding: "utf8" }
+          { env: cleanEnv, encoding: "utf8" },
         );
       },
       (err) => {
@@ -1890,7 +1900,7 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
         assert.equal(parsedErr.code, "WORKER_NOT_ALIVE");
         assert.equal(parsedErr.error, "Active worker daemon process is not alive");
         return true;
-      }
+      },
     );
 
     // ResumeWorkerRuntime fails with exitCode: 1 and WORKER_NOT_ALIVE when workerPid is dead
@@ -1911,11 +1921,11 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
                 workerPid: dispatchRes.workerPid,
                 daemonStateFile: dispatchRes.daemonStateFile,
                 worktreePath: tempMissionDir,
-                runtimeTransport: "bridge-cli-subprocess"
-              }
-            })
+                runtimeTransport: "bridge-cli-subprocess",
+              },
+            }),
           ],
-          { env: cleanEnv, encoding: "utf8" }
+          { env: cleanEnv, encoding: "utf8" },
         );
       },
       (err) => {
@@ -1927,7 +1937,7 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
         assert.equal(parsedErr.code, "WORKER_NOT_ALIVE");
         assert.equal(parsedErr.error, "Active worker daemon process is not alive");
         return true;
-      }
+      },
     );
 
     // In-memory IDs do not confirm runtime Pause or Resume without transport.
@@ -1942,16 +1952,17 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
         JSON.stringify({
           activeWorker: {
             taskId: "in-mem-task-1",
-            childThreadId: "in-mem-thread-1"
-          }
-        })
+            childThreadId: "in-mem-thread-1",
+          },
+        }),
       ],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     const inMemoryPause = JSON.parse(inMemoryPauseOut);
     assert.equal(inMemoryPause.paused, false);
     assert.equal(inMemoryPause.code, "NO_T3_TRANSPORT");
-    for (const key of ["workerPid", "daemonStateFile", "daemonStatus"]) assert.equal(Object.hasOwn(inMemoryPause, key), false);
+    for (const key of ["workerPid", "daemonStateFile", "daemonStatus"])
+      assert.equal(Object.hasOwn(inMemoryPause, key), false);
 
     const inMemoryResumeOut = execFileSync(
       process.execPath,
@@ -1965,11 +1976,11 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
           activeWorker: {
             taskId: "in-mem-task-1",
             childThreadId: "in-mem-thread-1",
-            worktreePath: tempMissionDir
-          }
-        })
+            worktreePath: tempMissionDir,
+          },
+        }),
       ],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     assert.equal(JSON.parse(inMemoryResumeOut).resumed, false);
     assert.equal(JSON.parse(inMemoryResumeOut).code, "NO_T3_TRANSPORT");
@@ -1987,10 +1998,10 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
           missionId: "m-f03",
           runId: "run-f03-2",
           repoPath: tempMissionDir,
-          feature: { id: "f-f03-2", title: "F03 Feature 2" }
-        })
+          feature: { id: "f-f03-2", title: "F03 Feature 2" },
+        }),
       ],
-      { env: cleanEnv, encoding: "utf8" }
+      { env: cleanEnv, encoding: "utf8" },
     );
     const dispatchRes2 = JSON.parse(dispatchStdout2);
     spawnedPid = dispatchRes2.workerPid;
@@ -2000,16 +2011,18 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
       path.join(tempMissionDir, "state.json"),
       JSON.stringify({
         activeWorker: null,
-        sessions: [{ runId: "run-f03-2", featureId: "f-f03-2", status: "completed" }]
+        sessions: [{ runId: "run-f03-2", featureId: "f-f03-2", status: "completed" }],
       }),
-      "utf8"
+      "utf8",
     );
 
     let exited2 = false;
     for (let i = 0; i < 40; i++) {
       try {
         process.kill(dispatchRes2.workerPid, 0);
-        await new Promise((r) => setTimeout(r, 25));
+        await new Promise((r) => {
+          setTimeout(r, 25);
+        });
       } catch {
         exited2 = true;
         break;
@@ -2021,7 +2034,9 @@ test("F03-daemon-lifetime & F03-dead-worker-control-success: PauseWorkerRuntime 
     if (spawnedPid) {
       try {
         process.kill(spawnedPid, "SIGTERM");
-      } catch {}
+      } catch {
+        /* Optional cleanup or data is unavailable; retain the current state. */
+      }
     }
     fs.rmSync(tempMissionDir, { recursive: true, force: true });
   }
@@ -2049,13 +2064,16 @@ test("V7-F03, V7-F02 & V7-F07: resolveEffectiveRuntimeMode and delegateMissionTa
     () =>
       resolveEffectiveRuntimeMode({
         parentRuntimeMode: "approval-required",
-        providerRuntimeModes: ["full-access"]
+        providerRuntimeModes: ["full-access"],
       }),
     (err) => {
       assert.equal(err.code, "RUNTIME_MODE_CEILING_EXCEEDED");
-      assert.match(err.message, /no provider runtimeMode.*within parent ceiling "approval-required"/i);
+      assert.match(
+        err.message,
+        /no provider runtimeMode.*within parent ceiling "approval-required"/i,
+      );
       return true;
-    }
+    },
   );
 
   // 2. V7-F03: delegateMissionTask rejects with RUNTIME_MODE_CEILING_EXCEEDED before calling delegate_task
@@ -2072,20 +2090,20 @@ test("V7-F03, V7-F02 & V7-F07: resolveEffectiveRuntimeMode and delegateMissionTa
           providerRuntimeModes: ["full-access"],
           slot: {
             providerInstanceId: "antigravity",
-            model: "gemini-4-argon-high"
-          }
+            model: "gemini-4-argon-high",
+          },
         },
         {
           transportClient: async () => {
             delegateCalled = true;
             return { taskId: "should-not-run" };
-          }
-        }
+          },
+        },
       ),
     (err) => {
       assert.equal(err.code, "RUNTIME_MODE_CEILING_EXCEEDED");
       return true;
-    }
+    },
   );
   assert.equal(delegateCalled, false);
 
@@ -2098,15 +2116,19 @@ test("V7-F03, V7-F02 & V7-F07: resolveEffectiveRuntimeMode and delegateMissionTa
       milestones: [{ id: "m1", title: "M1" }],
       features: [
         { id: "f1", milestoneId: "m1", title: "F1" },
-        { id: "f2", milestoneId: "m1", title: "F2" }
+        { id: "f2", milestoneId: "m1", title: "F2" },
       ],
-      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Assertion 1" }]
+      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Assertion 1" }],
     });
 
     const stderrChunks1 = [];
     const res1 = await runCli(["StartMissionRun", "--mission-dir", tempMissionDir], {
       stdout: { write() {} },
-      stderr: { write(chunk) { stderrChunks1.push(String(chunk)); } }
+      stderr: {
+        write(chunk) {
+          stderrChunks1.push(String(chunk));
+        },
+      },
     });
     assert.equal(res1.exitCode, 1);
     const errJson1 = JSON.parse(stderrChunks1.join("").trim());
@@ -2123,15 +2145,20 @@ test("V7-F03, V7-F02 & V7-F07: resolveEffectiveRuntimeMode and delegateMissionTa
       successState: "success",
       validatorsPassed: true,
       handoff: {
-        whatWasImplemented: "Implemented F1 with more than fifty characters of detailed implementation notes.",
-        whatWasLeftUndone: "Follow-up edge case requires orchestrator triage"
-      }
+        whatWasImplemented:
+          "Implemented F1 with more than fifty characters of detailed implementation notes.",
+        whatWasLeftUndone: "Follow-up edge case requires orchestrator triage",
+      },
     });
 
     const stderrChunks2 = [];
     const res2 = await runCli(["StartMissionRun", "--mission-dir", tempMissionDir], {
       stdout: { write() {} },
-      stderr: { write(chunk) { stderrChunks2.push(String(chunk)); } }
+      stderr: {
+        write(chunk) {
+          stderrChunks2.push(String(chunk));
+        },
+      },
     });
     assert.equal(res2.exitCode, 1);
     const errJson2 = JSON.parse(stderrChunks2.join("").trim());
@@ -2151,7 +2178,7 @@ test("DISPATCH-FIX-001 & DISPATCH-FIX-002: WaitForApproval resolves on plan_appr
       title: "WaitForApproval Mission",
       milestones: [{ id: "m1", title: "M1" }],
       features: [{ id: "f1", milestoneId: "m1", title: "Feature 1" }],
-      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Check 1" }]
+      assertions: [{ id: "VAL-1", milestoneId: "m1", description: "Check 1" }],
     });
 
     // 1. Timeout when no decision happens within timeoutMs
@@ -2159,9 +2186,13 @@ test("DISPATCH-FIX-001 & DISPATCH-FIX-002: WaitForApproval resolves on plan_appr
     const timeoutRes = await runCli(
       ["WaitForApproval", "--mission-dir", tempMissionDir, "--timeout-ms", "40", "--poll-ms", "10"],
       {
-        stdout: { write(c) { outTimeout.push(String(c)); } },
-        stderr: { write() {} }
-      }
+        stdout: {
+          write(c) {
+            outTimeout.push(String(c));
+          },
+        },
+        stderr: { write() {} },
+      },
     );
     assert.equal(timeoutRes.exitCode, 1);
     assert.equal(timeoutRes.result.ok, false);
@@ -2175,11 +2206,19 @@ test("DISPATCH-FIX-001 & DISPATCH-FIX-002: WaitForApproval resolves on plan_appr
     }, 30);
 
     const rejectWaitRes = await runCli(
-      ["WaitForHudDecision", "--mission-dir", tempMissionDir, "--timeout-ms", "2000", "--poll-ms", "15"],
+      [
+        "WaitForHudDecision",
+        "--mission-dir",
+        tempMissionDir,
+        "--timeout-ms",
+        "2000",
+        "--poll-ms",
+        "15",
+      ],
       {
         stdout: { write() {} },
-        stderr: { write() {} }
-      }
+        stderr: { write() {} },
+      },
     );
     assert.equal(rejectWaitRes.exitCode, 0);
     assert.equal(rejectWaitRes.result.ok, true);
@@ -2194,11 +2233,19 @@ test("DISPATCH-FIX-001 & DISPATCH-FIX-002: WaitForApproval resolves on plan_appr
     }, 30);
 
     const approveWaitRes = await runCli(
-      ["wait-for-approval", "--mission-dir", tempMissionDir, "--timeout-ms", "2000", "--poll-ms", "15"],
+      [
+        "wait-for-approval",
+        "--mission-dir",
+        tempMissionDir,
+        "--timeout-ms",
+        "2000",
+        "--poll-ms",
+        "15",
+      ],
       {
         stdout: { write() {} },
-        stderr: { write() {} }
-      }
+        stderr: { write() {} },
+      },
     );
     assert.equal(approveWaitRes.exitCode, 0);
     assert.equal(approveWaitRes.result.ok, true);

@@ -1,0 +1,11 @@
+{
+  "path": ["t3-mission"],
+  "format": ["javascript"],
+  "ignore": ["**/test/**", "**/native/**"],
+  "minLines": 15,
+  "minTokens": 100,
+  "threshold": 1,
+  "reporters": ["json", "console"],
+  "output": "reports/duplication",
+  "silent": true
+}

@@ -12,16 +12,13 @@ import {
   dismissHandoffItems,
   updateMissionFeatures,
   endFeatureRun,
-  checkMilestoneCompletionAndInjectValidation,
   startMissionRun,
   reconcileMissionOnLoad,
   loadState,
   loadFeaturesDoc,
-  loadModelSettings,
   normalizeSlotConfig,
   readProgressLog,
   saveState,
-  saveFeaturesDoc,
   getMissionPaths,
   isValidatorFeature,
 } from "../kernel/index.mjs";
@@ -86,7 +83,7 @@ test("VAL-KERNEL-001: proposeMission initializes 4 files, enforces planAccepted 
     (err) => {
       assert.equal(err.code, "PLAN_ACCEPTANCE_REQUIRED");
       return true;
-    }
+    },
   );
 
   // Rejecting plan keeps planAccepted = false and transitions to planning
@@ -99,7 +96,7 @@ test("VAL-KERNEL-001: proposeMission initializes 4 files, enforces planAccepted 
     (err) => {
       assert.equal(err.code, "PLAN_ACCEPTANCE_REQUIRED");
       return true;
-    }
+    },
   );
 
   // Approving plan sets planAccepted = true and status = orchestrator_turn
@@ -110,7 +107,7 @@ test("VAL-KERNEL-001: proposeMission initializes 4 files, enforces planAccepted 
   const logsAfterApprove = readProgressLog(projectDir);
   assert.equal(
     logsAfterApprove.some((l) => l.message === "Mission plan approved"),
-    true
+    true,
   );
 });
 
@@ -155,7 +152,7 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
                 validatorsPassed: true,
                 handoff: { whatWasImplemented: VALID_SUMMARY_50 },
               }),
-            (err) => err.code === "STALE_WORKER_RUN"
+            (err) => err.code === "STALE_WORKER_RUN",
           );
 
           assert.throws(
@@ -167,7 +164,7 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
                 validatorsPassed: true,
                 handoff: { whatWasImplemented: "Too short summary" },
               }),
-            (err) => err.code === "INVALID_HANDOFF_IMPLEMENTATION_SUMMARY"
+            (err) => err.code === "INVALID_HANDOFF_IMPLEMENTATION_SUMMARY",
           );
 
           assert.throws(
@@ -179,7 +176,7 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
                 validatorsPassed: false,
                 handoff: { whatWasImplemented: VALID_SUMMARY_50 },
               }),
-            (err) => err.code === "VALIDATORS_NOT_PASSED"
+            (err) => err.code === "VALIDATORS_NOT_PASSED",
           );
 
           const res = endFeatureRun(projectDir, {
@@ -217,13 +214,13 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
           assert.equal(res.shouldReturnToOrchestrator, true);
         }
       },
-    }
+    },
   );
 
   // f1 auto-continued to f2, then f2 stopped and returned to orchestrator before f3
   assert.deepEqual(
     executedFeatures.map((x) => x.id),
-    ["f1", "f2"]
+    ["f1", "f2"],
   );
   assert.equal(stateAfterRun1.status, "orchestrator_turn");
   assert.equal(stateAfterRun1.lastHandoffNeedsAttention, true);
@@ -231,7 +228,7 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
   // Trying to startMissionRun while lastHandoffNeedsAttention === true throws HANDOFF_ATTENTION_REQUIRED
   await assert.rejects(
     () => startMissionRun(projectDir, {}, {}),
-    (err) => err.code === "HANDOFF_ATTENTION_REQUIRED"
+    (err) => err.code === "HANDOFF_ATTENTION_REQUIRED",
   );
 
   // DismissHandoffItems with justification < 20 chars throws INVALID_JUSTIFICATION
@@ -247,7 +244,7 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
           },
         ],
       }),
-    (err) => err.code === "INVALID_JUSTIFICATION"
+    (err) => err.code === "INVALID_JUSTIFICATION",
   );
 
   // DismissHandoffItems with >= 20 chars justification clears lastHandoffNeedsAttention and logs
@@ -257,8 +254,7 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
         type: "discovered_issue",
         sourceFeatureId: "f2",
         summary: "Edge case in parser",
-        justification:
-          "Covered by f3 implementation which adds full empty-input guards.",
+        justification: "Covered by f3 implementation which adds full empty-input guards.",
       },
     ],
   });
@@ -287,13 +283,13 @@ test("VAL-KERNEL-002 & VAL-KERNEL-003: endFeatureRun validation, auto-continue v
           },
         });
       },
-    }
+    },
   );
 
   assert.equal(finalState.status, "completed");
   assert.deepEqual(
     executedFeatures.map((x) => x.id),
-    ["f1", "f2", "f3"]
+    ["f1", "f2", "f3"],
   );
 });
 
@@ -347,7 +343,7 @@ test("VAL-KERNEL-004: Milestone completion automatically injects scrutiny-valida
           ? Object.fromEntries(
               currentState.assertions
                 .filter((a) => a.milestoneId === feature.milestoneId)
-                .map((a) => [a.id, "passed"])
+                .map((a) => [a.id, "passed"]),
             )
           : undefined;
         endFeatureRun(projectDir, {
@@ -361,7 +357,7 @@ test("VAL-KERNEL-004: Milestone completion automatically injects scrutiny-valida
           },
         });
       },
-    }
+    },
   );
 
   assert.equal(completedState.status, "completed");
@@ -374,7 +370,7 @@ test("VAL-KERNEL-004: Milestone completion automatically injects scrutiny-valida
       "m2-f1",
       "scrutiny-validator-m2",
       "user-testing-validator-m2",
-    ]
+    ],
   );
 
   // Verify slot routing: implementation uses worker slot, validators use validator slot (gpt-6.1-sol)
@@ -387,7 +383,7 @@ test("VAL-KERNEL-004: Milestone completion automatically injects scrutiny-valida
   // Verify assertions were marked as passed by validators
   assert.equal(
     completedState.assertions.every((a) => a.status === "passed"),
-    true
+    true,
   );
 
   // Verify milestoneValidationTriggered recorded both milestones
@@ -424,9 +420,13 @@ test("VAL-KERNEL-005: reconcileMissionOnLoad reconciles crashed running state to
         st.lastStartedAt = new Date(Date.now() - 5000).toISOString();
         saveState(projectDir, st);
         // The fixture declares acceptance explicitly; the timestamp is not a receipt.
-        return { accepted: true, taskId: "fixture-crash-task", childThreadId: "fixture-crash-thread" };
+        return {
+          accepted: true,
+          taskId: "fixture-crash-task",
+          childThreadId: "fixture-crash-thread",
+        };
       },
-    }
+    },
   );
 
   const preCrashState = loadState(projectDir);
@@ -443,14 +443,12 @@ test("VAL-KERNEL-005: reconcileMissionOnLoad reconciles crashed running state to
 
   const logsAfterReconcile = readProgressLog(projectDir);
   assert.equal(
-    logsAfterReconcile.some(
-      (l) => l.message === "Worker #1 paused Long running feature"
-    ),
-    true
+    logsAfterReconcile.some((l) => l.message === "Worker #1 paused Long running feature"),
+    true,
   );
   assert.equal(
     logsAfterReconcile.some((l) => l.message === "Mission paused"),
-    true
+    true,
   );
 
   // Resume run: should invoke dispatchAdapter.resumeWorker on Worker #1 without incrementing attempts
@@ -476,7 +474,7 @@ test("VAL-KERNEL-005: reconcileMissionOnLoad reconciles crashed running state to
       async runFeature() {
         freshRunCalled = true;
       },
-    }
+    },
   );
 
   assert.ok(resumedWorkerInfo);
@@ -492,13 +490,11 @@ test("VAL-KERNEL-005: reconcileMissionOnLoad reconciles crashed running state to
   const logsAfterResume = readProgressLog(projectDir);
   assert.equal(
     logsAfterResume.some((l) => l.message === "Mission resumed"),
-    false
+    false,
   );
   assert.equal(
-    logsAfterResume.some(
-      (l) => l.message === "Run started: Resume Long running feature"
-    ),
-    false
+    logsAfterResume.some((l) => l.message === "Run started: Resume Long running feature"),
+    false,
   );
 });
 
@@ -541,23 +537,16 @@ test("Dynamic repair feature expansion (18/24 -> 18/27) via updateMissionFeature
             handoff: {
               whatWasImplemented: VALID_SUMMARY_50,
               whatWasLeftUndone: "3 edge cases found during scrutiny that need repair features",
-              discoveredIssues: [
-                { summary: "Gap 1" },
-                { summary: "Gap 2" },
-                { summary: "Gap 3" },
-              ],
+              discoveredIssues: [{ summary: "Gap 1" }, { summary: "Gap 2" }, { summary: "Gap 3" }],
             },
           });
         }
       },
-    }
+    },
   );
 
   const docAt18 = loadFeaturesDoc(projectDir);
-  assert.equal(
-    docAt18.features.filter((f) => f.status === "completed").length,
-    18
-  );
+  assert.equal(docAt18.features.filter((f) => f.status === "completed").length, 18);
   assert.equal(docAt18.features.length, 24);
   assert.equal(stateAt18.status, "orchestrator_turn");
   assert.equal(stateAt18.lastHandoffNeedsAttention, true);
@@ -590,10 +579,7 @@ test("Dynamic repair feature expansion (18/24 -> 18/27) via updateMissionFeature
     ],
   });
 
-  assert.equal(
-    updated.features.filter((f) => f.status === "completed").length,
-    18
-  );
+  assert.equal(updated.features.filter((f) => f.status === "completed").length, 18);
   assert.equal(updated.features.length, 27);
   // Updating features automatically releases the handoff attention gate!
   assert.equal(updated.state.lastHandoffNeedsAttention, false);
@@ -639,7 +625,7 @@ test("Max attempts enforcement and partial/failure retry behavior", async (t) =>
           },
         });
       },
-    }
+    },
   );
   assert.equal(s1.status, "orchestrator_turn");
   assert.equal(loadFeaturesDoc(projectDir).features[0].attempts, 1);
@@ -661,7 +647,7 @@ test("Max attempts enforcement and partial/failure retry behavior", async (t) =>
           },
         });
       },
-    }
+    },
   );
   assert.equal(s2.status, "orchestrator_turn");
   assert.equal(loadFeaturesDoc(projectDir).features[0].attempts, 2);
@@ -674,7 +660,7 @@ test("Max attempts enforcement and partial/failure retry behavior", async (t) =>
       async runFeature() {
         assert.fail("Should not run feature when maxAttempts is reached");
       },
-    }
+    },
   );
   assert.equal(s3.status, "paused");
 
@@ -698,7 +684,7 @@ test("Max attempts enforcement and partial/failure retry behavior", async (t) =>
           },
         });
       },
-    }
+    },
   );
   assert.equal(s4.status, "completed");
   assert.equal(loadFeaturesDoc(projectDir).features[0].attempts, 3);
@@ -780,7 +766,7 @@ test("F01 & F02: async delegation identity persistence, role assignment, serial 
       async runFeature() {
         assert.fail("Must not dispatch pending feature when resume is blocked");
       },
-    }
+    },
   );
   assert.equal(blockedState.status, "paused");
   assert.equal(blockedState.activeWorker.status, "paused");
@@ -788,7 +774,9 @@ test("F01 & F02: async delegation identity persistence, role assignment, serial 
   assert.equal(loadFeaturesDoc(projectDir).features[1].status, "pending");
 
   // Now test resumePending flag (I-06) + async resume without handoff (I-05)
-  const nextPause = loadState(projectDir); nextPause.pauseEpoch = (nextPause.pauseEpoch ?? 0) + 1; saveState(projectDir, nextPause);
+  const nextPause = loadState(projectDir);
+  nextPause.pauseEpoch = (nextPause.pauseEpoch ?? 0) + 1;
+  saveState(projectDir, nextPause);
   const stPending = loadState(projectDir);
   stPending.status = "running";
   stPending.activeWorker.status = "running";
@@ -813,7 +801,7 @@ test("F01 & F02: async delegation identity persistence, role assignment, serial 
       async runFeature() {
         assert.fail("Must not fall through to dispatch f2 after async resume of f1");
       },
-    }
+    },
   );
 
   assert.equal(resumeCalled, 1);
@@ -846,7 +834,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
   // F09 & DISPATCH-FIX-005: normalizeSlotConfig keeps top-level effort + reasoningEffort, and injects options.effort ONLY for providers declaring effort
   const normalizedLow = normalizeSlotConfig(
     { providerInstanceId: "codex", model: "gpt-6.1-sol", effort: 2, reasoningEffort: "high" },
-    { providerInstanceId: "codex", model: "gpt-6.1-sol", options: { reasoningEffort: "high" } }
+    { providerInstanceId: "codex", model: "gpt-6.1-sol", options: { reasoningEffort: "high" } },
   );
   assert.equal(normalizedLow.effort, 2);
   assert.equal(normalizedLow.reasoningEffort, "low");
@@ -876,8 +864,17 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
 
   // V7-R2-F01: fixed-tier models omit effort and reasoningEffort keys completely
   const normalizedFixed = normalizeSlotConfig(
-    { providerInstanceId: "antigravity", model: "gemini-4-argon-high", effort: 4, reasoningEffort: "high" },
-    { providerInstanceId: "codex", model: "gpt-6.1-sol", options: { effort: 4, reasoningEffort: "high" } }
+    {
+      providerInstanceId: "antigravity",
+      model: "gemini-4-argon-high",
+      effort: 4,
+      reasoningEffort: "high",
+    },
+    {
+      providerInstanceId: "codex",
+      model: "gpt-6.1-sol",
+      options: { effort: 4, reasoningEffort: "high" },
+    },
   );
   assert.equal(!("effort" in normalizedFixed), true);
   assert.equal(!("reasoningEffort" in normalizedFixed), true);
@@ -895,7 +892,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
       async runFeature() {
         return { taskId: "t1", childThreadId: "c1" };
       },
-    }
+    },
   );
   const active = loadState(projectDir).activeWorker;
   assert.equal(active.dispatchPending, undefined);
@@ -911,7 +908,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
         validatorsPassed: true,
         handoff: { whatWasImplemented: VALID_SUMMARY_50 },
       }),
-    (err) => err.code === "MISSING_RUN_IDENTITY"
+    (err) => err.code === "MISSING_RUN_IDENTITY",
   );
 
   assert.throws(
@@ -922,7 +919,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
         validatorsPassed: true,
         handoff: { whatWasImplemented: VALID_SUMMARY_50 },
       }),
-    (err) => err.code === "MISSING_RUN_IDENTITY"
+    (err) => err.code === "MISSING_RUN_IDENTITY",
   );
 
   assert.throws(
@@ -933,7 +930,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
         validatorsPassed: true,
         handoff: { whatWasImplemented: VALID_SUMMARY_50 },
       }),
-    (err) => err.code === "MISSING_RUN_IDENTITY"
+    (err) => err.code === "MISSING_RUN_IDENTITY",
   );
 
   assert.throws(
@@ -945,7 +942,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
         validatorsPassed: true,
         handoff: { whatWasImplemented: VALID_SUMMARY_50 },
       }),
-    (err) => err.code === "STALE_WORKER_RUN"
+    (err) => err.code === "STALE_WORKER_RUN",
   );
 
   assert.throws(
@@ -957,7 +954,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
         validatorsPassed: true,
         handoff: { whatWasImplemented: VALID_SUMMARY_50 },
       }),
-    (err) => err.code === "STALE_WORKER_RUN"
+    (err) => err.code === "STALE_WORKER_RUN",
   );
 
   // Complete f1 with a discoveredIssue and a nonInteractiveCheck (F07)
@@ -994,7 +991,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
           },
         ],
       }),
-    (err) => err.code === "UNKNOWN_HANDOFF_ITEM"
+    (err) => err.code === "UNKNOWN_HANDOFF_ITEM",
   );
   assert.equal(loadState(projectDir).lastHandoffNeedsAttention, true);
 
@@ -1004,7 +1001,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
       updateMissionFeatures(projectDir, {
         updateFeatures: [{ id: "missing-id", title: "no-op" }],
       }),
-    (err) => err.code === "UNKNOWN_FEATURE_ID"
+    (err) => err.code === "UNKNOWN_FEATURE_ID",
   );
   assert.equal(loadState(projectDir).lastHandoffNeedsAttention, true);
 
@@ -1062,16 +1059,16 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
           handoff: { whatWasImplemented: VALID_SUMMARY_50 },
         });
       },
-    }
+    },
   );
   assert.equal(stateAfterMissingValidatorResults.status, "orchestrator_turn");
   assert.equal(stateAfterMissingValidatorResults.lastHandoffNeedsAttention, true);
   assert.equal(stateAfterMissingValidatorResults.assertions[0].status, "pending");
   assert.equal(
     stateAfterMissingValidatorResults.pendingHandoffItems.some(
-      (i) => i.id === "scrutiny-validator-m1:missing_assertion_results"
+      (i) => i.id === "scrutiny-validator-m1:missing_assertion_results",
     ),
-    true
+    true,
   );
 
   // Reset scrutiny-validator-m1 to pending via updateMissionFeatures to test F08 (P08): explicit scrutiny failure followed by user-testing pass
@@ -1096,7 +1093,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
           });
         }
       },
-    }
+    },
   );
 
   // Failed assertion must trigger orchestrator_turn and lastHandoffNeedsAttention, NOT completed
@@ -1106,7 +1103,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
   assert.equal(stateAtValidators.assertions[0].stageResults.scrutiny, "failed");
   assert.equal(
     stateAtValidators.pendingHandoffItems.some((i) => i.type === "validator_failure"),
-    true
+    true,
   );
 
   // F08 (P08): Dismiss the validator_failure and run user-testing-validator-m1 WITH VAL-1: 'passed':
@@ -1136,7 +1133,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
           handoff: { whatWasImplemented: VALID_SUMMARY_50 },
         });
       },
-    }
+    },
   );
 
   assert.equal(stateAfterUserTesting.assertions[0].status, "failed");
@@ -1149,7 +1146,7 @@ test("F03, F07, F08, F09, F10, F11, F12: handoff attention ledger, strict dismis
   const paths = getMissionPaths(projectDir);
   fs.writeFileSync(
     paths.featuresPath,
-    JSON.stringify([{ id: "f-bare-array", milestoneId: "m1", status: "pending" }])
+    JSON.stringify([{ id: "f-bare-array", milestoneId: "m1", status: "pending" }]),
   );
   const loadedBare = loadFeaturesDoc(projectDir);
   assert.equal(loadedBare.features.length, 1);
@@ -1172,15 +1169,19 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
   approveMissionPlan(projectDir);
 
   await startMissionRun(projectDir);
-  const uninvokedFixture = Object.fromEntries(["state.json", "features.json", "model-settings.json", "progress_log.jsonl"]
-    .map(name => [name, fs.readFileSync(path.join(projectDir, ".mission", name))]));
+  const uninvokedFixture = Object.fromEntries(
+    ["state.json", "features.json", "model-settings.json", "progress_log.jsonl"].map((name) => [
+      name,
+      fs.readFileSync(path.join(projectDir, ".mission", name)),
+    ]),
+  );
   // Simulate HUD default runtime having attached default identity with delegatedBy: "hud-default-runtime"
   const stRunning = loadState(projectDir);
   const runId = stRunning.activeWorker.runId;
   delete stRunning.activeWorker.dispatchPending;
   stRunning.activeWorker.delegatedBy = "hud-default-runtime";
   stRunning.sessions = stRunning.sessions.map((s) =>
-    s.runId === runId ? { ...s, delegatedBy: "hud-default-runtime" } : s
+    s.runId === runId ? { ...s, delegatedBy: "hud-default-runtime" } : s,
   );
   saveState(projectDir, stRunning);
 
@@ -1197,7 +1198,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
           worktreePath: "/tmp/upgraded-wt-1",
         };
       },
-    }
+    },
   );
 
   let stUpgraded = loadState(projectDir);
@@ -1244,7 +1245,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
           worktreePath: "/tmp/upgraded-wt-cli",
         };
       },
-    }
+    },
   );
 
   let stCliUpgraded = loadState(cliProjectDir);
@@ -1279,7 +1280,8 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
     stdio: "ignore",
   });
   t.after(() => {
-    if (placeholderDaemon.exitCode === null && placeholderDaemon.signalCode === null) placeholderDaemon.kill("SIGTERM");
+    if (placeholderDaemon.exitCode === null && placeholderDaemon.signalCode === null)
+      placeholderDaemon.kill("SIGTERM");
   });
   const placeholderPid = placeholderDaemon.pid;
   stCliUpgraded.activeWorker.runtimeTransport = "hud-default-runtime";
@@ -1317,7 +1319,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
           worktreePath: "/tmp/upgraded-wt-hud-rt",
         };
       },
-    }
+    },
   );
 
   const stHudRtUpgraded = loadState(hudProjectDir);
@@ -1381,10 +1383,7 @@ test("F07 (P26) & F03 default HUD runtime upgrade: full-feature replacement with
 
   // Calling updateMissionFeatures with full-feature replacement appending a new repair feature clears pendingHandoffItems
   updateMissionFeatures(hudProjectDir, {
-    features: [
-      ...loadFeaturesDoc(hudProjectDir).features,
-      { id: "f-repair", milestoneId: "m1" },
-    ],
+    features: [...loadFeaturesDoc(hudProjectDir).features, { id: "f-repair", milestoneId: "m1" }],
   });
   const afterAddReplace = loadState(hudProjectDir);
   assert.equal(afterAddReplace.pendingHandoffItems.length, 0);
@@ -1399,9 +1398,7 @@ test("F03-end-feature-daemon-leak: calling endFeatureRun directly terminates act
     repoPath: projectDir,
     milestones: [{ id: "m1", title: "Milestone 1", ordinal: 1 }],
     assertions: [{ id: "VAL-1", description: "Daemon cleanup", milestoneId: "m1" }],
-    features: [
-      { id: "f1", milestoneId: "m1", title: "Feature 1", fulfills: ["VAL-1"] },
-    ],
+    features: [{ id: "f1", milestoneId: "m1", title: "Feature 1", fulfills: ["VAL-1"] }],
     modelSettings: {
       skipScrutiny: true,
       skipUserTesting: true,
@@ -1413,14 +1410,42 @@ test("F03-end-feature-daemon-leak: calling endFeatureRun directly terminates act
   const st = loadState(projectDir);
   const runId = st.activeWorker.runId;
   const daemonStateFile = path.join(projectDir, ".mission", "worker-daemon-state.json");
-  const cliPath = (await import("node:url")).fileURLToPath(new URL("../bridge/cli.mjs", import.meta.url));
-  const daemonChild = cp.spawn(process.execPath, [cliPath, "LocalWorkerDaemon", "--mission-dir", projectDir,
-    "--repo-path", projectDir, "--run-id", runId, "--feature-id", "f1", "--state-file", daemonStateFile], { stdio: "ignore" });
-  t.after(() => { if (daemonChild.exitCode === null && daemonChild.signalCode === null) daemonChild.kill("SIGTERM"); });
+  const cliPath = (await import("node:url")).fileURLToPath(
+    new URL("../bridge/cli.mjs", import.meta.url),
+  );
+  const daemonChild = cp.spawn(
+    process.execPath,
+    [
+      cliPath,
+      "LocalWorkerDaemon",
+      "--mission-dir",
+      projectDir,
+      "--repo-path",
+      projectDir,
+      "--run-id",
+      runId,
+      "--feature-id",
+      "f1",
+      "--state-file",
+      daemonStateFile,
+    ],
+    { stdio: "ignore" },
+  );
+  t.after(() => {
+    if (daemonChild.exitCode === null && daemonChild.signalCode === null)
+      daemonChild.kill("SIGTERM");
+  });
   const daemonPid = daemonChild.pid;
   const readyDeadline = Date.now() + 2000;
-  while (!fs.existsSync(daemonStateFile) && Date.now() < readyDeadline) await new Promise(resolve => setTimeout(resolve, 10));
-  assert.equal(fs.existsSync(daemonStateFile), true, "The actual owned daemon must be ready before completion");
+  while (!fs.existsSync(daemonStateFile) && Date.now() < readyDeadline)
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  assert.equal(
+    fs.existsSync(daemonStateFile),
+    true,
+    "The actual owned daemon must be ready before completion",
+  );
 
   st.activeWorker.workerPid = daemonPid;
   st.activeWorker.daemonStateFile = daemonStateFile;
@@ -1433,7 +1458,7 @@ test("F03-end-feature-daemon-leak: calling endFeatureRun directly terminates act
           daemonStateFile,
           daemonStatus: "running",
         }
-      : s
+      : s,
   );
   saveState(projectDir, st);
 
@@ -1452,7 +1477,9 @@ test("F03-end-feature-daemon-leak: calling endFeatureRun directly terminates act
   });
 
   // Wait briefly for SIGTERM to reap child if needed
-  await new Promise((r) => setTimeout(r, 80));
+  await new Promise((r) => {
+    setTimeout(r, 80);
+  });
 
   let pidAlive = true;
   try {
@@ -1464,7 +1491,7 @@ test("F03-end-feature-daemon-leak: calling endFeatureRun directly terminates act
   assert.equal(
     fs.existsSync(daemonStateFile),
     false,
-    "Expected daemonStateFile to be unlinked by endFeatureRun"
+    "Expected daemonStateFile to be unlinked by endFeatureRun",
   );
 
   const finalState = loadState(projectDir);
@@ -1549,9 +1576,7 @@ test("COMPLETION-REQUIRES-START: endFeatureRun on final validator immediately tr
   const revisionAfterEnd = stateAfterEnd.revision;
 
   const logsAfterEnd = readProgressLog(projectDir);
-  const completedLogsAfterEnd = logsAfterEnd.filter(
-    (l) => l.type === "mission_completed"
-  );
+  const completedLogsAfterEnd = logsAfterEnd.filter((l) => l.type === "mission_completed");
   assert.equal(completedLogsAfterEnd.length, 1);
 
   // Subsequent startMissionRun call must be a clean idempotent no-op
@@ -1560,9 +1585,7 @@ test("COMPLETION-REQUIRES-START: endFeatureRun on final validator immediately tr
   assert.equal(noopState.revision, revisionAfterEnd);
 
   const logsAfterNoop = readProgressLog(projectDir);
-  const completedLogsAfterNoop = logsAfterNoop.filter(
-    (l) => l.type === "mission_completed"
-  );
+  const completedLogsAfterNoop = logsAfterNoop.filter((l) => l.type === "mission_completed");
   assert.equal(completedLogsAfterNoop.length, 1);
   assert.equal(logsAfterNoop.length, logsAfterEnd.length);
 });
@@ -1586,8 +1609,8 @@ test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: u
         planAccepted: false,
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   fs.writeFileSync(
     path.join(dotMission, "model-settings.json"),
@@ -1619,8 +1642,8 @@ test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: u
         userModifiedSlots: ["validator", "skipScrutiny"],
       },
       null,
-      2
-    ) + "\n"
+      2,
+    ) + "\n",
   );
   fs.writeFileSync(
     path.join(dotMission, "progress_log.jsonl"),
@@ -1630,7 +1653,7 @@ test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: u
       type: "model_slots_updated",
       message: "Model slots updated: validator=gpt-6.1-sol (max/5)",
       details: { changedRoles: ["validator"] },
-    }) + "\n"
+    }) + "\n",
   );
 
   // Call proposeMission without explicit title and with conflicting validator/skipScrutiny in input.modelSettings
@@ -1702,7 +1725,11 @@ test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: u
   const f2 = proposed.features[1];
   assert.equal(f1.target.model, "claude-opus-5-5");
   assert.equal(f1.target.providerInstanceId, undefined);
-  assert.deepEqual(f2.workerTarget, { providerInstanceId: "codex", model: "gpt-6.1-sol", reasoningEffort: "max" });
+  assert.deepEqual(f2.workerTarget, {
+    providerInstanceId: "codex",
+    model: "gpt-6.1-sol",
+    reasoningEffort: "max",
+  });
 
   approveMissionPlan(projectDir);
   const dispatchedSlots = [];
@@ -1714,7 +1741,7 @@ test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: u
         dispatchedSlots.push({ featureId: feature.id, slotConfig });
         return { taskId: `task-${feature.id}`, childThreadId: `thread-${feature.id}` };
       },
-    }
+    },
   );
 
   assert.equal(dispatchedSlots.length, 1);
@@ -1745,7 +1772,7 @@ test("DISPATCH-FIX-003, DISPATCH-FIX-004, DISPATCH-FIX-005 & DISPATCH-FIX-006: u
         dispatchedSlots.push({ featureId: feature.id, slotConfig });
         return { taskId: `task-${feature.id}`, childThreadId: `thread-${feature.id}` };
       },
-    }
+    },
   );
   assert.equal(dispatchedSlots.length, 2);
   assert.equal(dispatchedSlots[1].featureId, "f2-logic");

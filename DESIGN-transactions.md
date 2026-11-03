@@ -50,49 +50,49 @@ fresh process 读取时先验证 WAL 校验和、版本、sequence、checkpoint 
 
 下表覆盖最终设计 census 的全部 38 个路径组，另列 3 个新增的事务、CLI effect 和 HUD command 写者组。可机读的文件/符号/当前行号/源码 SHA 以及实际 raw fs 写点保存在交付 `out/writer-census.json`；原始 census、persistence-sites 和原 R01–R05 反例也随输入归档保留。
 
-| Group | Production entry | Boundary |
-|---|---|---|
-| S01 | `kernel/store.mjs` — saveState, saveFeaturesDoc, saveModelSettings, writeFileAtomicSync, writeJsonAtomicSync | 同 Mission 短事务；外部调用前解锁。 |
-| S02 | `kernel/store.mjs` — appendProgressLog | 同 Mission 短事务；外部调用前解锁。 |
-| S03 | `kernel/store.mjs` — reconcileMissionOnLoad | 同 Mission 短事务；外部调用前解锁。 |
-| T01 | `kernel/tools.mjs` — proposeMission | 同 Mission 短事务；外部调用前解锁。 |
-| T02 | `kernel/tools.mjs` — approveMissionPlan | 同 Mission 短事务；外部调用前解锁。 |
-| T03 | `kernel/tools.mjs` — rejectMissionPlan | 同 Mission 短事务；外部调用前解锁。 |
-| T04 | `kernel/tools.mjs` — dismissHandoffItems | 同 Mission 短事务；外部调用前解锁。 |
-| T05 | `kernel/tools.mjs` — updateMissionFeatures | 同 Mission 短事务；外部调用前解锁。 |
-| T06 | `kernel/tools.mjs` — checkMilestoneCompletionAndInjectValidation | 同 Mission 短事务；外部调用前解锁。 |
-| T07 | `kernel/tools.mjs` — endFeatureRun | 同 Mission 短事务；外部调用前解锁。 |
-| R01 | `kernel/runner.mjs` — bindFeatureDispatch | 同 Mission 短事务；外部调用前解锁。 |
-| R02 | `kernel/runner.mjs` — markDispatchPending | 同 Mission 短事务；外部调用前解锁。 |
-| R03 | `kernel/runner.mjs` — dispatchFeatureToWorker | 同 Mission 短事务；外部调用前解锁。 |
-| R04 | `kernel/runner.mjs` — dispatchPreparedWorker | 同 Mission 短事务；外部调用前解锁。 |
-| R05 | `kernel/runner.mjs` — settlePausedWorkerResult | 同 Mission 短事务；外部调用前解锁。 |
-| R06 | `kernel/runner.mjs` — startMissionRun | 同 Mission 短事务；外部调用前解锁。 |
-| J01 | `kernel/dispatch-journal.mjs` — prepareDispatch, recordAcceptedDispatch, dispatchWithIntent, recoverAccepted, mutate | 同 Mission 短事务；外部调用前解锁。 |
-| H01 | `hud/server.mjs` — handleApprove | 同 Mission 短事务；外部调用前解锁。 |
-| H02 | `hud/server.mjs` — handleReject | 同 Mission 短事务；外部调用前解锁。 |
-| H03 | `hud/server.mjs` — handleModelSlots | 同 Mission 短事务；外部调用前解锁。 |
-| H04 | `hud/server.mjs` — handlePause, commitLifecycleState | 同 Mission 短事务；外部调用前解锁。 |
-| H05 | `hud/server.mjs` — handleResume, commitLifecycleState | 同 Mission 短事务；外部调用前解锁。 |
-| H06 | `hud/server.mjs` — commitMissionChanges; restoreOwnedCommit deleted | 同 Mission 短事务；外部调用前解锁。 |
-| H07 | `hud/server.mjs` — runCli background startup | 自有 marker。 |
-| M01 | `bridge/mcp-server.mjs` — callMissionTool UpdateMissionFeatures compatibility tail | 已删除兼容写尾部。 |
-| C01 | `bridge/cli.mjs` — runCli LocalWorkerDaemon branch, writeDaemonState, cleanupAndExit | 自有 marker。 |
-| C02 | `kernel/worker-process.mjs` — signalOwnedLocalWorker | 自有 marker。 |
-| A01 | `kernel/autopilot-store.mjs` — archiveObservation | 同 Mission 短事务；外部调用前解锁。 |
-| A02 | `kernel/autopilot-store.mjs` — readController, saveController, writeDurable | 同 Mission 短事务；外部调用前解锁。 |
-| A03 | `kernel/autopilot-commands.mjs` — applyAutopilotCommand | 同 Mission 短事务；外部调用前解锁。 |
-| A04 | `kernel/controller.mjs` — missionTick, ingest, integrationAction | 同 Mission 短事务；外部调用前解锁。 |
-| W01 | `kernel/controller.mjs` — ingestGlobal | 同 Mission 短事务；外部调用前解锁。 |
-| W02 | `kernel/controller.mjs` — timerAction | 同 Mission 短事务；外部调用前解锁。 |
-| W03 | `kernel/controller.mjs` — controlAction | 同 Mission 短事务；外部调用前解锁。 |
-| W04 | `kernel/controller.mjs` — recordMilestoneIntegration | 同 Mission 短事务；外部调用前解锁。 |
-| W05 | `kernel/controller.mjs` — recordProviderFailure | 同 Mission 短事务；外部调用前解锁。 |
-| W06 | `kernel/controller.mjs` — missionTick, ingest, integrationAction | 同 Mission 短事务；外部调用前解锁。 |
-| W07 | `kernel/autopilot-commands.mjs` — applyAutopilotCommand | 同 Mission 短事务；外部调用前解锁。 |
-| X01 | `kernel/mission-transaction.mjs` — withMissionTransaction, commandTransaction, runClaimedEffect, writeTransactionFile | New WAL backend, command and effect writers; validated claim inside the short transaction |
-| X02 | `bridge/cli.mjs` — runtimeEffect, runtimeDispatchBlockReason | Current owner/revision/run/gate validated in effect claim; no staged-state authorization |
-| X03 | `hud/server.mjs` — beginHudCommand, sendJson | Command result staged in transaction; HTTP delivery deferred until durable commit and unlock |
+| Group | Production entry                                                                                                      | Boundary                                                                                     |
+| ----- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| S01   | `kernel/store.mjs` — saveState, saveFeaturesDoc, saveModelSettings, writeFileAtomicSync, writeJsonAtomicSync          | 同 Mission 短事务；外部调用前解锁。                                                          |
+| S02   | `kernel/store.mjs` — appendProgressLog                                                                                | 同 Mission 短事务；外部调用前解锁。                                                          |
+| S03   | `kernel/store.mjs` — reconcileMissionOnLoad                                                                           | 同 Mission 短事务；外部调用前解锁。                                                          |
+| T01   | `kernel/tools.mjs` — proposeMission                                                                                   | 同 Mission 短事务；外部调用前解锁。                                                          |
+| T02   | `kernel/tools.mjs` — approveMissionPlan                                                                               | 同 Mission 短事务；外部调用前解锁。                                                          |
+| T03   | `kernel/tools.mjs` — rejectMissionPlan                                                                                | 同 Mission 短事务；外部调用前解锁。                                                          |
+| T04   | `kernel/tools.mjs` — dismissHandoffItems                                                                              | 同 Mission 短事务；外部调用前解锁。                                                          |
+| T05   | `kernel/tools.mjs` — updateMissionFeatures                                                                            | 同 Mission 短事务；外部调用前解锁。                                                          |
+| T06   | `kernel/tools.mjs` — checkMilestoneCompletionAndInjectValidation                                                      | 同 Mission 短事务；外部调用前解锁。                                                          |
+| T07   | `kernel/tools.mjs` — endFeatureRun                                                                                    | 同 Mission 短事务；外部调用前解锁。                                                          |
+| R01   | `kernel/runner.mjs` — bindFeatureDispatch                                                                             | 同 Mission 短事务；外部调用前解锁。                                                          |
+| R02   | `kernel/runner.mjs` — markDispatchPending                                                                             | 同 Mission 短事务；外部调用前解锁。                                                          |
+| R03   | `kernel/runner.mjs` — dispatchFeatureToWorker                                                                         | 同 Mission 短事务；外部调用前解锁。                                                          |
+| R04   | `kernel/runner.mjs` — dispatchPreparedWorker                                                                          | 同 Mission 短事务；外部调用前解锁。                                                          |
+| R05   | `kernel/runner.mjs` — settlePausedWorkerResult                                                                        | 同 Mission 短事务；外部调用前解锁。                                                          |
+| R06   | `kernel/runner.mjs` — startMissionRun                                                                                 | 同 Mission 短事务；外部调用前解锁。                                                          |
+| J01   | `kernel/dispatch-journal.mjs` — prepareDispatch, recordAcceptedDispatch, dispatchWithIntent, recoverAccepted, mutate  | 同 Mission 短事务；外部调用前解锁。                                                          |
+| H01   | `hud/server.mjs` — handleApprove                                                                                      | 同 Mission 短事务；外部调用前解锁。                                                          |
+| H02   | `hud/server.mjs` — handleReject                                                                                       | 同 Mission 短事务；外部调用前解锁。                                                          |
+| H03   | `hud/server.mjs` — handleModelSlots                                                                                   | 同 Mission 短事务；外部调用前解锁。                                                          |
+| H04   | `hud/server.mjs` — handlePause, commitLifecycleState                                                                  | 同 Mission 短事务；外部调用前解锁。                                                          |
+| H05   | `hud/server.mjs` — handleResume, commitLifecycleState                                                                 | 同 Mission 短事务；外部调用前解锁。                                                          |
+| H06   | `hud/server.mjs` — commitMissionChanges; restoreOwnedCommit deleted                                                   | 同 Mission 短事务；外部调用前解锁。                                                          |
+| H07   | `hud/server.mjs` — runCli background startup                                                                          | 自有 marker。                                                                                |
+| M01   | `bridge/mcp-server.mjs` — callMissionTool UpdateMissionFeatures compatibility tail                                    | 已删除兼容写尾部。                                                                           |
+| C01   | `bridge/cli.mjs` — runCli LocalWorkerDaemon branch, writeDaemonState, cleanupAndExit                                  | 自有 marker。                                                                                |
+| C02   | `kernel/worker-process.mjs` — signalOwnedLocalWorker                                                                  | 自有 marker。                                                                                |
+| A01   | `kernel/autopilot-store.mjs` — archiveObservation                                                                     | 同 Mission 短事务；外部调用前解锁。                                                          |
+| A02   | `kernel/autopilot-store.mjs` — readController, saveController, writeDurable                                           | 同 Mission 短事务；外部调用前解锁。                                                          |
+| A03   | `kernel/autopilot-commands.mjs` — applyAutopilotCommand                                                               | 同 Mission 短事务；外部调用前解锁。                                                          |
+| A04   | `kernel/controller.mjs` — missionTick, ingest, integrationAction                                                      | 同 Mission 短事务；外部调用前解锁。                                                          |
+| W01   | `kernel/controller.mjs` — ingestGlobal                                                                                | 同 Mission 短事务；外部调用前解锁。                                                          |
+| W02   | `kernel/controller.mjs` — timerAction                                                                                 | 同 Mission 短事务；外部调用前解锁。                                                          |
+| W03   | `kernel/controller.mjs` — controlAction                                                                               | 同 Mission 短事务；外部调用前解锁。                                                          |
+| W04   | `kernel/controller.mjs` — recordMilestoneIntegration                                                                  | 同 Mission 短事务；外部调用前解锁。                                                          |
+| W05   | `kernel/controller.mjs` — recordProviderFailure                                                                       | 同 Mission 短事务；外部调用前解锁。                                                          |
+| W06   | `kernel/controller.mjs` — missionTick, ingest, integrationAction                                                      | 同 Mission 短事务；外部调用前解锁。                                                          |
+| W07   | `kernel/autopilot-commands.mjs` — applyAutopilotCommand                                                               | 同 Mission 短事务；外部调用前解锁。                                                          |
+| X01   | `kernel/mission-transaction.mjs` — withMissionTransaction, commandTransaction, runClaimedEffect, writeTransactionFile | New WAL backend, command and effect writers; validated claim inside the short transaction    |
+| X02   | `bridge/cli.mjs` — runtimeEffect, runtimeDispatchBlockReason                                                          | Current owner/revision/run/gate validated in effect claim; no staged-state authorization     |
+| X03   | `hud/server.mjs` — beginHudCommand, sendJson                                                                          | Command result staged in transaction; HTTP delivery deferred until durable commit and unlock |
 
 没有留在事务外的官方 Mission 业务写者。仅 HUD pid、显式本地 daemon 自有 marker 与 `signalOwnedLocalWorker` 对已验证自有 marker 的清理仍使用 raw fs；它们不写远端 task/session/feature 投影。本轮没有运行 daemon。
 
@@ -112,7 +112,6 @@ build 脚本只用已有 `cc` 和本地 `node_api.h`，不下载；输出相应 
 专用测试通过实际 kernel/MCP/handler 接口和独立进程验证 R01–R05、transport 期间 Pause/Reject、两个 Mission、busy/SIGKILL 锁释放、旧文档、命令冲突、End 一次、恢复/foreign/corrupt/missing backend、GET/SSE 无业务写、R9c 与撤销 fallback。矩阵对实际 Update、accepted receipt、End/consumed 的每个跟踪 rename/fsync/unlink 边界注入 EIO、ENOSPC 或真实 SIGKILL，fresh process 恢复两次并重试/重放命令。EIO/ENOSPC 是 syscall 边界软件注入，不称硬盘故障或断电测试。
 
 完整允许集合前后比较及所有中间失败放在交付 `out/`。基线 790 项为 638 pass、152 fail；续做 811 项为 658 pass、153 fail。原 passing 用例零回归、原名称零遗漏。153 个失败按直接 listen EPERM、下游断言和父聚合逐项保留，不能称 socket HTTP 通过。六个含 daemon 的测试组按源码排除；端口/ps 权限失败保持原始输出。父基线的 6 个 R9c 旧冲突已按续做裁定迁移，精确身份、slot、owner、拒绝码和一次控制断言保留；其中 controlRequestId 参数回归另修产品。六个 daemon 组继续排除，未以 fixture 冒充 daemon 验收。没有运行真实 T3/provider、live Mission、timer、安装、canonical、merge/push/deploy；本候选不能据此宣布真实重启恢复或安装验收。
-
 
 ## P1 与 P2 的运行时合同
 

@@ -1,0 +1,19 @@
+name: Propose a change
+description: Describe a user workflow and its acceptance criteria.
+title: "feat: "
+labels: ["type: feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Who needs this change and what are they trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Describe observable success, required evidence, and runtime boundaries.
+    validations:
+      required: true

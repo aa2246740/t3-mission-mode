@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -19,7 +19,9 @@
             <span class="mission-badge">MISSION</span>
             <span class="mission-repo-path mono" id="mission-repo-path"></span>
             <span class="sse-indicator" id="sse-indicator" title="SSE Stream Status">● Live</span>
-            <span class="status-subtext" id="status-strip-subtext">Connecting to mission state...</span>
+            <span class="status-subtext" id="status-strip-subtext"
+              >Connecting to mission state...</span
+            >
           </div>
           <h1 class="mission-title" id="mission-title">Waiting for Mission Initialization</h1>
         </div>
@@ -104,13 +106,19 @@
         </aside>
 
         <!-- Center Column: Mission Execution Board & Validation Contract -->
-        <section class="hud-col hud-col-center" id="center-panel" aria-label="Mission Execution Board and Contract">
+        <section
+          class="hud-col hud-col-center"
+          id="center-panel"
+          aria-label="Mission Execution Board and Contract"
+        >
           <!-- Uninitialized Banner (hidden when initialized) -->
           <div class="onboarding-card hidden" id="onboarding-card"></div>
 
           <!-- Plan Review Banner (shown when status === 'awaiting_input' && !planAccepted) -->
           <div class="approval-card hidden" id="plan-approval-card">
-            <button type="button" class="strip-btn" id="btn-reject-plan" data-action="reject-plan">Request Changes</button>
+            <button type="button" class="strip-btn" id="btn-reject-plan" data-action="reject-plan">
+              Request Changes
+            </button>
           </div>
 
           <!-- Session Handoff Inspector (shown when a Worker/Validator session is clicked) -->
@@ -128,7 +136,9 @@
               <div class="board-section-header">
                 <div class="board-section-title-group">
                   <span class="board-section-title">Milestones &amp; Features</span>
-                  <span class="board-section-subtitle">Click any feature or session to inspect handoff details</span>
+                  <span class="board-section-subtitle"
+                    >Click any feature or session to inspect handoff details</span
+                  >
                 </div>
                 <span class="section-count mono" id="features-count">0/0</span>
               </div>
@@ -142,7 +152,9 @@
               <div class="board-section-header">
                 <div class="board-section-title-group">
                   <span class="board-section-title">Validation Contract</span>
-                  <span class="board-section-subtitle">Full VAL-* acceptance assertions across milestones</span>
+                  <span class="board-section-subtitle"
+                    >Full VAL-* acceptance assertions across milestones</span
+                  >
                 </div>
                 <span class="section-count mono" id="assertions-count">0/0</span>
               </div>
@@ -154,7 +166,11 @@
         </section>
 
         <!-- Right Column: Role Models & Activity Timeline -->
-        <aside class="hud-col hud-col-right" id="right-panel" aria-label="Role Models and Activity Timeline">
+        <aside
+          class="hud-col hud-col-right"
+          id="right-panel"
+          aria-label="Role Models and Activity Timeline"
+        >
           <!-- Role Models 3-Slot Selector -->
           <section class="right-section model-section" id="model-section">
             <div class="section-header">

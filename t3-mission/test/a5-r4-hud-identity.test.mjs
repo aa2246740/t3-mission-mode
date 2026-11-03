@@ -1,2 +1,55 @@
-import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import * as k from '../kernel/index.mjs';import {createHandlerHud} from './hud-handler-fixture.mjs';
-const root=process.env.R9_EVIDENCE_DIR;for(const foreign of [true,false])test('HUD Pause control thread foreign='+foreign,async()=>{const d=path.join(root,String(foreign));fs.mkdirSync(d);k.proposeMission(d,{title:'Pause identity',repoPath:d,features:[{id:'f1'}]});k.approveMissionPlan(d);await k.startMissionRun(d,{}, {runFeature:async()=>({accepted:true,taskId:'original-task',childThreadId:'original-thread',runtimeTransport:'t3-delegate-task'})});const raw={threadId:foreign?'foreign-thread':'original-thread',interrupted:true};let calls=0;const hud=await createHandlerHud({missionDir:d,runtimeAdapter:{pauseWorker:async()=>{calls++;return raw;}}});let reply;try{reply=await hud.post('pause');}finally{await hud.close();}const state=k.loadState(d);fs.writeFileSync(path.join(root,'hud-'+foreign+'.json'),JSON.stringify({raw,calls,reply,state},null,2));assert.equal(calls,1);assert.equal(state.status,'paused');assert.equal(state.activeWorker.status,foreign?'running':'paused','A foreign thread interruption cannot confirm that the original worker paused');});
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import * as k from "../kernel/index.mjs";
+import { createHandlerHud } from "./hud-handler-fixture.mjs";
+const root = process.env.R9_EVIDENCE_DIR;
+for (const foreign of [true, false])
+  test("HUD Pause control thread foreign=" + foreign, async () => {
+    const d = path.join(root, String(foreign));
+    fs.mkdirSync(d);
+    k.proposeMission(d, { title: "Pause identity", repoPath: d, features: [{ id: "f1" }] });
+    k.approveMissionPlan(d);
+    await k.startMissionRun(
+      d,
+      {},
+      {
+        runFeature: async () => ({
+          accepted: true,
+          taskId: "original-task",
+          childThreadId: "original-thread",
+          runtimeTransport: "t3-delegate-task",
+        }),
+      },
+    );
+    const raw = { threadId: foreign ? "foreign-thread" : "original-thread", interrupted: true };
+    let calls = 0;
+    const hud = await createHandlerHud({
+      missionDir: d,
+      runtimeAdapter: {
+        pauseWorker: async () => {
+          calls++;
+          return raw;
+        },
+      },
+    });
+    let reply;
+    try {
+      reply = await hud.post("pause");
+    } finally {
+      await hud.close();
+    }
+    const state = k.loadState(d);
+    fs.writeFileSync(
+      path.join(root, "hud-" + foreign + ".json"),
+      JSON.stringify({ raw, calls, reply, state }, null, 2),
+    );
+    assert.equal(calls, 1);
+    assert.equal(state.status, "paused");
+    assert.equal(
+      state.activeWorker.status,
+      foreign ? "running" : "paused",
+      "A foreign thread interruption cannot confirm that the original worker paused",
+    );
+  });

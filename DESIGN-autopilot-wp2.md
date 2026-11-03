@@ -6,16 +6,16 @@ The reconstructed R8+WP1 commit is `ebd63cc`. Its canonical base is `7ae63065c7e
 
 ## Action changes
 
-| Action | Condition | Owner operation and observation |
-| --- | --- | --- |
-| `identify_owner` | Approved plan has no ownerThreadId. | Call orchestrator_capabilities. Return `{type:"owner",response}`. Persist its parentThreadId verbatim. No task selection precedes this step. |
-| `ensure_timer` | Runnable Mission has no timer request or confirmation. | Call schedule_task once with action.schedule, action.prompt, and bindToCurrentThread:true. Return `{type:"timer",requestId,response}`. |
-| `disable_timer` | Completion predicate holds and timer is confirmed. | Disable action.scheduledTaskId through update_scheduled_task. Return `{type:"timer_disabled",requestId,response}` identifying the same task with enabled:false. `done` follows confirmation. |
-| `interrupt_worker` | interrupt-mode Pause has a bound child without a known terminal result. | Call t3_thread_interrupt on action.threadId once. Return `{type:"interrupt",featureId,runId,controlId,response}`. Pause remains set. |
-| `resume_worker` | Explicit Resume follows confirmed interruption without a consumable result. | Call t3_thread_send on that same thread with action.message once. Return `{type:"resume",featureId,runId,controlId,response}`. No delegate or new feature run is created. |
-| `recover_dispatch` | Original intent has unknown acceptance or a receipt was lost. | Call t3_thread_list with action.t3ThreadList. It sets includeSubagents:true, the original dispatch title, limit:100, and the current cursor. Return the whole page as children with its request cursor. Continue every nextCursor. |
-| `sleep` | Provider retry is not due. | Return until=nextRetryAt. End the turn. Notifications and the timer may wake the owner; early ticks cannot dispatch. |
-| `orchestrator_decision`, kind=`validation_failed` | A valid validator failure was consumed. | Use failedAssertions to add a repair with sourceFeatureId and resolvesHandoffItemIds. The controller reruns stale validators after integration. |
+| Action                                            | Condition                                                                   | Owner operation and observation                                                                                                                                                                                                    |
+| ------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `identify_owner`                                  | Approved plan has no ownerThreadId.                                         | Call orchestrator_capabilities. Return `{type:"owner",response}`. Persist its parentThreadId verbatim. No task selection precedes this step.                                                                                       |
+| `ensure_timer`                                    | Runnable Mission has no timer request or confirmation.                      | Call schedule_task once with action.schedule, action.prompt, and bindToCurrentThread:true. Return `{type:"timer",requestId,response}`.                                                                                             |
+| `disable_timer`                                   | Completion predicate holds and timer is confirmed.                          | Disable action.scheduledTaskId through update_scheduled_task. Return `{type:"timer_disabled",requestId,response}` identifying the same task with enabled:false. `done` follows confirmation.                                       |
+| `interrupt_worker`                                | interrupt-mode Pause has a bound child without a known terminal result.     | Call t3_thread_interrupt on action.threadId once. Return `{type:"interrupt",featureId,runId,controlId,response}`. Pause remains set.                                                                                               |
+| `resume_worker`                                   | Explicit Resume follows confirmed interruption without a consumable result. | Call t3_thread_send on that same thread with action.message once. Return `{type:"resume",featureId,runId,controlId,response}`. No delegate or new feature run is created.                                                          |
+| `recover_dispatch`                                | Original intent has unknown acceptance or a receipt was lost.               | Call t3_thread_list with action.t3ThreadList. It sets includeSubagents:true, the original dispatch title, limit:100, and the current cursor. Return the whole page as children with its request cursor. Continue every nextCursor. |
+| `sleep`                                           | Provider retry is not due.                                                  | Return until=nextRetryAt. End the turn. Notifications and the timer may wake the owner; early ticks cannot dispatch.                                                                                                               |
+| `orchestrator_decision`, kind=`validation_failed` | A valid validator failure was consumed.                                     | Use failedAssertions to add a repair with sourceFeatureId and resolvesHandoffItemIds. The controller reruns stale validators after integration.                                                                                    |
 
 Other WP1 actions retain their purpose. `poll` also consumes a resumed child's latestTerminalSummary/latestTerminalRunId. Missing, conflicting, or unconfirmed evidence stops at a gate. Timer creation and worker control are claimed durably before returning an external action. Repeating a tick while a receipt is missing returns wait_user, never a second external create/send/interrupt operation.
 
@@ -37,15 +37,15 @@ After an acknowledged resume, an old latestTerminalRunId cannot finish the featu
 
 ## Failure classes and budgets
 
-| Class | Controller behavior |
-| --- | --- |
-| No transport | Persist no_transport and return NO_T3_TRANSPORT. No fabricated receipt or replacement child. |
-| Explicit nonacceptance | Persist not_accepted. Without a classified provider error, return DISPATCH_NOT_ACCEPTED. An explicit unaccepted rate/quota error can settle the run, retain a retryable journal record, back off, then open a new attempt. |
-| Unknown acceptance | Retain the inflight intent and return recover_dispatch. Positive acceptance without IDs also requires recovery. |
-| Worker failure envelope | Persist worker_failure, End failure once, and use the existing bounded feature attempt policy. |
-| T3 failed with rate/quota summary | End a provider failure, persist retry deadline and counters, then sleep. A validator provider failure does not write failed assertion stages or request a product repair. |
-| T3 failed with authentication/permission summary | Use only an approved alternate, otherwise return PROVIDER_AUTH_REQUIRED. |
-| Unparseable result | Preserve raw evidence and active identity, persist result_unparseable, and request an orchestrator decision. Never invent success. |
+| Class                                            | Controller behavior                                                                                                                                                                                                        |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No transport                                     | Persist no_transport and return NO_T3_TRANSPORT. No fabricated receipt or replacement child.                                                                                                                               |
+| Explicit nonacceptance                           | Persist not_accepted. Without a classified provider error, return DISPATCH_NOT_ACCEPTED. An explicit unaccepted rate/quota error can settle the run, retain a retryable journal record, back off, then open a new attempt. |
+| Unknown acceptance                               | Retain the inflight intent and return recover_dispatch. Positive acceptance without IDs also requires recovery.                                                                                                            |
+| Worker failure envelope                          | Persist worker_failure, End failure once, and use the existing bounded feature attempt policy.                                                                                                                             |
+| T3 failed with rate/quota summary                | End a provider failure, persist retry deadline and counters, then sleep. A validator provider failure does not write failed assertion stages or request a product repair.                                                  |
+| T3 failed with authentication/permission summary | Use only an approved alternate, otherwise return PROVIDER_AUTH_REQUIRED.                                                                                                                                                   |
+| Unparseable result                               | Preserve raw evidence and active identity, persist result_unparseable, and request an orchestrator decision. Never invent success.                                                                                         |
 
 retryPolicy supports baseDelayMs=30000, maxDelayMs=1800000, and maxConsecutiveProviderErrors=5. Numeric Retry-After seconds and HTTP-date headers take precedence, including waits longer than the exponential cap. Without that hint, the per-feature provider error count sets bounded exponential delay. The clock parameter `now` exists for deterministic fixture tests; normal operation uses Date.now().
 

@@ -1,0 +1,17 @@
+{
+  "all": true,
+  "merge-async": true,
+  "include": [
+    "t3-mission/kernel/**/*.mjs",
+    "t3-mission/bridge/**/*.mjs",
+    "t3-mission/hud/**/*.{mjs,js}",
+    "t3-mission/ops/**/*.mjs"
+  ],
+  "exclude": ["t3-mission/test/**"],
+  "check-coverage": true,
+  "lines": 80,
+  "branches": 70,
+  "functions": 80,
+  "reporter": ["text", "json-summary", "lcov"],
+  "reports-dir": "coverage"
+}

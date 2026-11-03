@@ -1,5 +1,11 @@
-import { resolveMissionBaseDir, missionTransaction, readTransactionFile, writeTransactionFile, listTransactionFiles, hasActiveMissionTransaction } from './mission-transaction.mjs';
-export { resolveMissionBaseDir } from './mission-transaction.mjs';
+import {
+  resolveMissionBaseDir,
+  missionTransaction,
+  readTransactionFile,
+  writeTransactionFile,
+  hasActiveMissionTransaction,
+} from "./mission-transaction.mjs";
+export { resolveMissionBaseDir } from "./mission-transaction.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -26,8 +32,12 @@ export function ensureMissionDir(missionDir) {
   return paths;
 }
 
-export function writeFileAtomicSync(filePath, content) { return writeTransactionFile(filePath, content); }
-export function writeJsonAtomicSync(filePath, data) { writeFileAtomicSync(filePath, `${JSON.stringify(data, null, 2)}\n`); }
+export function writeFileAtomicSync(filePath, content) {
+  return writeTransactionFile(filePath, content);
+}
+export function writeJsonAtomicSync(filePath, data) {
+  writeFileAtomicSync(filePath, `${JSON.stringify(data, null, 2)}\n`);
+}
 export function readJsonSync(filePath, fallback = null) {
   const raw = readTransactionFile(filePath);
   return raw === null ? fallback : JSON.parse(raw);
@@ -37,10 +47,7 @@ function loadStateImpl(missionDir) {
   const { statePath } = getMissionPaths(missionDir);
   const state = readJsonSync(statePath, null);
   if (!state) {
-    throw new MissionKernelError(
-      "MISSION_NOT_FOUND",
-      `Mission state not found at ${statePath}`
-    );
+    throw new MissionKernelError("MISSION_NOT_FOUND", `Mission state not found at ${statePath}`);
   }
   if (!Array.isArray(state.pendingHandoffItems)) {
     state.pendingHandoffItems = [];
@@ -102,8 +109,7 @@ function saveFeaturesDocImpl(missionDir, featuresOrDoc) {
     ...(Array.isArray(featuresOrDoc) ? {} : featuresOrDoc),
     features: rawFeatures.map((f, i) => normalizeFeature(f, i)),
     updatedAt:
-      (!Array.isArray(featuresOrDoc) && featuresOrDoc?.updatedAt) ||
-      new Date().toISOString(),
+      (!Array.isArray(featuresOrDoc) && featuresOrDoc?.updatedAt) || new Date().toISOString(),
   };
   writeJsonAtomicSync(featuresPath, doc);
   return doc;
@@ -179,15 +185,10 @@ function reconcileMissionOnLoadImpl(missionDir, options = {}) {
     return null;
   }
 
-  const nowMs =
-    typeof options.nowMs === "number" ? options.nowMs : Date.now();
+  const nowMs = typeof options.nowMs === "number" ? options.nowMs : Date.now();
   const nowIso = new Date(nowMs).toISOString();
 
-  const activeStatuses = new Set([
-    "running",
-    "initializing",
-    "orchestrator_turn",
-  ]);
+  const activeStatuses = new Set(["running", "initializing", "orchestrator_turn"]);
 
   if (activeStatuses.has(state.status)) {
     if (state.lastStartedAt) {
@@ -214,7 +215,7 @@ function reconcileMissionOnLoadImpl(missionDir, options = {}) {
           session.runId === pausedWorker.runId ||
           (pausedWorker.sessionId && session.sessionId === pausedWorker.sessionId)
             ? { ...session, status: "paused", pausedAt: nowIso }
-            : session
+            : session,
         );
       }
     }
@@ -224,10 +225,7 @@ function reconcileMissionOnLoadImpl(missionDir, options = {}) {
     if (pausedWorker) {
       const workerNumber = pausedWorker.workerNumber ?? 1;
       const featureTitle =
-        pausedWorker.featureTitle ||
-        pausedWorker.title ||
-        pausedWorker.featureId ||
-        "feature";
+        pausedWorker.featureTitle || pausedWorker.title || pausedWorker.featureId || "feature";
       appendProgressLog(missionDir, {
         timestamp: nowIso,
         type: "worker_paused",
@@ -241,8 +239,8 @@ function reconcileMissionOnLoadImpl(missionDir, options = {}) {
       timestamp: nowIso,
       type: "mission_paused",
       message: "Mission paused",
-      featureId: pausedWorker ? pausedWorker.featureId ?? null : null,
-      workerNumber: pausedWorker ? pausedWorker.workerNumber ?? 1 : null,
+      featureId: pausedWorker ? (pausedWorker.featureId ?? null) : null,
+      workerNumber: pausedWorker ? (pausedWorker.workerNumber ?? 1) : null,
     });
   }
 
@@ -252,7 +250,7 @@ function reconcileMissionOnLoadImpl(missionDir, options = {}) {
 const loadedStates = new WeakMap();
 const loadedDocuments = new WeakMap();
 function rememberDocument(dir, value, field) {
-  if (!value || typeof value !== 'object') return value;
+  if (!value || typeof value !== "object") return value;
   const bytes = readTransactionFile(getMissionPaths(dir)[field]);
   loadedDocuments.set(value, bytes);
   if (Array.isArray(value.features)) loadedDocuments.set(value.features, bytes);
@@ -261,12 +259,29 @@ function rememberDocument(dir, value, field) {
 function saveDocument(dir, value, options, field, save) {
   const composed = hasActiveMissionTransaction();
   return missionTransaction(dir, () => {
-    const file = getMissionPaths(dir)[field], current = readTransactionFile(file);
-    if (options.expectedRevision !== undefined && JSON.parse(readTransactionFile(getMissionPaths(dir).statePath) ?? '{}').revision !== options.expectedRevision)
-      throw new MissionKernelError('TX_STALE_REVISION', 'Document expectedRevision differs from the current Mission');
-    const result = save(dir, value), next = readTransactionFile(file);
-    if (!composed && loadedDocuments.has(value) && loadedDocuments.get(value) !== current && current !== next)
-      throw new MissionKernelError('TX_STALE_REVISION', 'Document was loaded before another writer committed; reload inside a transaction');
+    const file = getMissionPaths(dir)[field],
+      current = readTransactionFile(file);
+    if (
+      options.expectedRevision !== undefined &&
+      JSON.parse(readTransactionFile(getMissionPaths(dir).statePath) ?? "{}").revision !==
+        options.expectedRevision
+    )
+      throw new MissionKernelError(
+        "TX_STALE_REVISION",
+        "Document expectedRevision differs from the current Mission",
+      );
+    const result = save(dir, value),
+      next = readTransactionFile(file);
+    if (
+      !composed &&
+      loadedDocuments.has(value) &&
+      loadedDocuments.get(value) !== current &&
+      current !== next
+    )
+      throw new MissionKernelError(
+        "TX_STALE_REVISION",
+        "Document was loaded before another writer committed; reload inside a transaction",
+      );
     rememberDocument(dir, value, field);
     return rememberDocument(dir, result, field);
   });
@@ -275,40 +290,103 @@ function rememberState(dir, state) {
   if (state) loadedStates.set(state, readTransactionFile(getMissionPaths(dir).statePath));
   return state;
 }
-export function loadState(dir) { return missionTransaction(dir, () => rememberState(dir, loadStateImpl(dir)), { create: false }); }
-export function tryLoadState(dir) { return missionTransaction(dir, () => rememberState(dir, tryLoadStateImpl(dir)), { create: false }); }
+export function loadState(dir) {
+  return missionTransaction(dir, () => rememberState(dir, loadStateImpl(dir)), { create: false });
+}
+export function tryLoadState(dir) {
+  return missionTransaction(dir, () => rememberState(dir, tryLoadStateImpl(dir)), {
+    create: false,
+  });
+}
 export function saveState(dir, state, options = {}) {
   const composed = hasActiveMissionTransaction();
   return missionTransaction(dir, () => {
     const current = readTransactionFile(getMissionPaths(dir).statePath);
     const loaded = loadedStates.get(state);
-    if (!composed && current !== null && loaded === undefined && options.expectedRevision === undefined && JSON.stringify(state, null, 2) + "\n" !== current)
-      throw new MissionKernelError('TX_EXPECTED_REVISION_REQUIRED', 'A detached state replacement needs expectedRevision; a proposed next revision is not its base revision');
-    if (!composed && loaded !== undefined && current !== loaded && current !== JSON.stringify(state, null, 2) + "\n")
-      throw new MissionKernelError('TX_STALE_REVISION', 'saveState received a stale loaded state; reload inside a transaction');
-    if (options.expectedRevision !== undefined && current !== null && JSON.parse(current).revision !== options.expectedRevision)
-      throw new MissionKernelError('TX_STALE_REVISION', 'saveState expectedRevision differs from the current state');
-    if (current !== null && Number.isSafeInteger(state?.revision) && state.revision < JSON.parse(current).revision)
-      throw new MissionKernelError('TX_STALE_REVISION', 'saveState cannot replace a newer Mission revision');
+    if (
+      !composed &&
+      current !== null &&
+      loaded === undefined &&
+      options.expectedRevision === undefined &&
+      JSON.stringify(state, null, 2) + "\n" !== current
+    )
+      throw new MissionKernelError(
+        "TX_EXPECTED_REVISION_REQUIRED",
+        "A detached state replacement needs expectedRevision; a proposed next revision is not its base revision",
+      );
+    if (
+      !composed &&
+      loaded !== undefined &&
+      current !== loaded &&
+      current !== JSON.stringify(state, null, 2) + "\n"
+    )
+      throw new MissionKernelError(
+        "TX_STALE_REVISION",
+        "saveState received a stale loaded state; reload inside a transaction",
+      );
+    if (
+      options.expectedRevision !== undefined &&
+      current !== null &&
+      JSON.parse(current).revision !== options.expectedRevision
+    )
+      throw new MissionKernelError(
+        "TX_STALE_REVISION",
+        "saveState expectedRevision differs from the current state",
+      );
+    if (
+      current !== null &&
+      Number.isSafeInteger(state?.revision) &&
+      state.revision < JSON.parse(current).revision
+    )
+      throw new MissionKernelError(
+        "TX_STALE_REVISION",
+        "saveState cannot replace a newer Mission revision",
+      );
     const saved = saveStateImpl(dir, state);
     loadedStates.set(state, readTransactionFile(getMissionPaths(dir).statePath));
     return saved;
   });
 }
-export function loadFeaturesDoc(dir) { return missionTransaction(dir, () => rememberDocument(dir, loadFeaturesDocImpl(dir), 'featuresPath'), { create: false }); }
-export function saveFeaturesDoc(dir, value, options = {}) { return saveDocument(dir, value, options, 'featuresPath', saveFeaturesDocImpl); }
-export function loadModelSettings(dir) { return missionTransaction(dir, () => rememberDocument(dir, loadModelSettingsImpl(dir), 'modelSettingsPath'), { create: false }); }
-export function saveModelSettings(dir, value, options = {}) { return saveDocument(dir, value, options, 'modelSettingsPath', saveModelSettingsImpl); }
-export function readProgressLog(dir, ...args) { return missionTransaction(dir, () => readProgressLogImpl(dir, ...args), { create: false }); }
-export function appendProgressLog(dir, ...args) { return missionTransaction(dir, () => appendProgressLogImpl(dir, ...args), { create: true }); }
-export function reconcileMissionOnLoad(dir, ...args) { return missionTransaction(dir, () => reconcileMissionOnLoadImpl(dir, ...args), { create: false }); }
+export function loadFeaturesDoc(dir) {
+  return missionTransaction(
+    dir,
+    () => rememberDocument(dir, loadFeaturesDocImpl(dir), "featuresPath"),
+    { create: false },
+  );
+}
+export function saveFeaturesDoc(dir, value, options = {}) {
+  return saveDocument(dir, value, options, "featuresPath", saveFeaturesDocImpl);
+}
+export function loadModelSettings(dir) {
+  return missionTransaction(
+    dir,
+    () => rememberDocument(dir, loadModelSettingsImpl(dir), "modelSettingsPath"),
+    { create: false },
+  );
+}
+export function saveModelSettings(dir, value, options = {}) {
+  return saveDocument(dir, value, options, "modelSettingsPath", saveModelSettingsImpl);
+}
+export function readProgressLog(dir, ...args) {
+  return missionTransaction(dir, () => readProgressLogImpl(dir, ...args), { create: false });
+}
+export function appendProgressLog(dir, ...args) {
+  return missionTransaction(dir, () => appendProgressLogImpl(dir, ...args), { create: true });
+}
+export function reconcileMissionOnLoad(dir, ...args) {
+  return missionTransaction(dir, () => reconcileMissionOnLoadImpl(dir, ...args), { create: false });
+}
 export function readMissionSnapshot(missionDir) {
-  return missionTransaction(missionDir, () => {
-    const paths = getMissionPaths(missionDir);
-    const state = rememberState(missionDir, readJsonSync(paths.statePath, null));
-    const featuresDoc = readJsonSync(paths.featuresPath, null);
-    const modelSettings = readJsonSync(paths.modelSettingsPath, null);
-    const progressLog = readProgressLog(missionDir);
-    return { state, featuresDoc, modelSettings, progressLog };
-  }, { create: false });
+  return missionTransaction(
+    missionDir,
+    () => {
+      const paths = getMissionPaths(missionDir);
+      const state = rememberState(missionDir, readJsonSync(paths.statePath, null));
+      const featuresDoc = readJsonSync(paths.featuresPath, null);
+      const modelSettings = readJsonSync(paths.modelSettingsPath, null);
+      const progressLog = readProgressLog(missionDir);
+      return { state, featuresDoc, modelSettings, progressLog };
+    },
+    { create: false },
+  );
 }

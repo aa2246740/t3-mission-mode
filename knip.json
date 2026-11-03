@@ -1,0 +1,12 @@
+{
+  "entry": [
+    "t3-mission/kernel/index.mjs",
+    "t3-mission/bridge/cli.mjs",
+    "t3-mission/bridge/mcp-server.mjs",
+    "t3-mission/hud/public/app.js",
+    "t3-mission/test/**/*.mjs",
+    "scripts/**/*.mjs"
+  ],
+  "project": ["t3-mission/**/*.{js,mjs}", "scripts/**/*.mjs"],
+  "ignoreBinaries": ["cc"]
+}

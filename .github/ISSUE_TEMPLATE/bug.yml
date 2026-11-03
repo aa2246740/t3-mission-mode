@@ -1,0 +1,26 @@
+name: Report a bug
+description: Report a reproducible Mission Mode failure.
+title: "bug: "
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and expected behavior
+      description: Include exact commands and whether this is a fixture, local HUD, or real provider.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Observed result and safe evidence
+      description: Include Node/OS versions and commit SHA. Redact credentials, prompts, paths, and private receipts.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [kernel, bridge, hud, native, tooling, documentation]
+    validations:
+      required: true

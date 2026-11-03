@@ -1,0 +1,9 @@
+# Build with Apple Container on macOS; choose the target platform explicitly.
+FROM docker.io/library/node:26.7.0-bookworm@sha256:e929171d35b9df7773a3ec5b068e387fa109441dc90f91e6560af5d39b7e9bf1
+WORKDIR /app
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci
+COPY . .
+RUN node t3-mission/native/build.mjs /usr/local/include/node
+ENV T3_TEST_CONCURRENCY=4
+CMD ["npm", "run", "coverage"]

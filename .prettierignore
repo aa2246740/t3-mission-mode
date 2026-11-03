@@ -1,0 +1,7 @@
+node_modules/
+coverage/
+reports/
+artifacts/
+package-lock.json
+docs/screenshots/
+t3-mission/native/*.node.json

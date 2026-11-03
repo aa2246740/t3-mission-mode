@@ -32,7 +32,8 @@
   --status-slate-bg: #f1f5f9;
   --status-slate-border: #cbd5e1;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
@@ -160,8 +161,15 @@ body {
 }
 
 @keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.85); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
 }
 
 .mission-badge {
@@ -298,7 +306,10 @@ body {
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    opacity 0.15s;
   white-space: nowrap;
 }
 
@@ -492,7 +503,9 @@ body {
   border-radius: 6px;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
 
 .session-item:hover {
@@ -1190,11 +1203,21 @@ body {
   padding: 0;
 }
 
-.effort-bar-btn[data-effort="1"] { height: 5px; }
-.effort-bar-btn[data-effort="2"] { height: 8px; }
-.effort-bar-btn[data-effort="3"] { height: 11px; }
-.effort-bar-btn[data-effort="4"] { height: 14px; }
-.effort-bar-btn[data-effort="5"] { height: 16px; }
+.effort-bar-btn[data-effort="1"] {
+  height: 5px;
+}
+.effort-bar-btn[data-effort="2"] {
+  height: 8px;
+}
+.effort-bar-btn[data-effort="3"] {
+  height: 11px;
+}
+.effort-bar-btn[data-effort="4"] {
+  height: 14px;
+}
+.effort-bar-btn[data-effort="5"] {
+  height: 16px;
+}
 
 .effort-bar-btn.filled {
   background: var(--status-running-fg);

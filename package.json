@@ -5,11 +5,71 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "node --test t3-mission/test/*.test.mjs t3-mission/test/receipt-boundary.test.mjs",
+    "test": "node scripts/test.mjs",
     "hud": "node t3-mission/hud/server.mjs",
-    "build:lock": "node t3-mission/native/build.mjs"
+    "build:lock": "node t3-mission/native/build.mjs",
+    "setup": "node scripts/setup.mjs",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "architecture": "node scripts/check-architecture.mjs",
+    "quality": "node scripts/check-quality.mjs",
+    "dependencies:check": "knip --dependencies",
+    "duplicates": "jscpd --config .jscpd.json",
+    "docs:generate": "node scripts/generate-docs.mjs",
+    "docs:check": "node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs",
+    "check": "npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check",
+    "coverage": "c8 npm test",
+    "test:security": "node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs",
+    "test:stability": "node scripts/test-stability.mjs",
+    "qa": "node scripts/qa.mjs",
+    "profile": "node scripts/profile.mjs",
+    "release:notes": "node scripts/release-notes.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "acorn": "8.19.0",
+    "c8": "12.0.0",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
+    "jscpd": "5.4.2",
+    "knip": "6.44.1",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "minimatch": "11.0.4",
+    "glob": "14.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aa2246740/t3-mission-mode.git"
+  },
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "install.sh",
+    "scripts",
+    "docs",
+    "t3-mission/skill",
+    "t3-mission/kernel",
+    "t3-mission/bridge",
+    "t3-mission/hud",
+    "t3-mission/ops",
+    "t3-mission/test",
+    "t3-mission/native/*.c",
+    "t3-mission/native/build.mjs",
+    "Containerfile.test",
+    ".dockerignore",
+    ".env.example",
+    ".node-version"
+  ]
 }

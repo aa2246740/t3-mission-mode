@@ -1,0 +1,39 @@
+name: Package tagged release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run setup
+      - run: npm run check
+      - run: npm run coverage
+      - run: npm run qa
+      - name: Verify tag version and package source
+        env:
+          T3_RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; if (process.env.T3_RELEASE_TAG !== "v" + JSON.parse(fs.readFileSync("package.json")).version) throw new Error("Tag does not match package version");'
+          mkdir -p artifacts
+          node scripts/timed-command.mjs package npm pack --pack-destination artifacts
+          node scripts/verify-package.mjs artifacts/*.tgz
+          sha256sum artifacts/*.tgz > artifacts/SHA256SUMS
+      - name: Publish archive, checksum, and generated release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          T3_RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$T3_RELEASE_TAG" artifacts/*.tgz artifacts/SHA256SUMS --verify-tag --generate-notes

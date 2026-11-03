@@ -1,4 +1,9 @@
-import { decideDispatchOutcome, unwrapMcpResponse, unwrapObservationResponse, classifyControlReceipt } from "../kernel/schema.mjs";
+import {
+  decideDispatchOutcome,
+  unwrapMcpResponse,
+  unwrapObservationResponse,
+  classifyControlReceipt,
+} from "../kernel/schema.mjs";
 import { execFile as execFileCallback } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,7 +21,7 @@ export const VALID_DELEGATE_ROLES = new Set([
   "review",
   "design",
   "test",
-  "general"
+  "general",
 ]);
 
 export const ROLE_BY_MISSION_KIND = {
@@ -31,7 +36,7 @@ export const ROLE_BY_MISSION_KIND = {
   explorer: "research",
   research: "research",
   design: "design",
-  general: "general"
+  general: "general",
 };
 
 export const EFFORT_LEVEL_TO_STRING = {
@@ -39,7 +44,7 @@ export const EFFORT_LEVEL_TO_STRING = {
   2: "low",
   3: "medium",
   4: "high",
-  5: "max"
+  5: "max",
 };
 
 export const VALID_CODEX_REASONING_EFFORTS = new Set([
@@ -48,14 +53,14 @@ export const VALID_CODEX_REASONING_EFFORTS = new Set([
   "medium",
   "high",
   "xhigh",
-  "max"
+  "max",
 ]);
 
 export const T3_RUNTIME_MODE_ORDER = Object.freeze([
   "approval-required",
   "auto-accept-edits",
   "auto",
-  "full-access"
+  "full-access",
 ]);
 
 export const T3_APPROVAL_TO_DROID_AUTONOMY = Object.freeze({
@@ -63,7 +68,7 @@ export const T3_APPROVAL_TO_DROID_AUTONOMY = Object.freeze({
   "approval-required": "normal",
   "auto-accept-edits": "auto-low",
   auto: "auto-high",
-  "full-access": "auto-high"
+  "full-access": "auto-high",
 });
 
 export const DROID_AUTONOMY_TO_T3_RUNTIME_MODE = Object.freeze({
@@ -71,7 +76,7 @@ export const DROID_AUTONOMY_TO_T3_RUNTIME_MODE = Object.freeze({
   normal: "approval-required",
   "auto-low": "auto-accept-edits",
   "auto-medium": "auto",
-  "auto-high": "full-access"
+  "auto-high": "full-access",
 });
 
 const VALID_DROID_AUTONOMY_LEVELS = new Set([
@@ -79,7 +84,7 @@ const VALID_DROID_AUTONOMY_LEVELS = new Set([
   "normal",
   "auto-low",
   "auto-medium",
-  "auto-high"
+  "auto-high",
 ]);
 
 function normalizeModeToken(value) {
@@ -165,7 +170,7 @@ export function mapApprovalModeToProviderAutonomy(providerInstanceId, modeOrSlot
 
     if (isStringInput) {
       return {
-        autonomy_level: mapDroidToken(modeOrSlot) ?? "auto-high"
+        autonomy_level: mapDroidToken(modeOrSlot) ?? "auto-high",
       };
     }
 
@@ -175,7 +180,7 @@ export function mapApprovalModeToProviderAutonomy(providerInstanceId, modeOrSlot
       slotObj.runtimeMode ?? slotObj.approvalMode ?? slotObj.mode,
       rawOptions.autonomy_level ?? rawOptions.autonomyLevel,
       normalizeModeToken(rawOptions.interactionMode) === "plan" ? "plan" : undefined,
-      rawOptions.runtimeMode ?? rawOptions.approvalMode ?? rawOptions.mode
+      rawOptions.runtimeMode ?? rawOptions.approvalMode ?? rawOptions.mode,
     ];
 
     for (const candidate of candidates) {
@@ -200,11 +205,7 @@ export function mapApprovalModeToProviderAutonomy(providerInstanceId, modeOrSlot
       if (token === "approval-required" || token === "normal" || token === "ask") {
         return "ask";
       }
-      if (
-        token === "auto-accept-edits" ||
-        token === "accept-edits" ||
-        token === "auto-low"
-      ) {
+      if (token === "auto-accept-edits" || token === "accept-edits" || token === "auto-low") {
         return "accept-edits";
       }
       if (
@@ -222,7 +223,7 @@ export function mapApprovalModeToProviderAutonomy(providerInstanceId, modeOrSlot
 
     if (isStringInput) {
       return {
-        mode: mapDevinToken(modeOrSlot) ?? "bypass"
+        mode: mapDevinToken(modeOrSlot) ?? "bypass",
       };
     }
 
@@ -238,7 +239,7 @@ export function mapApprovalModeToProviderAutonomy(providerInstanceId, modeOrSlot
         rawOptions.runtimeMode ??
         rawOptions.approvalMode ??
         rawOptions.autonomy_level ??
-        rawOptions.autonomyLevel
+        rawOptions.autonomyLevel,
     ];
 
     for (const candidate of candidates) {
@@ -281,7 +282,7 @@ export function mapApprovalModeToProviderAutonomy(providerInstanceId, modeOrSlot
 
     if (isStringInput) {
       return {
-        mode: mapCursorToken(modeOrSlot) ?? "agent"
+        mode: mapCursorToken(modeOrSlot) ?? "agent",
       };
     }
 
@@ -297,7 +298,7 @@ export function mapApprovalModeToProviderAutonomy(providerInstanceId, modeOrSlot
         rawOptions.runtimeMode ??
         rawOptions.approvalMode ??
         rawOptions.autonomy_level ??
-        rawOptions.autonomyLevel
+        rawOptions.autonomyLevel,
     ];
 
     for (const candidate of candidates) {
@@ -331,7 +332,7 @@ export function resolveEffectiveRuntimeMode({
   requestedMode,
   autonomyLevel,
   parentRuntimeMode,
-  providerRuntimeModes
+  providerRuntimeModes,
 } = {}) {
   const fromRequested = normalizeToT3RuntimeMode(requestedMode);
   const fromAutonomy = normalizeToT3RuntimeMode(autonomyLevel);
@@ -356,9 +357,7 @@ export function resolveEffectiveRuntimeMode({
   const hasNonEmptyProviderModes =
     Array.isArray(providerRuntimeModes) && providerRuntimeModes.length > 0;
   const normalizedProviderModes = hasNonEmptyProviderModes
-    ? providerRuntimeModes
-        .map((m) => normalizeToT3RuntimeMode(m))
-        .filter((m) => Boolean(m))
+    ? providerRuntimeModes.map((m) => normalizeToT3RuntimeMode(m)).filter((m) => Boolean(m))
     : [];
 
   const candidatePool =
@@ -369,7 +368,7 @@ export function resolveEffectiveRuntimeMode({
         : [...T3_RUNTIME_MODE_ORDER];
 
   const withinCeiling = candidatePool.filter(
-    (m) => T3_RUNTIME_MODE_ORDER.indexOf(m) <= maxAllowedRank
+    (m) => T3_RUNTIME_MODE_ORDER.indexOf(m) <= maxAllowedRank,
   );
 
   if (withinCeiling.length > 0) {
@@ -378,7 +377,7 @@ export function resolveEffectiveRuntimeMode({
 
   if (normalizedParent && hasNonEmptyProviderModes) {
     const err = new Error(
-      `Cannot resolve runtimeMode: no provider runtimeMode in [${providerRuntimeModes.join(", ")}] is within parent ceiling "${normalizedParent}"`
+      `Cannot resolve runtimeMode: no provider runtimeMode in [${providerRuntimeModes.join(", ")}] is within parent ceiling "${normalizedParent}"`,
     );
     /** @type {any} */ (err).code = "RUNTIME_MODE_CEILING_EXCEEDED";
     throw err;
@@ -466,7 +465,7 @@ const TRANSIENT_SLOT_OPTION_KEYS = new Set([
   "approvalMode",
   "interactionMode",
   "autonomy_level",
-  "autonomyLevel"
+  "autonomyLevel",
 ]);
 
 /**
@@ -502,10 +501,7 @@ export function normalizeTargetFromSlot(slotConfig) {
   }
 
   const rawProvider =
-    slotConfig.providerInstanceId ??
-    slotConfig.provider ??
-    slotConfig.providerId ??
-    "";
+    slotConfig.providerInstanceId ?? slotConfig.provider ?? slotConfig.providerId ?? "";
   const providerInstanceId = String(rawProvider).trim();
   if (!providerInstanceId) {
     throw new Error("slotConfig.providerInstanceId is required");
@@ -518,7 +514,9 @@ export function normalizeTargetFromSlot(slotConfig) {
   }
 
   const rawOptions =
-    slotConfig.options && typeof slotConfig.options === "object" && !Array.isArray(slotConfig.options)
+    slotConfig.options &&
+    typeof slotConfig.options === "object" &&
+    !Array.isArray(slotConfig.options)
       ? { ...slotConfig.options }
       : {};
 
@@ -561,8 +559,7 @@ export function normalizeTargetFromSlot(slotConfig) {
 
   const options = {};
   const isGrokTarget =
-    providerInstanceId === "grok" ||
-    (providerInstanceId === "cpa" && /^grok/i.test(model));
+    providerInstanceId === "grok" || (providerInstanceId === "cpa" && /^grok/i.test(model));
 
   if (providerInstanceId === "codex") {
     for (const [key, val] of Object.entries(rawOptions)) {
@@ -602,7 +599,7 @@ export function normalizeTargetFromSlot(slotConfig) {
     }
     const { autonomy_level } = mapApprovalModeToProviderAutonomy(
       "acpRegistry_factory_droid",
-      slotConfig
+      slotConfig,
     );
     options.autonomy_level = autonomy_level || "auto-high";
   } else if (providerInstanceId === "acpRegistry_devin") {
@@ -651,7 +648,7 @@ export function normalizeTargetFromSlot(slotConfig) {
   return {
     providerInstanceId,
     model,
-    options
+    options,
   };
 }
 
@@ -671,12 +668,11 @@ export function resolveTargetFromModelSettings(modelSettings, roleOrSlot = "work
       ? modelSettings.slots
       : modelSettings;
 
-  const normalizedKey = String(roleOrSlot || "worker").toLowerCase().trim();
+  const normalizedKey = String(roleOrSlot || "worker")
+    .toLowerCase()
+    .trim();
   let slotKey = normalizedKey;
-  if (
-    normalizedKey === "implementation" ||
-    normalizedKey === "worker"
-  ) {
+  if (normalizedKey === "implementation" || normalizedKey === "worker") {
     slotKey = "worker";
   } else if (
     normalizedKey === "review" ||
@@ -687,8 +683,12 @@ export function resolveTargetFromModelSettings(modelSettings, roleOrSlot = "work
     normalizedKey === "validator"
   ) {
     slotKey = slots[normalizedKey] ? normalizedKey : "validator";
-  } else if (normalizedKey === "orchestrator" || normalizedKey === "research" || normalizedKey === "explorer") {
-    slotKey = slots[normalizedKey] ? normalizedKey : (slots.worker ? "worker" : "orchestrator");
+  } else if (
+    normalizedKey === "orchestrator" ||
+    normalizedKey === "research" ||
+    normalizedKey === "explorer"
+  ) {
+    slotKey = slots[normalizedKey] ? normalizedKey : slots.worker ? "worker" : "orchestrator";
   }
 
   const slotConfig = slots[slotKey] ?? slots.worker ?? slots.validator ?? slots.orchestrator;
@@ -704,18 +704,32 @@ export function resolveTargetFromModelSettings(modelSettings, roleOrSlot = "work
  * @param {unknown} rawOutput
  * @returns {any}
  */
-export function parseT3ToolOutput(rawOutput, operation = "dispatch", expected = {}, { retainRaw = false } = {}) {
+export function parseT3ToolOutput(
+  rawOutput,
+  operation = "dispatch",
+  expected = {},
+  { retainRaw = false } = {},
+) {
   if (rawOutput === null || rawOutput === undefined) return retainRaw ? rawOutput : {};
   if (typeof rawOutput !== "object") {
     const text = String(rawOutput).trim();
     if (!text) return {};
-    try { rawOutput = JSON.parse(text); } catch { return { rawOutput: text }; }
+    try {
+      rawOutput = JSON.parse(text);
+    } catch {
+      return { rawOutput: text };
+    }
   }
-  if (operation === "observation") return retainRaw ? rawOutput : unwrapObservationResponse(rawOutput, {}, { allowList: true });
-  const verdict = operation === "dispatch" ? decideDispatchOutcome(rawOutput, { expectedIdentity: expected }) : classifyControlReceipt(rawOutput, operation, expected);
+  if (operation === "observation")
+    return retainRaw ? rawOutput : unwrapObservationResponse(rawOutput, {}, { allowList: true });
+  const verdict =
+    operation === "dispatch"
+      ? decideDispatchOutcome(rawOutput, { expectedIdentity: expected })
+      : classifyControlReceipt(rawOutput, operation, expected);
   if (retainRaw) return verdict.raw;
-  try { return unwrapMcpResponse(rawOutput, operation, expected); }
-  catch (error) {
+  try {
+    return unwrapMcpResponse(rawOutput, operation, expected);
+  } catch (error) {
     if (error.code === "INVALID_T3_OBSERVATION") return rawOutput;
     error.runtimeResult = rawOutput;
     throw error;
@@ -732,14 +746,14 @@ function resolveCallContext(envOrOptions) {
     return {
       env: process.env,
       transportClient: envOrOptions,
-      execFileImpl: execFileAsync
+      execFileImpl: execFileAsync,
     };
   }
   if (!envOrOptions || typeof envOrOptions !== "object") {
     return {
       env: process.env,
       transportClient: null,
-      execFileImpl: execFileAsync
+      execFileImpl: execFileAsync,
     };
   }
 
@@ -749,9 +763,7 @@ function resolveCallContext(envOrOptions) {
     "execFileImpl" in envOrOptions ||
     ("env" in envOrOptions && typeof envOrOptions.env === "object");
 
-  const env = hasWrapperKeys
-    ? (envOrOptions.env ?? process.env)
-    : envOrOptions;
+  const env = hasWrapperKeys ? (envOrOptions.env ?? process.env) : envOrOptions;
 
   const transportClient =
     envOrOptions.transportClient ??
@@ -787,7 +799,7 @@ function resolveCallContext(envOrOptions) {
     transportClient,
     execFileImpl,
     cwd: envOrOptions.cwd,
-    timeoutMs: envOrOptions.timeoutMs
+    timeoutMs: envOrOptions.timeoutMs,
   };
 }
 
@@ -801,54 +813,82 @@ function resolveCallContext(envOrOptions) {
  * @param {Record<string, unknown> | Function} [envOrOptions=process.env]
  * @returns {Promise<any>}
  */
-export async function callT3McpTool(toolName, args = {}, envOrOptions = process.env, evidence = {}) {
+export async function callT3McpTool(
+  toolName,
+  args = {},
+  envOrOptions = process.env,
+  evidence = {},
+) {
   if (!toolName || typeof toolName !== "string") {
     throw preSendFailure(new TypeError("toolName must be a non-empty string"));
   }
   const payload = args && typeof args === "object" ? args : {};
-  const operation = toolName === "t3_thread_send" ? "resume" : toolName === "t3_thread_interrupt" ? "pause" : toolName === "delegate_task" ? "dispatch" : "observation";
+  const operation =
+    toolName === "t3_thread_send"
+      ? "resume"
+      : toolName === "t3_thread_interrupt"
+        ? "pause"
+        : toolName === "delegate_task"
+          ? "dispatch"
+          : "observation";
   const { env, transportClient, execFileImpl, cwd, timeoutMs } = resolveCallContext(envOrOptions);
 
   if (transportClient) {
     if (typeof transportClient === "function") {
       const result = await transportClient(toolName, payload, env);
-      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, {
+        retainRaw: evidence.retainRaw ?? toolName === "delegate_task",
+      });
     }
     if (typeof transportClient.callTool === "function") {
       const result = await transportClient.callTool(toolName, payload, env);
-      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, {
+        retainRaw: evidence.retainRaw ?? toolName === "delegate_task",
+      });
     }
     if (typeof transportClient.call === "function") {
       const result = await transportClient.call(toolName, payload, env);
-      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, {
+        retainRaw: evidence.retainRaw ?? toolName === "delegate_task",
+      });
     }
     if (typeof transportClient[toolName] === "function") {
       const result = await transportClient[toolName](payload, env);
-      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
+      return parseT3ToolOutput(result, operation, evidence.expected ?? payload, {
+        retainRaw: evidence.retainRaw ?? toolName === "delegate_task",
+      });
     }
   }
 
   const nodeBin = env?.T3_ACP_MCP_NODE ? String(env.T3_ACP_MCP_NODE).trim() : "";
   if (!nodeBin) {
-    throw preSendFailure(new Error(`Cannot call T3 MCP tool "${toolName}": T3_ACP_MCP_NODE is not set in env and no transportClient was provided.`), "NO_T3_TRANSPORT");
+    throw preSendFailure(
+      new Error(
+        `Cannot call T3 MCP tool "${toolName}": T3_ACP_MCP_NODE is not set in env and no transportClient was provided.`,
+      ),
+      "NO_T3_TRANSPORT",
+    );
   }
 
   const entrypoint = env?.T3_ACP_MCP_ENTRYPOINT ? String(env.T3_ACP_MCP_ENTRYPOINT).trim() : "";
   let serializedArgs;
-  try { serializedArgs = JSON.stringify(payload); }
-  catch (error) { throw preSendFailure(error); }
+  try {
+    serializedArgs = JSON.stringify(payload);
+  } catch (error) {
+    throw preSendFailure(error);
+  }
   const cliArgs = entrypoint
     ? [entrypoint, "acp-mcp-call", toolName, serializedArgs]
     : ["acp-mcp-call", toolName, serializedArgs];
 
   const execEnv = {
     ...env,
-    ELECTRON_RUN_AS_NODE: "1"
+    ELECTRON_RUN_AS_NODE: "1",
   };
 
   const execOptions = {
     env: execEnv,
-    maxBuffer: 16 * 1024 * 1024
+    maxBuffer: 16 * 1024 * 1024,
   };
   if (cwd) {
     execOptions.cwd = cwd;
@@ -858,13 +898,17 @@ export async function callT3McpTool(toolName, args = {}, envOrOptions = process.
   }
 
   let stdout;
-  try { ({ stdout } = await execFileImpl(nodeBin, cliArgs, execOptions)); }
-  catch (error) {
+  try {
+    ({ stdout } = await execFileImpl(nodeBin, cliArgs, execOptions));
+  } catch (error) {
     // Numeric process exit codes and transport-thrown codes are not spawn proof.
-    if (["ENOENT", "EACCES"].includes(error.code) && String(error.syscall).startsWith("spawn")) preSendFailure(error);
+    if (["ENOENT", "EACCES"].includes(error.code) && String(error.syscall).startsWith("spawn"))
+      preSendFailure(error);
     throw error;
   }
-  return parseT3ToolOutput(stdout, operation, evidence.expected ?? payload, { retainRaw: evidence.retainRaw ?? toolName === "delegate_task" });
+  return parseT3ToolOutput(stdout, operation, evidence.expected ?? payload, {
+    retainRaw: evidence.retainRaw ?? toolName === "delegate_task",
+  });
 }
 
 /**
@@ -900,12 +944,19 @@ export function formatMilestoneBadge(milestone) {
  * @returns {string}
  */
 export function buildMissionTaskTitle(params = {}) {
-  if (typeof params.title === "string" && /^\[M[^\]]+\]\s+(Worker|Validator|Explorer)\s+#\d+:/i.test(params.title.trim())) {
+  if (
+    typeof params.title === "string" &&
+    /^\[M[^\]]+\]\s+(Worker|Validator|Explorer)\s+#\d+:/i.test(params.title.trim())
+  ) {
     return params.title.trim();
   }
 
-  const badge = formatMilestoneBadge(params.milestoneId ?? params.milestone ?? params.milestoneNumber ?? 1);
-  const roleInput = String(params.kind ?? params.role ?? "worker").toLowerCase().trim();
+  const badge = formatMilestoneBadge(
+    params.milestoneId ?? params.milestone ?? params.milestoneNumber ?? 1,
+  );
+  const roleInput = String(params.kind ?? params.role ?? "worker")
+    .toLowerCase()
+    .trim();
 
   let actorLabel = "Worker";
   if (
@@ -922,11 +973,7 @@ export function buildMissionTaskTitle(params = {}) {
   }
 
   const rawIndex =
-    params.workerNumber ??
-    params.validatorNumber ??
-    params.sequenceNumber ??
-    params.index ??
-    1;
+    params.workerNumber ?? params.validatorNumber ?? params.sequenceNumber ?? params.index ?? 1;
   const numMatch = String(rawIndex).match(/(\d+)/);
   const numberLabel = numMatch ? numMatch[1] : "1";
 
@@ -935,7 +982,7 @@ export function buildMissionTaskTitle(params = {}) {
       params.featureTitle ??
       params.featureName ??
       params.featureId ??
-      (actorLabel === "Validator" ? "Scrutiny intake" : "Feature implementation")
+      (actorLabel === "Validator" ? "Scrutiny intake" : "Feature implementation"),
   ).trim();
 
   return `${badge} ${actorLabel} #${numberLabel}: ${subject}`;
@@ -948,7 +995,9 @@ export function buildMissionTaskTitle(params = {}) {
  * @returns {"implementation" | "research" | "review" | "design" | "test" | "general"}
  */
 export function normalizeDelegateRole(roleOrKind) {
-  const key = String(roleOrKind || "implementation").toLowerCase().trim();
+  const key = String(roleOrKind || "implementation")
+    .toLowerCase()
+    .trim();
   if (ROLE_BY_MISSION_KIND[key]) {
     return ROLE_BY_MISSION_KIND[key];
   }
@@ -969,10 +1018,14 @@ export function buildStableClientRequestId(params = {}) {
     return params.clientRequestId.trim();
   }
   const missionPart = String(params.missionId ?? "mission").trim();
-  const milestonePart = String(params.milestoneId ?? params.milestone ?? "m1").trim().toLowerCase();
-  const rolePart = normalizeDelegateRole(/** @type {string} */ (params.role ?? params.kind ?? "implementation"));
+  const milestonePart = String(params.milestoneId ?? params.milestone ?? "m1")
+    .trim()
+    .toLowerCase();
+  const rolePart = normalizeDelegateRole(
+    /** @type {string} */ (params.role ?? params.kind ?? "implementation"),
+  );
   const featurePart = String(
-    params.featureId ?? params.validatorKind ?? params.workerNumber ?? params.index ?? "task-1"
+    params.featureId ?? params.validatorKind ?? params.workerNumber ?? params.index ?? "task-1",
   )
     .trim()
     .replace(/\s+/g, "-");
@@ -1004,7 +1057,9 @@ export async function delegateMissionTask(params, envOrOptions = process.env) {
       throw new TypeError("delegateMissionTask requires a params object");
     }
 
-    role = normalizeDelegateRole(/** @type {string} */ (params.role ?? params.kind ?? "implementation"));
+    role = normalizeDelegateRole(
+      /** @type {string} */ (params.role ?? params.kind ?? "implementation"),
+    );
     title = buildMissionTaskTitle(params);
     clientRequestId = buildStableClientRequestId(params);
     isolation = params.isolation === undefined ? "worktree" : params.isolation;
@@ -1025,7 +1080,7 @@ export async function delegateMissionTask(params, envOrOptions = process.env) {
     } else if (params.modelSettings && typeof params.modelSettings === "object") {
       target = resolveTargetFromModelSettings(
         /** @type {Record<string, unknown>} */ (params.modelSettings),
-        String(params.kind ?? role)
+        String(params.kind ?? role),
       );
     }
 
@@ -1035,7 +1090,7 @@ export async function delegateMissionTask(params, envOrOptions = process.env) {
       role,
       isolation,
       mode,
-      clientRequestId
+      clientRequestId,
     };
 
     if (target) {
@@ -1053,7 +1108,7 @@ export async function delegateMissionTask(params, envOrOptions = process.env) {
                 : undefined,
               providerRuntimeModes: Array.isArray(params.providerRuntimeModes)
                 ? params.providerRuntimeModes
-                : undefined
+                : undefined,
             })
           : params.runtimeMode;
     }
@@ -1063,8 +1118,9 @@ export async function delegateMissionTask(params, envOrOptions = process.env) {
     if (typeof params.timeoutMs === "number") {
       delegateArgs.timeoutMs = params.timeoutMs;
     }
-
-  } catch (error) { throw preSendFailure(error); }
+  } catch (error) {
+    throw preSendFailure(error);
+  }
 
   const response = await callT3McpTool("delegate_task", delegateArgs, envOrOptions);
   return {
@@ -1079,7 +1135,7 @@ export async function delegateMissionTask(params, envOrOptions = process.env) {
     role,
     isolation,
     clientRequestId,
-    target
+    target,
   };
 }
 
@@ -1091,19 +1147,22 @@ export async function delegateMissionTask(params, envOrOptions = process.env) {
  * @param {Record<string, unknown>} [missionState={}]
  * @param {Record<string, unknown> | Function} [envOrOptions=process.env]
  */
-export async function runFeature(feature, slotConfig, missionState = {}, envOrOptions = process.env) {
+export async function runFeature(
+  feature,
+  slotConfig,
+  missionState = {},
+  envOrOptions = process.env,
+) {
   const activeWorker = missionState?.activeWorker || {};
   const workerNumber = activeWorker.workerNumber ?? feature.workerNumber ?? 1;
   const attempt = activeWorker.attempt ?? feature.attempts ?? 1;
   const runId = activeWorker.runId ?? feature.runId ?? null;
   const featureId = feature.id ?? activeWorker.featureId ?? null;
   const baseTask =
-    feature.prompt ||
-    feature.description ||
-    `Implement feature ${feature.id}: ${feature.title}`;
+    feature.prompt || feature.description || `Implement feature ${feature.id}: ${feature.title}`;
   const identityParts = [
     runId ? `runId="${runId}"` : null,
-    featureId ? `featureId="${featureId}"` : null
+    featureId ? `featureId="${featureId}"` : null,
   ].filter(Boolean);
   const task =
     identityParts.length > 0
@@ -1123,9 +1182,9 @@ export async function runFeature(feature, slotConfig, missionState = {}, envOrOp
       workerNumber,
       attempt,
       slot: slotConfig,
-      task
+      task,
     },
-    envOrOptions
+    envOrOptions,
   );
   const response = delegation?.response ?? delegation;
   return {
@@ -1136,7 +1195,7 @@ export async function runFeature(feature, slotConfig, missionState = {}, envOrOp
     taskId: response?.taskId ?? delegation.taskId ?? null,
     childThreadId: response?.childThreadId ?? delegation.childThreadId ?? null,
     childRunId: response?.childRunId ?? delegation.childRunId ?? null,
-    worktreePath: response?.worktreePath ?? delegation.worktreePath ?? null
+    worktreePath: response?.worktreePath ?? delegation.worktreePath ?? null,
   };
 }
 
@@ -1176,7 +1235,7 @@ export async function checkGitTreeBeforeResume(targetPath, options = {}) {
     const { stdout: statusStdout } = await execFileImpl(
       "git",
       ["-C", resolvedPath, "status", "--porcelain"],
-      { maxBuffer: 4 * 1024 * 1024 }
+      { maxBuffer: 4 * 1024 * 1024 },
     );
 
     let branch = null;
@@ -1184,7 +1243,7 @@ export async function checkGitTreeBeforeResume(targetPath, options = {}) {
       const { stdout: branchStdout } = await execFileImpl(
         "git",
         ["-C", resolvedPath, "rev-parse", "--abbrev-ref", "HEAD"],
-        { maxBuffer: 1024 * 1024 }
+        { maxBuffer: 1024 * 1024 },
       );
       branch = String(branchStdout || "").trim() || null;
     } catch {
@@ -1234,7 +1293,7 @@ export async function checkGitTreeBeforeResume(targetPath, options = {}) {
       modifiedFiles,
       statusLines: rawLines,
       canResume,
-      summary
+      summary,
     };
   } catch (err) {
     const errMessage = err instanceof Error ? err.message : String(err);
@@ -1250,7 +1309,7 @@ export async function checkGitTreeBeforeResume(targetPath, options = {}) {
       statusLines: [],
       canResume: false,
       error: errMessage,
-      summary: `Cannot resume mission: Git inspection failed (${errMessage}).`
+      summary: `Cannot resume mission: Git inspection failed (${errMessage}).`,
     };
   }
 }
@@ -1268,14 +1327,20 @@ export async function checkGitTreeBeforeResume(targetPath, options = {}) {
  * @param {Record<string, unknown> | Function} [envOrOptions=process.env]
  * @param {Record<string, unknown>} [maybeMissionState]
  */
-export async function resumeWorker(params, envOrOptions = process.env, maybeMissionState = undefined) {
+export async function resumeWorker(
+  params,
+  envOrOptions = process.env,
+  maybeMissionState = undefined,
+) {
   if (!params || typeof params !== "object") {
     throw new TypeError("resumeWorker requires a params object");
   }
 
   const missionState =
     maybeMissionState ??
-    (params.missionState && typeof params.missionState === "object" ? params.missionState : undefined);
+    (params.missionState && typeof params.missionState === "object"
+      ? params.missionState
+      : undefined);
 
   const activeWorker =
     (params.activeWorker && typeof params.activeWorker === "object"
@@ -1287,17 +1352,16 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
   const targetWorktreePath =
     params.worktreePath ??
     activeWorker.worktreePath ??
-    (typeof envOrOptions === "object" && envOrOptions ? envOrOptions.worktreePath ?? envOrOptions.repoPath : undefined) ??
+    (typeof envOrOptions === "object" && envOrOptions
+      ? (envOrOptions.worktreePath ?? envOrOptions.repoPath)
+      : undefined) ??
     params.repoPath ??
     missionState?.worktreePath ??
     missionState?.repoPath ??
     process.cwd();
 
   const featureId =
-    params.featureId ??
-    activeWorker.featureId ??
-    missionState?.currentFeatureId ??
-    null;
+    params.featureId ?? activeWorker.featureId ?? missionState?.currentFeatureId ?? null;
 
   const preflight =
     params.preflight && typeof params.preflight === "object"
@@ -1307,7 +1371,7 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
         : await checkGitTreeBeforeResume(String(targetWorktreePath), {
             ...(typeof envOrOptions === "object" ? envOrOptions : {}),
             featureId,
-            workerTitle: activeWorker.featureTitle ?? activeWorker.title
+            workerTitle: activeWorker.featureTitle ?? activeWorker.title,
           });
 
   if ((!preflight.canResume || preflight.hasConflicts) && params.allowConflicts !== true) {
@@ -1325,18 +1389,24 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
       childThreadId: activeWorker.childThreadId ?? activeWorker.threadId ?? null,
       taskId: activeWorker.taskId ?? null,
       childRunId: activeWorker.childRunId ?? null,
-      worktreePath: preflight.path ?? String(targetWorktreePath)
+      worktreePath: preflight.path ?? String(targetWorktreePath),
     };
   }
 
   const childThreadId = String(
-    activeWorker.childThreadId ?? activeWorker.threadId ?? params.childThreadId ?? params.threadId ?? ""
+    activeWorker.childThreadId ??
+      activeWorker.threadId ??
+      params.childThreadId ??
+      params.threadId ??
+      "",
   ).trim();
 
   const defaultResumeMessage = [
     "[resume the mission]",
     preflight.summary,
-    featureId ? `Continue implementing feature "${featureId}" and complete verification.` : "Continue the interrupted worker task and complete verification."
+    featureId
+      ? `Continue implementing feature "${featureId}" and complete verification.`
+      : "Continue the interrupted worker task and complete verification.",
   ].join("\n\n");
 
   const message = String(params.message ?? params.prompt ?? defaultResumeMessage).trim();
@@ -1350,19 +1420,39 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
       threadId: childThreadId,
       message,
       mode: params.mode ?? "auto",
-      clientRequestId
+      clientRequestId,
     };
 
-    const response = await callT3McpTool("t3_thread_send", sendArgs, envOrOptions, { expected: activeWorker, retainRaw: true });
+    const response = await callT3McpTool("t3_thread_send", sendArgs, envOrOptions, {
+      expected: activeWorker,
+      retainRaw: true,
+    });
     const verdict = classifyControlReceipt(response, "resume", activeWorker);
-    return { ...verdict.raw, response: verdict.raw, classification: verdict.classification, identity: verdict.identity, diagnostics: verdict.diagnostics, action: "t3_thread_send", preflight, gitCheck: preflight, summary: preflight.summary, request: sendArgs,
-      ...(verdict.classification !== "confirmed" ? { code: response?.code || "RESUME_UNCONFIRMED" } : {}) };
+    return {
+      ...verdict.raw,
+      response: verdict.raw,
+      classification: verdict.classification,
+      identity: verdict.identity,
+      diagnostics: verdict.diagnostics,
+      action: "t3_thread_send",
+      preflight,
+      gitCheck: preflight,
+      summary: preflight.summary,
+      request: sendArgs,
+      ...(verdict.classification !== "confirmed"
+        ? { code: response?.code || "RESUME_UNCONFIRMED" }
+        : {}),
+    };
   }
 
   // A known accepted task must be reconciled, never replaced by a new task.
   if (activeWorker.taskId || activeWorker.childRunId || params.taskId || params.childRunId) {
-    return { resumed: false, canResume: false, code: "DISPATCH_BINDING_REQUIRED",
-      error: "Retry the original dispatch binding before resuming this accepted task" };
+    return {
+      resumed: false,
+      canResume: false,
+      code: "DISPATCH_BINDING_REQUIRED",
+      error: "Retry the original dispatch binding before resuming this accepted task",
+    };
   }
 
   // Only an unbound legacy worker may use the delegation fallback.
@@ -1371,14 +1461,28 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
       ...activeWorker,
       ...params,
       featureId: featureId ?? "feature-resume",
-      task: message
+      task: message,
     },
-    envOrOptions
+    envOrOptions,
   );
 
-  const verdict = decideDispatchOutcome(delegated, { operation: "resume", expectedIdentity: activeWorker });
-  return { ...verdict.raw, response: verdict.raw, classification: verdict.controlReceipt.classification, identity: verdict.identity ?? verdict.controlReceipt.identity, diagnostics: verdict.diagnostics, dispatchDecision: verdict, action: "delegate_task", preflight, gitCheck: preflight, summary: preflight.summary,
-    ...(verdict.outcome !== "ACCEPTED" ? { code: delegated?.code || "RESUME_UNCONFIRMED" } : {}) };
+  const verdict = decideDispatchOutcome(delegated, {
+    operation: "resume",
+    expectedIdentity: activeWorker,
+  });
+  return {
+    ...verdict.raw,
+    response: verdict.raw,
+    classification: verdict.controlReceipt.classification,
+    identity: verdict.identity ?? verdict.controlReceipt.identity,
+    diagnostics: verdict.diagnostics,
+    dispatchDecision: verdict,
+    action: "delegate_task",
+    preflight,
+    gitCheck: preflight,
+    summary: preflight.summary,
+    ...(verdict.outcome !== "ACCEPTED" ? { code: delegated?.code || "RESUME_UNCONFIRMED" } : {}),
+  };
 }
 
 /**
@@ -1387,7 +1491,10 @@ export async function resumeWorker(params, envOrOptions = process.env, maybeMiss
  * @param {Array<string | { childThreadId?: string, threadId?: string }>} childThreadIds
  * @param {Record<string, unknown> | Function} [envOrOptions=process.env]
  */
-export async function settleCompletedMilestoneThreads(childThreadIds = [], envOrOptions = process.env) {
+export async function settleCompletedMilestoneThreads(
+  childThreadIds = [],
+  envOrOptions = process.env,
+) {
   const list = Array.isArray(childThreadIds) ? childThreadIds : [childThreadIds];
   const uniqueIds = [];
   const seen = new Set();
@@ -1412,9 +1519,9 @@ export async function settleCompletedMilestoneThreads(childThreadIds = [], envOr
       "t3_thread_organize",
       {
         action: "settle",
-        threadId
+        threadId,
       },
-      envOrOptions
+      envOrOptions,
     );
     results.push({ threadId, response: res });
   }
@@ -1422,7 +1529,7 @@ export async function settleCompletedMilestoneThreads(childThreadIds = [], envOr
   return {
     action: "settle",
     settledThreadIds: uniqueIds,
-    results
+    results,
   };
 }
 
@@ -1439,20 +1546,21 @@ export function createT3Adapter(defaultOptions = {}) {
     resolveEffectiveRuntimeMode,
     normalizeTargetFromSlot,
     resolveTargetFromModelSettings,
-    callT3McpTool: (toolName, args, opts) =>
-      callT3McpTool(toolName, args, opts ?? defaultOptions),
-    getOrchestratorCapabilities: (opts) =>
-      getOrchestratorCapabilities(opts ?? defaultOptions),
-    delegateMissionTask: (params, opts) =>
-      delegateMissionTask(params, opts ?? defaultOptions),
+    callT3McpTool: (toolName, args, opts) => callT3McpTool(toolName, args, opts ?? defaultOptions),
+    getOrchestratorCapabilities: (opts) => getOrchestratorCapabilities(opts ?? defaultOptions),
+    delegateMissionTask: (params, opts) => delegateMissionTask(params, opts ?? defaultOptions),
     runFeature: (feature, slotConfig, missionState, opts) =>
       runFeature(feature, slotConfig, missionState, opts ?? defaultOptions),
     checkGitTreeBeforeResume: (worktreePath, opts) =>
       checkGitTreeBeforeResume(worktreePath, { ...defaultOptions, ...(opts || {}) }),
     resumeWorker: (params, opts, maybeState) =>
-      resumeWorker(params, { ...defaultOptions, ...(typeof opts === "object" ? opts : {}) }, maybeState),
+      resumeWorker(
+        params,
+        { ...defaultOptions, ...(typeof opts === "object" ? opts : {}) },
+        maybeState,
+      ),
     settleCompletedMilestoneThreads: (childThreadIds, opts) =>
-      settleCompletedMilestoneThreads(childThreadIds, opts ?? defaultOptions)
+      settleCompletedMilestoneThreads(childThreadIds, opts ?? defaultOptions),
   };
 }
 
@@ -1476,5 +1584,5 @@ export default {
   checkGitTreeBeforeResume,
   resumeWorker,
   settleCompletedMilestoneThreads,
-  createT3Adapter
+  createT3Adapter,
 };

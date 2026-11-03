@@ -6,15 +6,15 @@ WP1 把计划批准后的生命周期决策交给 `missionTick(missionDir, {obse
 
 JavaScript 接口从 `t3-mission/kernel/index.mjs` 导出，MCP 和 CLI 都叫 `MissionTick`。返回格式为 `{action:{type,...},missionId,revision}`。每次恰好一个动作。CLI 使用现有 `--mission-dir` 和 `--json` 参数。内核内部可先消费结果、End、注入验收，再返回下一项 dispatch。
 
-| type | 条件 | owner 执行 |
-| --- | --- | --- |
-| `wait_user` | 计划未批准、Pause、awaiting_input、需人决定的 handoff、声明权限、子任务审批或问题、合并审批、重试次数耗尽、身份歧义。 | 保留 gate 和状态，向用户说明，结束本轮。 |
-| `dispatch` | 选中 pending feature，且所有当前 gate 均通过；intent 已落盘并标为 inflight。 | 原样调用 `delegate_task(action.delegateTask)`，把原始返回交回。 |
-| `recover_dispatch` | 活跃 intent 已存在但没有可绑定的接受收据。 | 只读列出原 owner 的 child tasks 或 threads，原样交回。不得再次派发。 |
-| `poll` | 已绑定 taskId，尚无可消费的结果。 | 调原 owner 的 `task_status`，原样交回。 |
-| `orchestrator_decision` | handoff 需要修复或理由销项、验收失败、结果无法解析、状态不一致、需要集成。 | 按 kind 处理。通常使用 UpdateMissionFeatures 或 DismissHandoffItems；integrate 执行已授权的本地 ff 合并并提交 SHA。 |
-| `sleep` | 本轮已收到 working、waiting_for_children 或仍有 pending child runs 的状态。 | 结束当前 turn，等待通知或定时唤醒。 |
-| `done` | 严格完成谓词成立。 | 返回 completed 或 awaiting_merge，禁用本 Mission 的兜底 timer。 |
+| type                    | 条件                                                                                                                  | owner 执行                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `wait_user`             | 计划未批准、Pause、awaiting_input、需人决定的 handoff、声明权限、子任务审批或问题、合并审批、重试次数耗尽、身份歧义。 | 保留 gate 和状态，向用户说明，结束本轮。                                                                            |
+| `dispatch`              | 选中 pending feature，且所有当前 gate 均通过；intent 已落盘并标为 inflight。                                          | 原样调用 `delegate_task(action.delegateTask)`，把原始返回交回。                                                     |
+| `recover_dispatch`      | 活跃 intent 已存在但没有可绑定的接受收据。                                                                            | 只读列出原 owner 的 child tasks 或 threads，原样交回。不得再次派发。                                                |
+| `poll`                  | 已绑定 taskId，尚无可消费的结果。                                                                                     | 调原 owner 的 `task_status`，原样交回。                                                                             |
+| `orchestrator_decision` | handoff 需要修复或理由销项、验收失败、结果无法解析、状态不一致、需要集成。                                            | 按 kind 处理。通常使用 UpdateMissionFeatures 或 DismissHandoffItems；integrate 执行已授权的本地 ff 合并并提交 SHA。 |
+| `sleep`                 | 本轮已收到 working、waiting_for_children 或仍有 pending child runs 的状态。                                           | 结束当前 turn，等待通知或定时唤醒。                                                                                 |
+| `done`                  | 严格完成谓词成立。                                                                                                    | 返回 completed 或 awaiting_merge，禁用本 Mission 的兜底 timer。                                                     |
 
 `record_dispatch` 不作为动作。controller 直接校验观测，保存 journal，并走 R8 Bind。动作没有允许 owner 自由调用 Start、Bind 或 End 的分支。
 
@@ -34,11 +34,11 @@ JavaScript 接口从 `t3-mission/kernel/index.mjs` 导出，MCP 和 CLI 都叫 `
 
 每个输入都有 `type`、`featureId`、`runId`、`response`。response 是未经改写的工具返回，可为普通 JSON、MCP structuredContent 或单个 JSON text block。原始 MCP 外壳也保存。输入不得是模型概述。
 
-| type | 额外关联字段 | response |
-| --- | --- | --- |
-| `dispatch` | `intentId` | delegate_task 原始返回。 |
-| `children` | `intentId` | 原 owner 的原始 tasks 数组、`{tasks:[...]}` 或 `{threads:[...]}`。每个候选必须暴露 clientRequestId 和可绑定身份。 |
-| `task_status` | `taskId` | 原始 task_status；需要明确 taskId、status、workState、hasPendingChildRuns，且不得冲突于已绑定的 child identity 和 target。 |
+| type          | 额外关联字段                   | response                                                                                                                             |
+| ------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `dispatch`    | `intentId`                     | delegate_task 原始返回。                                                                                                             |
+| `children`    | `intentId`                     | 原 owner 的原始 tasks 数组、`{tasks:[...]}` 或 `{threads:[...]}`。每个候选必须暴露 clientRequestId 和可绑定身份。                    |
+| `task_status` | `taskId`                       | 原始 task_status；需要明确 taskId、status、workState、hasPendingChildRuns，且不得冲突于已绑定的 child identity 和 target。           |
 | `integration` | 无。featureId/runId 已在外层。 | `{branch,sourceBranch,commit,mergeSha}`。手工审批后另含 `approved:true`。这是 owner 对实际 Git 结果的记录，不是内核执行 Git 的凭证。 |
 
 归档路径为 `.mission/autopilot/observations/<SHA256>.json`，记录原观测和单 owner 下的接收 sequence。ledger 位于 `.mission/autopilot/controller.json`，记录每个 run 的派发异常、最后状态、终态观测、解析结果、集成记录和消费标记。读取归档时核对内容 hash。原始 delegate 收据由 R8 journal 保存其标准化身份，原始返回仍在归档中。

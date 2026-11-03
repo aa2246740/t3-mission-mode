@@ -3,15 +3,20 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
   <img src="https://img.shields.io/badge/Runtime-Node.js_%E2%89%A520_%2B_N--API_lock-339933.svg" alt="Node.js 20 or newer with a native OS lock" />
-  <img src="https://img.shields.io/badge/E2E_Verification-8--Stage_Verified-8A2BE2.svg" alt="8-Stage E2E Verified" />
+  <img src="https://img.shields.io/badge/Validation-Local_QA_%26_Recovery_Tests-8A2BE2.svg" alt="Local QA and recovery tests" />
 </p>
 
 > **Durable Multi-Milestone Mission Mode for T3 Code** — Transform any T3 Code thread into a persistent, verifiable, multi-milestone software engineering orchestrator with **3-Role Heterogeneous Model Slots** (`Orchestrator` / `Worker` / `Validator`), a **Live SSE 3-Column Mission HUD**, **Git-Guarded Lossless Pause & Resume**, and **Cross-Provider Autonomy Mapping**.
 >
 > **面向 T3 Code 的持久化多里程碑 Mission 编排引擎** —— 将任意 T3 Code 会话升级为具备磁盘状态持久化（`.mission/`）、三角色异构模型槽位（`Orchestrator` / `Worker` / `Validator`）、实时三栏 SSE Mission HUD 面板、Git 工作树安全门禁无损暂停/恢复，以及跨 Provider 权限与推理强度自动映射的工程级 Mission 系统。
 
----
+## Development and local diagnostics
 
+Use [AGENTS.md](AGENTS.md) for repository commands and [the development guide](docs/development.md) for native build prerequisites, isolated QA, coverage, and profiling. `npm ci && npm run setup && npm run qa` runs a disposable loopback flow without credentials or provider dispatch. Development tools use Node 26.7.0; other runtime/platform claims need their own passing runs.
+
+The HUD exposes `/healthz`, `/readyz`, `/metrics`, and `/api/mission/diagnostics`. Requests have correlation IDs; counters remain local, and recent errors are bounded and redacted. See the [operations runbook](docs/runbooks/operations.md), [data handling](docs/data-handling.md), and generated [API contract](docs/openapi.json). Cross-origin requests are refused and command JSON bodies are limited to 1 MiB.
+
+---
 
 ## Installed skill paths
 
@@ -65,6 +70,8 @@ The commands use absolute script and Mission paths through these variables. For 
 ```bash
 git clone https://github.com/aa2246740/t3-mission-mode.git
 cd t3-mission-mode
+npm ci
+npm run setup
 ./install.sh
 ```
 
@@ -73,16 +80,18 @@ cd t3-mission-mode
 ### 2. Trigger in T3 Code / 在 T3 Code 中启动与恢复
 
 - **Start a new Mission / 开启新 Mission**:
+
   ```text
   /mission Build a full-stack analytics dashboard with authentication, CSV export, and E2E tests
   ```
-  *(or simply say `开启 mission: <需求描述>`)*
+
+  _(or simply say `开启 mission: <需求描述>`)_
 
 - **Resume a paused Mission / 无损恢复已暂停的 Mission**:
   ```text
   [resume the mission]
   ```
-  *(or say `继续` / `恢复 mission`)*
+  _(or say `继续` / `恢复 mission`)_
 
 ---
 
@@ -116,6 +125,7 @@ node "$T3_MISSION_SKILL_ROOT/t3-mission/bridge/cli.mjs" ProposeMission --mission
 ### Step 3: 3-Role Model Slots & Capability-Aware Effort Gating / 三角色模型槽位与推理档位门禁
 
 Configure different providers and models for **Orchestrator**, **Worker**, and **Validator** directly in the HUD header.
+
 - Models with `supportsEffort: true` (such as `GPT-5.4` or `Claude Opus 4.7`) display the 5-bar effort selector (`1..5`).
 - Fixed-tier models with `supportsEffort: false` (such as `Gemini 4 Argon (High)`) automatically hide the effort bar selector (`hidden: true`).
 
@@ -169,15 +179,15 @@ Once all features and both Milestone Validators (`scrutiny` + `user-testing`) pa
 
 `normalizeTargetFromSlot(slotConfig)` and `mapApprovalModeToProviderAutonomy(providerInstanceId, slotConfig)` automatically translate T3 Mission Mode settings (`effort: 1..5`, `approvalMode`, `parentRuntimeMode`) into each provider's native schema:
 
-| Provider (`providerInstanceId`) | Effort Mapping (`1..5` -> Native Option) | Default Mission Autonomy | Approval / Runtime Mode Mapping (`plan` / `approval-required` / `auto-accept-edits` / `auto` / `full-access`) |
-| :--- | :--- | :--- | :--- |
-| **Codex** (`codex`) | `options.reasoningEffort`: `"minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max"` | `full-access` (clamped by parent ceiling) | Native T3 `runtimeMode` (`approval-required`, `auto-accept-edits`, `auto`, `full-access`) |
-| **Antigravity** (`antigravity`) | Direct model tier ID (e.g. `gemini-4-argon-high`, `claude-opus-5-5-high`); effort bars auto-hidden when `supportsEffort: false` | `full-access` (clamped by parent ceiling) | Native T3 `runtimeMode` with fail-closed parent ceiling |
-| **Factory Droid** (`acpRegistry_factory_droid`) | `options.reasoning_effort`: `"minimal" \| "low" \| "medium" \| "high" \| "max"` | `options.autonomy_level: "auto-high"` (prevents worker stalls) | `plan` <-> `"spec"`<br>`approval-required` <-> `"normal"`<br>`auto-accept-edits` <-> `"auto-low"`<br>`auto` <-> `"auto-high"` (`"auto-medium"` preserved when explicit)<br>`full-access` <-> `"auto-high"` |
-| **Devin** (`acpRegistry_devin`) | `options.thought_level`: `1..3` -> `"medium"`, `4` -> `"high"`, `5` -> `"max"` | `options.mode: "bypass"` (prevents shell command stalls) | `plan` / `approval-required` -> `"ask"`<br>`auto-accept-edits` -> `"accept-edits"`<br>`auto` / `full-access` -> `"bypass"` |
-| **Cursor** (`acpRegistry_cursor`) | `options.reasoning_effort` (`"low".."xhigh"`) + `options.effort` (`"low".."max"`) | `options.mode: "agent"` | `plan` -> `"plan"`<br>`approval-required` -> `"ask"`<br>`auto-accept-edits` / `auto` / `full-access` -> `"agent"` |
-| **Grok / CPA** (`grok` / `cpa`) | `options.reasoningEffort`: `"low" \| "medium" \| "high" \| "xhigh"` (clamps `minimal`->`low`, `max`->`xhigh`) | `full-access` (clamped by parent ceiling) | Native T3 `runtimeMode` with fail-closed parent ceiling |
-| **Pi** (`pi`) | `options.thinking`: `"minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max"` | Highest supported mode `<= parentRuntimeMode` | Filtered against `["approval-required", "auto-accept-edits", "full-access"]` with fail-closed parent ceiling |
+| Provider (`providerInstanceId`)                 | Effort Mapping (`1..5` -> Native Option)                                                                                        | Default Mission Autonomy                                       | Approval / Runtime Mode Mapping (`plan` / `approval-required` / `auto-accept-edits` / `auto` / `full-access`)                                                                                              |
+| :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Codex** (`codex`)                             | `options.reasoningEffort`: `"minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max"`                                       | `full-access` (clamped by parent ceiling)                      | Native T3 `runtimeMode` (`approval-required`, `auto-accept-edits`, `auto`, `full-access`)                                                                                                                  |
+| **Antigravity** (`antigravity`)                 | Direct model tier ID (e.g. `gemini-4-argon-high`, `claude-opus-5-5-high`); effort bars auto-hidden when `supportsEffort: false` | `full-access` (clamped by parent ceiling)                      | Native T3 `runtimeMode` with fail-closed parent ceiling                                                                                                                                                    |
+| **Factory Droid** (`acpRegistry_factory_droid`) | `options.reasoning_effort`: `"minimal" \| "low" \| "medium" \| "high" \| "max"`                                                 | `options.autonomy_level: "auto-high"` (prevents worker stalls) | `plan` <-> `"spec"`<br>`approval-required` <-> `"normal"`<br>`auto-accept-edits` <-> `"auto-low"`<br>`auto` <-> `"auto-high"` (`"auto-medium"` preserved when explicit)<br>`full-access` <-> `"auto-high"` |
+| **Devin** (`acpRegistry_devin`)                 | `options.thought_level`: `1..3` -> `"medium"`, `4` -> `"high"`, `5` -> `"max"`                                                  | `options.mode: "bypass"` (prevents shell command stalls)       | `plan` / `approval-required` -> `"ask"`<br>`auto-accept-edits` -> `"accept-edits"`<br>`auto` / `full-access` -> `"bypass"`                                                                                 |
+| **Cursor** (`acpRegistry_cursor`)               | `options.reasoning_effort` (`"low".."xhigh"`) + `options.effort` (`"low".."max"`)                                               | `options.mode: "agent"`                                        | `plan` -> `"plan"`<br>`approval-required` -> `"ask"`<br>`auto-accept-edits` / `auto` / `full-access` -> `"agent"`                                                                                          |
+| **Grok / CPA** (`grok` / `cpa`)                 | `options.reasoningEffort`: `"low" \| "medium" \| "high" \| "xhigh"` (clamps `minimal`->`low`, `max`->`xhigh`)                   | `full-access` (clamped by parent ceiling)                      | Native T3 `runtimeMode` with fail-closed parent ceiling                                                                                                                                                    |
+| **Pi** (`pi`)                                   | `options.thinking`: `"minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max"`                                              | Highest supported mode `<= parentRuntimeMode`                  | Filtered against `["approval-required", "auto-accept-edits", "full-access"]` with fail-closed parent ceiling                                                                                               |
 
 ---
 
@@ -192,7 +202,7 @@ flowchart TB
   end
 
   subgraph Package["t3-mission-mode (Zero-Dependency Node.js)"]
-    CLI["bridge/cli.mjs & bridge/mcp-server.mjs\n(9 Mission Lifecycle Tools)"]
+    CLI["bridge/cli.mjs & bridge/mcp-server.mjs\n(Mission Lifecycle Tools)"]
     Adapter["bridge/t3-adapter.mjs\n(Slot Normalization, Autonomy Mapping, Git Guard, Resume)"]
     Kernel["kernel/ (schema.mjs, store.mjs, runner.mjs, tools.mjs)\n(Atomic State Store, RunId Fencing, Handoff & Validation Gates)"]
     HUD["hud/server.mjs + hud/public/\n(Live SSE 3-Column Mission HUD + REST API)"]
@@ -296,7 +306,7 @@ The Bridge returns `KERNEL_UNAVAILABLE` if the real kernel cannot load or lacks 
 
 The four public Mission files remain authoritative. `.mission/.txn/` stores a checksummed WAL, commit/checkpoint records, command results and external-effect claims. Official readers recover a committed batch under the OS lock before reading a complete snapshot. Use `readMissionSnapshot` for a combined read and `withMissionTransaction` for synchronous custom reducers; a reducer must never return a Promise. Supply the same `commandId` and payload when retrying one command. A repeated executable action requires recovery of its original receipt, never a new dispatch.
 
-The native module uses N-API 8 and POSIX `flock`, with no package downloads or Node SQLite requirement. `build.mjs` supports macOS and Linux with an existing compiler and headers; it records the exact compiler arguments and source/binary hashes beside the output. This candidate includes a macOS arm64 build and was exercised on Node 26.7.0. Node 20 and Linux execution remain to be verified. Other targets fail with `TX_LOCK_BACKEND_UNAVAILABLE`; there is no unlocked fallback.
+The native module uses N-API 8 and POSIX `flock`, with no package downloads or Node SQLite requirement. `build.mjs` supports macOS and Linux with an existing compiler and headers; it records the exact compiler arguments and source/binary hashes beside the output. Source checkouts build the native module for their own OS and architecture; machine-specific binaries are excluded from the distributable. The development toolchain runs Node 26.7.0 on macOS and Linux/arm64. Node 20 and other target architectures require separate verification. Other targets fail with `TX_LOCK_BACKEND_UNAVAILABLE`; there is no unlocked fallback.
 
 Do not delete a writer lock, WAL, accepted receipt or unknown effect to force progress. Preserve the directory and resolve the reported error. Sequential offline edits to public files remain effective when no committed WAL is pending. Processes that bypass the advisory lock cannot obtain atomic multi-file views; migrate custom writers to the transaction API. See [DESIGN-transactions.md](DESIGN-transactions.md) for commit boundaries, stale-save checks, recovery errors and verification limits.
 

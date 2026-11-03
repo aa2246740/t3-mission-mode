@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -12,7 +11,7 @@ import {
   resolveTargetFromModelSettings,
   resumeWorker,
   runFeature,
-  settleCompletedMilestoneThreads
+  settleCompletedMilestoneThreads,
 } from "./t3-adapter.mjs";
 
 export const MISSION_TOOL_NAMES = [
@@ -26,45 +25,111 @@ export const MISSION_TOOL_NAMES = [
   "EndFeatureRun",
   "UpdateMissionFeatures",
   "CheckMissionStateBeforeResuming",
-  "WaitForApproval"
+  "WaitForApproval",
 ];
 
 export const MISSION_TOOLS = [
   {
     name: "ReconcileBoundedTimer",
-    description: "Record original enable and current disabled receipts for one interrupted bounded timer without scheduling or dispatching work.",
-    inputSchema: { type: "object", properties: {
-      missionDir: { type: "string" }, requestId: { type: "string" }, enabledResponse: { type: "object" },
-      disabledResponse: { type: "object" }, newWakeInstructions: { type: "string", maxLength: 4000 }
-    }, required: ["missionDir", "requestId", "enabledResponse", "disabledResponse", "newWakeInstructions"] }
-  },
-  {
-    name: "MissionTick",
-    description: "Advance approved Mission state deterministically and return exactly one owner action. Submit the original T3 responses as observations; never dispatch or End outside this loop.",
+    description:
+      "Record original enable and current disabled receipts for one interrupted bounded timer without scheduling or dispatching work.",
     inputSchema: {
       type: "object",
       properties: {
         missionDir: { type: "string" },
-        timerMaxWakeups: { type: "integer", minimum: 1, maximum: 12, description: "Optional fail-stop bound, set before the first timer and persisted for the Mission." },
-        timerWakeInstructions: { type: "string", maxLength: 4000, description: "Optional immutable instructions retained in the bounded timer prompt." },
-        dispatchResolution: { type: "object", description: "Explicit user selection after all conflicting executions have archived terminal proof; never infer userConfirmed.", properties: {
-          intentId: { type: "string" }, userConfirmed: { type: "boolean", const: true }, reason: { type: "string" },
-          terminalObservationIds: { type: "array", items: { type: "string" } }, selectedTaskId: { type: "string" }, selectedChildThreadId: { type: "string" }
-        }, required: ["intentId", "userConfirmed", "reason", "terminalObservationIds", "selectedTaskId", "selectedChildThreadId"] },
-        observations: { type: "array", items: {
-          type: "object",
-          properties: {
-            type: { type: "string", enum: ["owner", "timer", "timer_disabled", "dispatch", "children", "task_status", "integration", "interrupt", "resume"] },
-            featureId: { type: "string" }, runId: { type: "string" },
-            intentId: { type: "string" }, invocationId: { type: "string" }, taskId: { type: "string" },
-            requestId: { type: "string" }, controlId: { type: "string" }, cursor: { type: ["string", "null"] },
-            response: { description: "Original, unedited tool return, including MCP content or structuredContent." }
-          },
-          required: ["type", "response"]
-        } }
+        requestId: { type: "string" },
+        enabledResponse: { type: "object" },
+        disabledResponse: { type: "object" },
+        newWakeInstructions: { type: "string", maxLength: 4000 },
       },
-      required: ["missionDir"]
-    }
+      required: [
+        "missionDir",
+        "requestId",
+        "enabledResponse",
+        "disabledResponse",
+        "newWakeInstructions",
+      ],
+    },
+  },
+  {
+    name: "MissionTick",
+    description:
+      "Advance approved Mission state deterministically and return exactly one owner action. Submit the original T3 responses as observations; never dispatch or End outside this loop.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        missionDir: { type: "string" },
+        timerMaxWakeups: {
+          type: "integer",
+          minimum: 1,
+          maximum: 12,
+          description:
+            "Optional fail-stop bound, set before the first timer and persisted for the Mission.",
+        },
+        timerWakeInstructions: {
+          type: "string",
+          maxLength: 4000,
+          description: "Optional immutable instructions retained in the bounded timer prompt.",
+        },
+        dispatchResolution: {
+          type: "object",
+          description:
+            "Explicit user selection after all conflicting executions have archived terminal proof; never infer userConfirmed.",
+          properties: {
+            intentId: { type: "string" },
+            userConfirmed: { type: "boolean", const: true },
+            reason: { type: "string" },
+            terminalObservationIds: { type: "array", items: { type: "string" } },
+            selectedTaskId: { type: "string" },
+            selectedChildThreadId: { type: "string" },
+          },
+          required: [
+            "intentId",
+            "userConfirmed",
+            "reason",
+            "terminalObservationIds",
+            "selectedTaskId",
+            "selectedChildThreadId",
+          ],
+        },
+        observations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: {
+                type: "string",
+                enum: [
+                  "owner",
+                  "timer",
+                  "timer_disabled",
+                  "dispatch",
+                  "children",
+                  "task_status",
+                  "integration",
+                  "interrupt",
+                  "resume",
+                ],
+              },
+              featureId: { type: "string" },
+              runId: { type: "string" },
+              intentId: { type: "string" },
+              invocationId: { type: "string" },
+              taskId: { type: "string" },
+              requestId: { type: "string" },
+              controlId: { type: "string" },
+              cursor: { type: ["string", "null"] },
+              response: {
+                description:
+                  "Original, unedited tool return, including MCP content or structuredContent.",
+              },
+            },
+            required: ["type", "response"],
+          },
+        },
+      },
+      required: ["missionDir"],
+    },
   },
   {
     name: "ProposeMission",
@@ -81,17 +146,37 @@ export const MISSION_TOOLS = [
         features: { type: "array", items: { type: "object" } },
         assertions: { type: "array", items: { type: "object" } },
         modelSettings: { type: "object" },
-        integration: { type: "object", properties: { branch: { type: "string" }, auto: { type: "boolean" } }, required: ["branch", "auto"] },
+        integration: {
+          type: "object",
+          properties: { branch: { type: "string" }, auto: { type: "boolean" } },
+          required: ["branch", "auto"],
+        },
         permissions: { type: "array", items: { type: "object" } },
         ownerThreadId: { type: "string" },
         pauseMode: { type: "string", enum: ["interrupt", "let_finish"] },
         timerEveryMs: { type: "integer", minimum: 1000 },
-        retryPolicy: { type: "object", properties: { baseDelayMs: { type: "integer", minimum: 1 }, maxDelayMs: { type: "integer", minimum: 1 }, maxConsecutiveProviderErrors: { type: "integer", minimum: 1 }, maxStalledDecisionRepeats: { type: "integer", minimum: 1 }, maxResultFormatRetries: { type: "integer", minimum: 0 } } },
-        fallbackTargets: { type: "object", description: "Approved role map: worker/validator/orchestrator arrays of providerInstanceId, model, and exact options objects." },
-        autopilot: { type: "boolean", description: "HUD records user gates only; MissionTick owns dispatch and End." }
+        retryPolicy: {
+          type: "object",
+          properties: {
+            baseDelayMs: { type: "integer", minimum: 1 },
+            maxDelayMs: { type: "integer", minimum: 1 },
+            maxConsecutiveProviderErrors: { type: "integer", minimum: 1 },
+            maxStalledDecisionRepeats: { type: "integer", minimum: 1 },
+            maxResultFormatRetries: { type: "integer", minimum: 0 },
+          },
+        },
+        fallbackTargets: {
+          type: "object",
+          description:
+            "Approved role map: worker/validator/orchestrator arrays of providerInstanceId, model, and exact options objects.",
+        },
+        autopilot: {
+          type: "boolean",
+          description: "HUD records user gates only; MissionTick owns dispatch and End.",
+        },
       },
-      required: ["missionDir"]
-    }
+      required: ["missionDir"],
+    },
   },
   {
     name: "ApproveMissionPlan",
@@ -102,25 +187,44 @@ export const MISSION_TOOLS = [
       properties: {
         missionDir: { type: "string", description: "Path to the project or .mission directory" },
         modelSettings: { type: "object" },
-        approvedBy: { type: "string" }
+        approvedBy: { type: "string" },
       },
-      required: ["missionDir"]
-    }
+      required: ["missionDir"],
+    },
   },
   {
     name: "BindFeatureDispatch",
-    description: "Record an already accepted T3 task for the exact active run without dispatching, resuming or changing paused status. The caller must verify the task receipt against T3 before binding.",
+    description:
+      "Record an already accepted T3 task for the exact active run without dispatching, resuming or changing paused status. The caller must verify the task receipt against T3 before binding.",
     inputSchema: {
       type: "object",
       properties: {
-        missionDir: { type: "string" }, featureId: { type: "string" }, runId: { type: "string" },
-        taskId: { type: "string" }, childThreadId: { type: "string" }, childRunId: { type: "string" },
-        worktreePath: { type: "string" }, runtimeTransport: { type: "string", enum: ["t3-delegate-task"] },
-        expectedRevision: { type: "integer", minimum: 0 }, workerNumber: { type: "integer" }, clientRequestId: { type: "string" }, target: { type: "object" },
-        providerInstanceId: { type: "string" }, model: { type: "string" }, options: { type: "object" }
+        missionDir: { type: "string" },
+        featureId: { type: "string" },
+        runId: { type: "string" },
+        taskId: { type: "string" },
+        childThreadId: { type: "string" },
+        childRunId: { type: "string" },
+        worktreePath: { type: "string" },
+        runtimeTransport: { type: "string", enum: ["t3-delegate-task"] },
+        expectedRevision: { type: "integer", minimum: 0 },
+        workerNumber: { type: "integer" },
+        clientRequestId: { type: "string" },
+        target: { type: "object" },
+        providerInstanceId: { type: "string" },
+        model: { type: "string" },
+        options: { type: "object" },
       },
-      required: ["missionDir", "featureId", "runId", "taskId", "childThreadId", "runtimeTransport", "expectedRevision"]
-    }
+      required: [
+        "missionDir",
+        "featureId",
+        "runId",
+        "taskId",
+        "childThreadId",
+        "runtimeTransport",
+        "expectedRevision",
+      ],
+    },
   },
   {
     name: "StartMissionRun",
@@ -132,10 +236,10 @@ export const MISSION_TOOLS = [
         missionDir: { type: "string", description: "Path to the project or .mission directory" },
         repoPath: { type: "string" },
         worktreePath: { type: "string" },
-        restartFeature: { type: "boolean" }
+        restartFeature: { type: "boolean" },
       },
-      required: ["missionDir"]
-    }
+      required: ["missionDir"],
+    },
   },
   {
     name: "DismissHandoffItems",
@@ -152,36 +256,37 @@ export const MISSION_TOOLS = [
             properties: {
               type: {
                 type: "string",
-                enum: [...DISMISSAL_TYPES]
+                enum: [...DISMISSAL_TYPES],
               },
               sourceFeatureId: {
                 type: "string",
-                description: "Feature ID that originated the handoff item"
+                description: "Feature ID that originated the handoff item",
               },
               summary: {
                 type: "string",
-                description: "Summary or identifier of the handoff item being dismissed"
+                description: "Summary or identifier of the handoff item being dismissed",
               },
               justification: {
                 type: "string",
                 minLength: 20,
-                description: "Explicit justification (at least 20 characters) for dismissing this item"
+                description:
+                  "Explicit justification (at least 20 characters) for dismissing this item",
               },
               itemId: {
                 type: "string",
-                description: "Optional legacy item identifier alias for summary"
+                description: "Optional legacy item identifier alias for summary",
               },
               reason: {
                 type: "string",
-                description: "Optional legacy alias for justification"
-              }
+                description: "Optional legacy alias for justification",
+              },
             },
-            required: ["type", "sourceFeatureId", "summary", "justification"]
-          }
-        }
+            required: ["type", "sourceFeatureId", "summary", "justification"],
+          },
+        },
       },
-      required: ["missionDir", "dismissals"]
-    }
+      required: ["missionDir", "dismissals"],
+    },
   },
   {
     name: "EndFeatureRun",
@@ -193,20 +298,20 @@ export const MISSION_TOOLS = [
         missionDir: { type: "string", description: "Path to the project or .mission directory" },
         runId: {
           type: "string",
-          description: "Active worker runId (required to fence stale worker runs)"
+          description: "Active worker runId (required to fence stale worker runs)",
         },
         featureId: {
           type: "string",
-          description: "Feature ID being completed by the active worker"
+          description: "Feature ID being completed by the active worker",
         },
         successState: { type: "string", enum: ["success", "failure", "partial"] },
         validatorsPassed: { type: "boolean" },
         returnToOrchestrator: { type: "boolean" },
         assertionResults: { type: "object" },
-        handoff: { type: "object" }
+        handoff: { type: "object" },
       },
-      required: ["missionDir", "runId", "featureId", "handoff"]
-    }
+      required: ["missionDir", "runId", "featureId", "handoff"],
+    },
   },
   {
     name: "UpdateMissionFeatures",
@@ -223,10 +328,10 @@ export const MISSION_TOOLS = [
         modelSettings: { type: "object" },
         bonusAttempts: { type: "object" },
         milestones: { type: "array", items: { type: "object" } },
-        assertions: { type: "array", items: { type: "object" } }
+        assertions: { type: "array", items: { type: "object" } },
       },
-      required: ["missionDir"]
-    }
+      required: ["missionDir"],
+    },
   },
   {
     name: "CheckMissionStateBeforeResuming",
@@ -237,10 +342,10 @@ export const MISSION_TOOLS = [
       properties: {
         missionDir: { type: "string", description: "Path to the project or .mission directory" },
         repoPath: { type: "string" },
-        worktreePath: { type: "string" }
+        worktreePath: { type: "string" },
       },
-      required: ["missionDir"]
-    }
+      required: ["missionDir"],
+    },
   },
   {
     name: "WaitForApproval",
@@ -251,14 +356,18 @@ export const MISSION_TOOLS = [
       properties: {
         missionDir: { type: "string", description: "Path to the project or .mission directory" },
         timeoutMs: { type: "number", description: "Timeout in milliseconds (default 600000)" },
-        pollMs: { type: "number", description: "Polling interval in milliseconds (default 200)" }
+        pollMs: { type: "number", description: "Polling interval in milliseconds (default 200)" },
       },
-      required: ["missionDir"]
-    }
-  }
+      required: ["missionDir"],
+    },
+  },
 ];
 
-for (const tool of MISSION_TOOLS) tool.inputSchema.properties.commandId = { type: 'string', description: 'Stable caller command identity. Reusing it with a different payload is refused.' };
+for (const tool of MISSION_TOOLS)
+  tool.inputSchema.properties.commandId = {
+    type: "string",
+    description: "Stable caller command identity. Reusing it with a different payload is refused.",
+  };
 
 const TOOL_CAMEL_MAP = {
   MissionTick: "missionTick",
@@ -271,7 +380,7 @@ const TOOL_CAMEL_MAP = {
   EndFeatureRun: "endFeatureRun",
   UpdateMissionFeatures: "updateMissionFeatures",
   CheckMissionStateBeforeResuming: "checkMissionStateBeforeResuming",
-  WaitForApproval: "waitForApproval"
+  WaitForApproval: "waitForApproval",
 };
 
 const CANONICAL_TOOL_BY_LOWER = new Map();
@@ -279,9 +388,7 @@ for (const name of MISSION_TOOL_NAMES) {
   CANONICAL_TOOL_BY_LOWER.set(name.toLowerCase(), name);
   const camel = TOOL_CAMEL_MAP[name];
   CANONICAL_TOOL_BY_LOWER.set(camel.toLowerCase(), name);
-  const kebab = name
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .toLowerCase();
+  const kebab = name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
   CANONICAL_TOOL_BY_LOWER.set(kebab, name);
 }
 CANONICAL_TOOL_BY_LOWER.set("waitforhuddecision", "WaitForApproval");
@@ -298,41 +405,6 @@ export function resolveCanonicalToolName(rawName) {
     return null;
   }
   return CANONICAL_TOOL_BY_LOWER.get(rawName.trim().toLowerCase()) ?? null;
-}
-
-/**
- * Resolve `.mission` storage directory for fallback persistence when `../kernel/index.mjs` is not yet merged.
- *
- * @param {string} missionDir
- */
-function resolveFallbackBaseDir(missionDir) {
-  const abs = path.resolve(String(missionDir || process.cwd()));
-  if (path.basename(abs) === ".mission") {
-    return abs;
-  }
-  const dotMission = path.join(abs, ".mission");
-  if (fs.existsSync(dotMission)) {
-    return dotMission;
-  }
-  if (
-    fs.existsSync(path.join(abs, "state.json")) ||
-    fs.existsSync(path.join(abs, "features.json")) ||
-    fs.existsSync(path.join(abs, "model-settings.json"))
-  ) {
-    return abs;
-  }
-  return dotMission;
-}
-
-function readJsonFileSafe(filePath, fallback = null) {
-  if (!fs.existsSync(filePath)) {
-    return fallback;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
-    return fallback;
-  }
 }
 
 /**
@@ -361,24 +433,29 @@ export function normalizeDismissalPayloadItems(dismissals) {
 }
 
 function loadStateFromKernelOrDisk(missionDir, kernel) {
-  if (typeof kernel?.tryLoadState !== 'function') throw kernelUnavailable(new Error('Consistent Mission reader is unavailable'));
+  if (typeof kernel?.tryLoadState !== "function")
+    throw kernelUnavailable(new Error("Consistent Mission reader is unavailable"));
   return kernel.tryLoadState(missionDir);
 }
 
 /** Preserve raw transport evidence; the real kernel owns receipt and lifecycle persistence. */
-export function createBridgeDispatchAdapter(missionDir, baseAdapter = {}, kernel = undefined) {
+export function createBridgeDispatchAdapter(missionDir, baseAdapter = {}) {
   return baseAdapter;
 }
 
 function kernelUnavailable(cause) {
-  const error = new Error("The real Mission kernel is unavailable; lifecycle writes are disabled", { cause });
+  const error = new Error("The real Mission kernel is unavailable; lifecycle writes are disabled", {
+    cause,
+  });
   error.code = "KERNEL_UNAVAILABLE";
   return error;
 }
 
 /** Compatibility sentinel: no fallback lifecycle implementation or writes. */
 export function createFallbackKernel(cause) {
-  const unavailable = () => { throw kernelUnavailable(cause); };
+  const unavailable = () => {
+    throw kernelUnavailable(cause);
+  };
   return {
     __isFallbackKernel: true,
     __kernelUnavailable: true,
@@ -414,8 +491,7 @@ export async function resolveMissionKernel(options = {}) {
  */
 async function invokeKernelFunction(kernel, fn, missionDir, payload, extraArg) {
   const isStandardKernel =
-    Boolean(kernel.__isFallbackKernel) ||
-    typeof kernel.resolveMissionBaseDir === "function";
+    Boolean(kernel.__isFallbackKernel) || typeof kernel.resolveMissionBaseDir === "function";
 
   if (isStandardKernel) {
     return await fn.call(kernel, missionDir, payload, extraArg);
@@ -424,7 +500,7 @@ async function invokeKernelFunction(kernel, fn, missionDir, payload, extraArg) {
   // Inspect parameter signature for mock kernels (function, shorthand method, or arrow function)
   const fnSource = Function.prototype.toString.call(fn).trim();
   const paramMatch = fnSource.match(
-    /^(?:async\s+)?(?:function\s*[^(]*\(([^)]*)\)|[A-Za-z0-9_$]+\s*\(([^)]*)\)|\(([^)]*)\)\s*=>|([A-Za-z0-9_$]+)\s*=>)/
+    /^(?:async\s+)?(?:function\s*[^(]*\(([^)]*)\)|[A-Za-z0-9_$]+\s*\(([^)]*)\)|\(([^)]*)\)\s*=>|([A-Za-z0-9_$]+)\s*=>)/,
   );
   const rawParams = (
     paramMatch?.[1] ??
@@ -434,13 +510,18 @@ async function invokeKernelFunction(kernel, fn, missionDir, payload, extraArg) {
     ""
   ).trim();
   const paramList = rawParams
-    ? rawParams.split(",").map((p) => p.trim()).filter(Boolean)
+    ? rawParams
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
     : [];
 
   const firstParam = paramList[0] || "";
   const expectsMissionDirFirst =
     /^_?(missionDir|dir|baseDir|projectDir)\b/i.test(firstParam) ||
-    (paramList.length >= 2 && !firstParam.startsWith("{") && !/^(args|input|payload|params|opts|options)\b/i.test(firstParam));
+    (paramList.length >= 2 &&
+      !firstParam.startsWith("{") &&
+      !/^(args|input|payload|params|opts|options)\b/i.test(firstParam));
 
   if (expectsMissionDirFirst) {
     return await fn.call(kernel, missionDir, payload, extraArg);
@@ -464,9 +545,7 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
   }
 
   const args = rawArgs && typeof rawArgs === "object" ? { ...rawArgs } : {};
-  const missionDir = String(
-    args.missionDir ?? context.missionDir ?? process.cwd()
-  ).trim();
+  const missionDir = String(args.missionDir ?? context.missionDir ?? process.cwd()).trim();
   args.missionDir = missionDir;
 
   if (canonicalName === "EndFeatureRun") {
@@ -474,7 +553,7 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
     const hasRunId = typeof args.runId === "string" && args.runId.trim().length > 0;
     if (!hasFeatureId || !hasRunId) {
       const err = new Error(
-        "MISSING_RUN_IDENTITY: EndFeatureRun requires both runId and featureId to fence worker completion"
+        "MISSING_RUN_IDENTITY: EndFeatureRun requires both runId and featureId to fence worker completion",
       );
       /** @type {any} */ (err).code = "MISSING_RUN_IDENTITY";
       throw err;
@@ -492,7 +571,7 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
     createT3Adapter({
       env: context.env ?? process.env,
       transportClient: context.transportClient,
-      execFileImpl: context.execFileImpl
+      execFileImpl: context.execFileImpl,
     });
 
   if (canonicalName === "WaitForApproval") {
@@ -515,18 +594,21 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
         : 200;
 
     const approvalSnapshot = () => {
-      if (typeof kernel.readMissionSnapshot === 'function') return kernel.readMissionSnapshot(missionDir);
-      if (typeof kernel.readProgressLog !== 'function') throw kernelUnavailable(new Error('Consistent approval snapshot is unavailable'));
-      return { state: loadStateFromKernelOrDisk(missionDir, kernel), progressLog: kernel.readProgressLog(missionDir) };
+      if (typeof kernel.readMissionSnapshot === "function")
+        return kernel.readMissionSnapshot(missionDir);
+      if (typeof kernel.readProgressLog !== "function")
+        throw kernelUnavailable(new Error("Consistent approval snapshot is unavailable"));
+      return {
+        state: loadStateFromKernelOrDisk(missionDir, kernel),
+        progressLog: kernel.readProgressLog(missionDir),
+      };
     };
     const initial = approvalSnapshot();
     const initialState = initial.state;
     const initialLogs = initial.progressLog;
     const baselineRejectionRevision = initialState?.rejectionRevision;
     const baselineRejectedAt = initialState?.lastPlanRejectedAt;
-    const baselineRejectedCount = initialLogs.filter(
-      (e) => e && e.type === "plan_rejected"
-    ).length;
+    const baselineRejectedCount = initialLogs.filter((e) => e && e.type === "plan_rejected").length;
     const baselineLastRejectedSeq = initialLogs
       .filter((e) => e && e.type === "plan_rejected")
       .reduce((max, e) => (typeof e.seq === "number" && e.seq > max ? e.seq : max), 0);
@@ -544,25 +626,23 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
           planAccepted: true,
           dispatchPending: Boolean(currentState.activeWorker?.dispatchPending),
           activeWorker: currentState.activeWorker ?? null,
-          state: currentState
+          state: currentState,
         };
       }
 
       const rejectedLogs = currentLogs.filter((e) => e && e.type === "plan_rejected");
       const latestRejected = rejectedLogs.at(-1);
-      const latestRejectedSeq =
-        typeof latestRejected?.seq === "number" ? latestRejected.seq : 0;
+      const latestRejectedSeq = typeof latestRejected?.seq === "number" ? latestRejected.seq : 0;
       const hasNewRejectionLog =
-        rejectedLogs.length > baselineRejectedCount ||
-        latestRejectedSeq > baselineLastRejectedSeq;
+        rejectedLogs.length > baselineRejectedCount || latestRejectedSeq > baselineLastRejectedSeq;
       const hasNewRejectionState = Boolean(
         currentState &&
-          currentState.status === "planning" &&
-          currentState.planAccepted === false &&
-          ((currentState.rejectionRevision !== undefined &&
-            currentState.rejectionRevision !== baselineRejectionRevision) ||
-            (currentState.lastPlanRejectedAt !== undefined &&
-              currentState.lastPlanRejectedAt !== baselineRejectedAt))
+        currentState.status === "planning" &&
+        currentState.planAccepted === false &&
+        ((currentState.rejectionRevision !== undefined &&
+          currentState.rejectionRevision !== baselineRejectionRevision) ||
+          (currentState.lastPlanRejectedAt !== undefined &&
+            currentState.lastPlanRejectedAt !== baselineRejectedAt)),
       );
 
       if (hasNewRejectionLog || hasNewRejectionState) {
@@ -577,7 +657,7 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
           event: "plan_rejected",
           planAccepted: false,
           feedback: currentState?.lastPlanFeedback ?? feedbackFromLog ?? null,
-          state: currentState
+          state: currentState,
         };
       }
 
@@ -586,20 +666,21 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
           ok: false,
           timedOut: true,
           event: "timeout",
-          state: currentState
+          state: currentState,
         };
       }
 
-      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      await new Promise((resolve) => {
+        setTimeout(resolve, pollMs);
+      });
     }
   }
 
   if (canonicalName === "CheckMissionStateBeforeResuming") {
     const customFn =
-      kernel.CheckMissionStateBeforeResuming ??
-      kernel.checkMissionStateBeforeResuming;
+      kernel.CheckMissionStateBeforeResuming ?? kernel.checkMissionStateBeforeResuming;
 
-    let missionState = null;
+    let missionState;
     if (typeof customFn === "function") {
       const customResult = await invokeKernelFunction(kernel, customFn, missionDir, args, adapter);
       if (customResult && typeof customResult === "object" && customResult.gitCheck) {
@@ -628,14 +709,14 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
 
     const gitCheck = await adapter.checkGitTreeBeforeResume(String(targetTreePath), {
       featureId: activeWorker?.featureId ?? missionState?.currentFeatureId ?? null,
-      workerTitle: activeWorker?.featureTitle ?? activeWorker?.title ?? null
+      workerTitle: activeWorker?.featureTitle ?? activeWorker?.title ?? null,
     });
 
     const hasInterruptedWorker = Boolean(
       activeWorker &&
-        (missionState?.status === "paused" ||
-          activeWorker.status === "paused" ||
-          activeWorker.status === "running")
+      (missionState?.status === "paused" ||
+        activeWorker.status === "paused" ||
+        activeWorker.status === "running"),
     );
     const childThreadId = activeWorker?.childThreadId ?? activeWorker?.threadId ?? null;
 
@@ -651,7 +732,7 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
       childThreadId,
       canResume: Boolean(gitCheck.canResume),
       gitCheck,
-      summary: gitCheck.summary
+      summary: gitCheck.summary,
     };
   }
 
@@ -664,16 +745,14 @@ export async function callMissionTool(toolName, rawArgs = {}, context = {}) {
   if (canonicalName === "StartMissionRun") {
     const hasLiveT3Transport = Boolean(
       args.dispatchAdapter ||
-        context.dispatchAdapter ||
-        context.adapter ||
-        context.transportClient ||
-        context.kernel ||
-        (context.env ?? process.env)?.T3_ACP_MCP_NODE
+      context.dispatchAdapter ||
+      context.adapter ||
+      context.transportClient ||
+      context.kernel ||
+      (context.env ?? process.env)?.T3_ACP_MCP_NODE,
     );
     const rawDispatchAdapter =
-      args.dispatchAdapter ??
-      context.dispatchAdapter ??
-      (hasLiveT3Transport ? adapter : {});
+      args.dispatchAdapter ?? context.dispatchAdapter ?? (hasLiveT3Transport ? adapter : {});
     const dispatchAdapter = createBridgeDispatchAdapter(missionDir, rawDispatchAdapter, kernel);
     const result = await invokeKernelFunction(kernel, fn, missionDir, args, dispatchAdapter);
 
@@ -701,8 +780,8 @@ export async function handleJsonRpcMessage(message, context = {}) {
       id: null,
       error: {
         code: -32600,
-        message: "Invalid Request"
-      }
+        message: "Invalid Request",
+      },
     };
   }
 
@@ -726,14 +805,14 @@ export async function handleJsonRpcMessage(message, context = {}) {
           protocolVersion,
           capabilities: {
             tools: {
-              listChanged: false
-            }
+              listChanged: false,
+            },
           },
           serverInfo: {
             name: "t3-mission-mcp-server",
-            version: "1.0.0"
-          }
-        }
+            version: "1.0.0",
+          },
+        },
       };
     }
 
@@ -741,7 +820,7 @@ export async function handleJsonRpcMessage(message, context = {}) {
       return {
         jsonrpc: "2.0",
         id: id ?? null,
-        result: {}
+        result: {},
       };
     }
 
@@ -750,15 +829,18 @@ export async function handleJsonRpcMessage(message, context = {}) {
         jsonrpc: "2.0",
         id: id ?? null,
         result: {
-          tools: MISSION_TOOLS
-        }
+          tools: MISSION_TOOLS,
+        },
       };
     }
 
     if (method === "tools/call") {
       const rawToolName = params && typeof params === "object" ? params.name : undefined;
       const rawToolArgs =
-        params && typeof params === "object" && params.arguments && typeof params.arguments === "object"
+        params &&
+        typeof params === "object" &&
+        params.arguments &&
+        typeof params.arguments === "object"
           ? params.arguments
           : {};
 
@@ -769,8 +851,8 @@ export async function handleJsonRpcMessage(message, context = {}) {
           id: id ?? null,
           error: {
             code: -32602,
-            message: `Unknown tool: ${String(rawToolName || "")}`
-          }
+            message: `Unknown tool: ${String(rawToolName || "")}`,
+          },
         };
       }
 
@@ -783,12 +865,12 @@ export async function handleJsonRpcMessage(message, context = {}) {
           content: [
             {
               type: "text",
-              text: serialized
-            }
+              text: serialized,
+            },
           ],
           structuredContent: toolResult,
-          isError: false
-        }
+          isError: false,
+        },
       };
     }
 
@@ -801,8 +883,8 @@ export async function handleJsonRpcMessage(message, context = {}) {
       id: id ?? null,
       error: {
         code: -32601,
-        message: `Method not found: ${String(method)}`
-      }
+        message: `Method not found: ${String(method)}`,
+      },
     };
   } catch (error) {
     if (isNotification) {
@@ -810,7 +892,7 @@ export async function handleJsonRpcMessage(message, context = {}) {
     }
     const errMessage = error instanceof Error ? error.message : String(error);
     const errCode =
-      error && typeof error === "object" && typeof /** @type {any} */ (error).code === "number"
+      error && typeof error === "object" && typeof (/** @type {any} */ (error).code) === "number"
         ? /** @type {any} */ (error).code
         : -32000;
 
@@ -823,8 +905,8 @@ export async function handleJsonRpcMessage(message, context = {}) {
         data:
           error && typeof error === "object" && "code" in error
             ? { kernelCode: /** @type {any} */ (error).code }
-            : undefined
-      }
+            : undefined,
+      },
     };
   }
 }
@@ -844,8 +926,7 @@ export function createMissionMcpServer(context = {}) {
       handleJsonRpcMessage(message, { ...context, ...(overrideContext || {}) }),
     handleJsonRpcMessage: (message, overrideContext) =>
       handleJsonRpcMessage(message, { ...context, ...(overrideContext || {}) }),
-    startStdio: (stdioOptions = {}) =>
-      startStdioMcpServer({ ...context, ...stdioOptions })
+    startStdio: (stdioOptions = {}) => startStdioMcpServer({ ...context, ...stdioOptions }),
   };
 }
 
@@ -861,7 +942,7 @@ export function startStdioMcpServer(options = {}) {
   const rl = readline.createInterface({
     input,
     crlfDelay: Infinity,
-    terminal: false
+    terminal: false,
   });
 
   const pending = new Set();
@@ -882,8 +963,8 @@ export function startStdioMcpServer(options = {}) {
           id: null,
           error: {
             code: -32700,
-            message: "Parse error"
-          }
+            message: "Parse error",
+          },
         };
         output.write(`${JSON.stringify(parseErr)}\n`);
         return;
@@ -917,7 +998,7 @@ export function startStdioMcpServer(options = {}) {
     close: async () => {
       rl.close();
       await Promise.allSettled([...pending]);
-    }
+    },
   };
 }
 
@@ -930,9 +1011,7 @@ function resolveRealOrAbs(p) {
 }
 
 export function isExecutedAsMain(metaUrl, argv1 = process.argv[1]) {
-  return Boolean(
-    argv1 && resolveRealOrAbs(argv1) === resolveRealOrAbs(fileURLToPath(metaUrl))
-  );
+  return Boolean(argv1 && resolveRealOrAbs(argv1) === resolveRealOrAbs(fileURLToPath(metaUrl)));
 }
 
 const isMainModule = isExecutedAsMain(import.meta.url);
@@ -959,5 +1038,5 @@ export default {
   runFeature,
   checkGitTreeBeforeResume,
   resumeWorker,
-  settleCompletedMilestoneThreads
+  settleCompletedMilestoneThreads,
 };

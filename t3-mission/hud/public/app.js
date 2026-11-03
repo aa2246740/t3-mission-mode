@@ -23,9 +23,7 @@ function formatDurationHms(totalMs) {
   const hours = Math.floor(totalSec / 3600);
   const minutes = Math.floor((totalSec % 3600) / 60);
   const seconds = totalSec % 60;
-  return [hours, minutes, seconds]
-    .map((n) => String(n).padStart(2, "0"))
-    .join(":");
+  return [hours, minutes, seconds].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
 function formatRelativeTime(isoString, fallback = "now") {
@@ -132,8 +130,7 @@ function synthesizeSessions(state, features) {
 
   for (const [idx, s] of explicitSessions.entries()) {
     const id = s.sessionId || s.runId || s.id || `session-${idx + 1}`;
-    const matchedFeature =
-      featuresList.find((f) => f.id && f.id === s.featureId) || null;
+    const matchedFeature = featuresList.find((f) => f.id && f.id === s.featureId) || null;
     const role = inferSessionRole(s, matchedFeature);
     const number = s.workerNumber ?? idx + 1;
     const title =
@@ -146,26 +143,24 @@ function synthesizeSessions(state, features) {
 
     const featureHandoffMatchesRun = Boolean(
       matchedFeature?.lastHandoff &&
-        ((s.runId &&
-          matchedFeature.lastHandoff.runId &&
-          matchedFeature.lastHandoff.runId === s.runId) ||
-          (!s.runId &&
-            !matchedFeature.lastHandoff.runId &&
-            status !== "running" &&
-            status !== "paused" &&
-            status !== "pending" &&
-            sameFeatureSessionCount === 1))
+      ((s.runId &&
+        matchedFeature.lastHandoff.runId &&
+        matchedFeature.lastHandoff.runId === s.runId) ||
+        (!s.runId &&
+          !matchedFeature.lastHandoff.runId &&
+          status !== "running" &&
+          status !== "paused" &&
+          status !== "pending" &&
+          sameFeatureSessionCount === 1)),
     );
 
-    const matchingFeatureHandoff = featureHandoffMatchesRun
-      ? matchedFeature.lastHandoff
-      : null;
+    const matchingFeatureHandoff = featureHandoffMatchesRun ? matchedFeature.lastHandoff : null;
 
     const h = s.handoff || matchingFeatureHandoff || {};
     const featureThreadMatchesRun = Boolean(
       matchedFeature?.childThreadId &&
-        ((s.runId && matchedFeature.runId && matchedFeature.runId === s.runId) ||
-          (!s.runId && sameFeatureSessionCount === 1))
+      ((s.runId && matchedFeature.runId && matchedFeature.runId === s.runId) ||
+        (!s.runId && sameFeatureSessionCount === 1)),
     );
     const childThreadId =
       s.childThreadId ||
@@ -188,10 +183,11 @@ function synthesizeSessions(state, features) {
         s.timeLabel ||
         formatRelativeTime(
           s.endedAt || s.startedAt,
-          status === "running" ? "now" : status === "pending" ? "queued" : "done"
+          status === "running" ? "now" : status === "pending" ? "queued" : "done",
         ),
       childThreadId,
-      kind: s.kind || matchedFeature?.kind || (role === "Validator" ? "scrutiny" : "implementation"),
+      kind:
+        s.kind || matchedFeature?.kind || (role === "Validator" ? "scrutiny" : "implementation"),
       model: s.model || matchedFeature?.model || null,
       providerInstanceId: s.providerInstanceId || matchedFeature?.providerInstanceId || null,
       handoff: {
@@ -209,24 +205,21 @@ function synthesizeSessions(state, features) {
                 ? `Scheduled ${title}`
                 : "No handoff summary recorded."),
         whatWasImplemented:
-          s.whatWasImplemented ||
-          h.whatWasImplemented ||
-          "No handoff recorded yet.",
-        commandsRun: Array.isArray(s.commandsRun) && s.commandsRun.length
-          ? s.commandsRun
-          : Array.isArray(h.commandsRun) && h.commandsRun.length
-            ? h.commandsRun
-            : Array.isArray(h.tests)
-              ? h.tests
-              : [],
+          s.whatWasImplemented || h.whatWasImplemented || "No handoff recorded yet.",
+        commandsRun:
+          Array.isArray(s.commandsRun) && s.commandsRun.length
+            ? s.commandsRun
+            : Array.isArray(h.commandsRun) && h.commandsRun.length
+              ? h.commandsRun
+              : Array.isArray(h.tests)
+                ? h.tests
+                : [],
         discoveredIssues: Array.isArray(s.discoveredIssues)
           ? s.discoveredIssues
           : Array.isArray(h.discoveredIssues)
             ? h.discoveredIssues
             : [],
-        whatWasLeftUndone: Array.isArray(h.whatWasLeftUndone)
-          ? h.whatWasLeftUndone
-          : [],
+        whatWasLeftUndone: Array.isArray(h.whatWasLeftUndone) ? h.whatWasLeftUndone : [],
         commit: h.commit || null,
         branch: h.branch || null,
         testedSha: h.testedSha || null,
@@ -236,13 +229,11 @@ function synthesizeSessions(state, features) {
   }
 
   for (const [idx, f] of featuresList.entries()) {
-    const matchingSessions = Array.from(byId.values()).filter(
-      (s) => s.featureId === f.id
-    );
+    const matchingSessions = Array.from(byId.values()).filter((s) => s.featureId === f.id);
     if (matchingSessions.length > 0) {
       if (f.lastHandoff && f.lastHandoff.runId) {
         const targetSession = matchingSessions.find(
-          (s) => s.runId === f.lastHandoff.runId && s.status !== "running"
+          (s) => s.runId === f.lastHandoff.runId && s.status !== "running",
         );
         if (targetSession) {
           targetSession.handoff = {
@@ -251,8 +242,7 @@ function synthesizeSessions(state, features) {
               f.lastHandoff.whatWasImplemented ||
               targetSession.handoff.salientSummary,
             whatWasImplemented:
-              f.lastHandoff.whatWasImplemented ||
-              targetSession.handoff.whatWasImplemented,
+              f.lastHandoff.whatWasImplemented || targetSession.handoff.whatWasImplemented,
             commandsRun: Array.isArray(f.lastHandoff.commandsRun)
               ? f.lastHandoff.commandsRun
               : targetSession.handoff.commandsRun,
@@ -285,7 +275,7 @@ function synthesizeSessions(state, features) {
       status,
       timeLabel: formatRelativeTime(
         h.completedAt,
-        status === "running" ? "now" : status === "pending" ? "queued" : "done"
+        status === "running" ? "now" : status === "pending" ? "queued" : "done",
       ),
       childThreadId,
       kind: f.kind || (role === "Validator" ? "scrutiny" : "implementation"),
@@ -297,19 +287,15 @@ function synthesizeSessions(state, features) {
           h.whatWasImplemented ||
           f.description ||
           (status === "running" ? `Running ${title}` : `Scheduled ${title}`),
-        whatWasImplemented:
-          h.whatWasImplemented || "No handoff recorded yet.",
-        commandsRun: Array.isArray(h.commandsRun) && h.commandsRun.length
-          ? h.commandsRun
-          : Array.isArray(h.tests)
-            ? h.tests
-            : [],
-        discoveredIssues: Array.isArray(h.discoveredIssues)
-          ? h.discoveredIssues
-          : [],
-        whatWasLeftUndone: Array.isArray(h.whatWasLeftUndone)
-          ? h.whatWasLeftUndone
-          : [],
+        whatWasImplemented: h.whatWasImplemented || "No handoff recorded yet.",
+        commandsRun:
+          Array.isArray(h.commandsRun) && h.commandsRun.length
+            ? h.commandsRun
+            : Array.isArray(h.tests)
+              ? h.tests
+              : [],
+        discoveredIssues: Array.isArray(h.discoveredIssues) ? h.discoveredIssues : [],
+        whatWasLeftUndone: Array.isArray(h.whatWasLeftUndone) ? h.whatWasLeftUndone : [],
         commit: h.commit || null,
         branch: h.branch || null,
         testedSha: h.testedSha || null,
@@ -321,16 +307,16 @@ function synthesizeSessions(state, features) {
   if (state?.activeWorker) {
     const aw = state.activeWorker;
     const number = aw.workerNumber ?? null;
-    const awId = aw.sessionId || aw.runId || (number !== null ? `worker-${number}` : "active-worker");
-    const matchedFeature =
-      featuresList.find((f) => f.id && f.id === aw.featureId) || null;
+    const awId =
+      aw.sessionId || aw.runId || (number !== null ? `worker-${number}` : "active-worker");
+    const matchedFeature = featuresList.find((f) => f.id && f.id === aw.featureId) || null;
     const existing =
       byId.get(awId) ||
       Array.from(byId.values()).find((s) =>
         aw.runId
           ? s.runId === aw.runId
           : (number !== null && s.workerNumber === number) ||
-            (aw.featureId && s.featureId === aw.featureId && s.status !== "completed")
+            (aw.featureId && s.featureId === aw.featureId && s.status !== "completed"),
       );
     const role = inferSessionRole(aw, existing || matchedFeature);
     const featureTitle =
@@ -355,16 +341,13 @@ function synthesizeSessions(state, features) {
       label: `${role} #${resolvedNumber}: ${featureTitle}`,
       status,
       timeLabel: "now",
-      childThreadId:
-        aw.childThreadId || aw.threadId || existing?.childThreadId || null,
+      childThreadId: aw.childThreadId || aw.threadId || existing?.childThreadId || null,
       handoff: {
         salientSummary:
           aw.salientSummary ||
           h.salientSummary ||
           existing?.handoff?.salientSummary ||
-          (status === "paused"
-            ? `Paused ${featureTitle}`
-            : `Running ${featureTitle}`),
+          (status === "paused" ? `Paused ${featureTitle}` : `Running ${featureTitle}`),
         whatWasImplemented:
           aw.whatWasImplemented ||
           h.whatWasImplemented ||
@@ -397,11 +380,7 @@ function coalesceProgressLog(entries) {
   const result = [];
   for (const item of entries) {
     const prev = result[result.length - 1];
-    if (
-      prev &&
-      item?.type === "model_slots_updated" &&
-      prev?.type === "model_slots_updated"
-    ) {
+    if (prev && item?.type === "model_slots_updated" && prev?.type === "model_slots_updated") {
       result[result.length - 1] = item;
     } else {
       result.push(item);
@@ -434,7 +413,7 @@ function formatApiErrorMessage(status, rawText) {
             parsed.gitCheck?.summary ||
             parsed.message ||
             statusLabel ||
-            "Request failed"
+            "Request failed",
         )
           .replace(/\s+/g, " ")
           .trim();
@@ -463,7 +442,10 @@ function formatApiErrorMessage(status, rawText) {
       // Fall through to plain-text sanitization
     }
   }
-  const stripped = raw.replace(/\{[\s\S]*\}/g, "").replace(/\s+/g, " ").trim();
+  const stripped = raw
+    .replace(/\{[\s\S]*\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   const fallback = stripped
     ? statusLabel && !stripped.includes(statusLabel)
       ? `${statusLabel}: ${stripped}`
@@ -585,7 +567,7 @@ function renderStatusStrip(snapshot) {
     snapshot.initialized === false ||
     state?.initialized === false ||
     state?.status === "uninitialized";
-  const status = isUninitialized ? "uninitialized" : (state.status || "planning");
+  const status = isUninitialized ? "uninitialized" : state.status || "planning";
   if (stripEl) stripEl.dataset.status = status;
   if (labelEl) {
     labelEl.textContent = isUninitialized
@@ -617,21 +599,21 @@ function renderStatusStrip(snapshot) {
   if (pauseBtn) {
     pauseBtn.disabled = Boolean(
       isUninitialized ||
-        status === "completed" ||
-        status === "paused" ||
-        (status === "awaiting_input" && !state.planAccepted)
+      status === "completed" ||
+      status === "paused" ||
+      (status === "awaiting_input" && !state.planAccepted),
     );
     pauseBtn.classList.toggle(
       "is-primary-action",
-      status === "running" || status === "orchestrator_turn"
+      status === "running" || status === "orchestrator_turn",
     );
   }
   if (resumeBtn) {
     resumeBtn.disabled = Boolean(
       isUninitialized ||
-        status === "completed" ||
-        status === "running" ||
-        (status === "awaiting_input" && !state.planAccepted)
+      status === "completed" ||
+      status === "running" ||
+      (status === "awaiting_input" && !state.planAccepted),
     );
     resumeBtn.classList.toggle("is-primary-action", status === "paused");
   }
@@ -674,8 +656,7 @@ function renderStatusStrip(snapshot) {
         const mFeatures = featuresList.filter((f) => f.milestoneId === m.id);
         const mAssertions = assertionsList.filter((a) => a.milestoneId === m.id);
         const doneCount = mFeatures.filter((f) => f.status === "completed").length;
-        const allFeaturesDone =
-          mFeatures.length > 0 && doneCount === mFeatures.length;
+        const allFeaturesDone = mFeatures.length > 0 && doneCount === mFeatures.length;
         const allAssertionsPassed =
           mAssertions.length === 0 || mAssertions.every((a) => a.status === "passed");
         return allFeaturesDone && allAssertionsPassed
@@ -837,19 +818,21 @@ function renderFeaturesAndAssertions(snapshot) {
                 ? "paused"
                 : "";
         const icon =
-          st === "completed" ? "\u2713" : st === "running" ? "\u25cf" : st === "paused" ? "||" : "\u2022";
+          st === "completed"
+            ? "\u2713"
+            : st === "running"
+              ? "\u25cf"
+              : st === "paused"
+                ? "||"
+                : "\u2022";
         const kindLabel = f.kind || f.role || "implementation";
-        const rawTargetOverride =
-          f.target ?? f.workerTarget ?? f.slotConfig ?? f.model ?? null;
+        const rawTargetOverride = f.target ?? f.workerTarget ?? f.slotConfig ?? f.model ?? null;
         const overrideModelLabel =
           typeof rawTargetOverride === "string"
             ? rawTargetOverride.trim()
             : rawTargetOverride && typeof rawTargetOverride === "object"
               ? String(
-                  rawTargetOverride.model ||
-                    rawTargetOverride.id ||
-                    rawTargetOverride.label ||
-                    ""
+                  rawTargetOverride.model || rawTargetOverride.id || rawTargetOverride.label || "",
                 ).trim()
               : "";
         const modelBadgeHtml = overrideModelLabel
@@ -857,8 +840,7 @@ function renderFeaturesAndAssertions(snapshot) {
           : "";
         const isFeatureDispatchPending = Boolean(
           f.dispatchPending === true ||
-            (state.activeWorker?.featureId === f.id &&
-              state.activeWorker?.dispatchPending === true)
+          (state.activeWorker?.featureId === f.id && state.activeWorker?.dispatchPending === true),
         );
         const dispatchPendingPillHtml = isFeatureDispatchPending
           ? `<span class="status-pill awaiting-dispatch" data-dispatch-pending="true">Awaiting Orchestrator Dispatch</span>`
@@ -909,7 +891,8 @@ function renderFeaturesAndAssertions(snapshot) {
     }
 
     featuresListEl.innerHTML =
-      fHtml || `<div style="padding:12px 14px;color:var(--text-muted);font-size:12px;">No features planned yet.</div>`;
+      fHtml ||
+      `<div style="padding:12px 14px;color:var(--text-muted);font-size:12px;">No features planned yet.</div>`;
 
     featuresListEl.querySelectorAll(".feature-row").forEach((row) => {
       row.addEventListener("click", () => {
@@ -984,7 +967,7 @@ function renderCenterColumn(snapshot) {
     if (showApprovalCard) {
       if (
         typeof approvalEl.innerHTML === "string" &&
-        approvalEl.innerHTML.includes("id=\"plan-feedback\"")
+        approvalEl.innerHTML.includes('id="plan-feedback"')
       ) {
         const existingFeedbackInput = approvalEl.querySelector?.("#plan-feedback");
         if (existingFeedbackInput && typeof existingFeedbackInput.value === "string") {
@@ -1040,10 +1023,7 @@ function renderCenterColumn(snapshot) {
       }
       approvalEl.querySelector("#btn-reject-plan")?.addEventListener("click", async () => {
         const inputBeforeSubmit = approvalEl.querySelector("#plan-feedback");
-        const currentFeedback =
-          inputBeforeSubmit?.value ||
-          hudState.planFeedbackDraft ||
-          "";
+        const currentFeedback = inputBeforeSubmit?.value || hudState.planFeedbackDraft || "";
         try {
           hudState.planFeedbackDraft = "";
           if (inputBeforeSubmit) inputBeforeSubmit.value = "";
@@ -1102,13 +1082,17 @@ function renderCenterColumn(snapshot) {
         : [];
       const isValidator = selectedSession.role === "Validator";
       const kindBadge = isValidator
-        ? (selectedSession.kind === "user_testing" ? "User-Testing Validator" : "Scrutiny Validator")
+        ? selectedSession.kind === "user_testing"
+          ? "User-Testing Validator"
+          : "Scrutiny Validator"
         : "Implementation Worker";
       const shaLabel = isValidator
-        ? (selectedSession.handoff?.testedSha || selectedSession.handoff?.commit || "")
-        : (selectedSession.handoff?.commit || "");
+        ? selectedSession.handoff?.testedSha || selectedSession.handoff?.commit || ""
+        : selectedSession.handoff?.commit || "";
       const branchLabel = selectedSession.handoff?.branch || "";
-      const modelMeta = [selectedSession.providerInstanceId, selectedSession.model].filter(Boolean).join(" / ");
+      const modelMeta = [selectedSession.providerInstanceId, selectedSession.model]
+        .filter(Boolean)
+        .join(" / ");
 
       handoffEl.innerHTML = `
         <div class="handoff-header">
@@ -1179,7 +1163,7 @@ function renderCenterColumn(snapshot) {
                     .map((iss) =>
                       typeof iss === "string"
                         ? `\u2022 ${escapeHtml(iss)}`
-                        : `\u2022 ${escapeHtml(iss.summary || iss.description || JSON.stringify(iss))}`
+                        : `\u2022 ${escapeHtml(iss.summary || iss.description || JSON.stringify(iss))}`,
                     )
                     .join("<br/>")
                 : "None \u2014 all assertions and checks clean."
@@ -1208,7 +1192,9 @@ function renderCenterColumn(snapshot) {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(uri);
           }
-        } catch {}
+        } catch {
+          /* Optional cleanup or data is unavailable; retain the current state. */
+        }
         hudState.copiedThreadUri = uri;
         renderCenterColumn(hudState.snapshot);
       });
@@ -1308,9 +1294,7 @@ function renderRightColumn(snapshot) {
     const currentEffort = Number(slotCfg.effort || slotCfg.options?.effort || 4);
 
     const optionsList = Array.isArray(catalog) ? [...catalog] : [];
-    const catalogEntry = optionsList.find(
-      (c) => c.model === currentModel || c.id === currentModel
-    );
+    const catalogEntry = optionsList.find((c) => c.model === currentModel || c.id === currentModel);
     const supportsEffort =
       catalogEntry?.supportsEffort !== undefined
         ? Boolean(catalogEntry.supportsEffort)
@@ -1344,7 +1328,7 @@ function renderRightColumn(snapshot) {
             >
               ${escapeHtml(item.label || item.model)}
             </option>
-          `
+          `,
         )
         .join("");
     }
@@ -1437,7 +1421,7 @@ function renderRightColumn(snapshot) {
                 </div>
                 <span class="log-msg">${escapeHtml(item.message)}</span>
               </div>
-            `
+            `,
           )
           .join("")
       : `<div style="color:var(--text-muted);font-size:12px;">No activity events yet.</div>`;
@@ -1551,8 +1535,7 @@ function bindStaticListeners() {
         const label = opt?.dataset?.label || undefined;
         const optSupportsEffort = opt?.dataset?.supportsEffort !== "false";
         const currentEffort = optSupportsEffort
-          ? hudState.snapshot?.modelSettings?.[slot]?.effort ||
-            Number(opt?.dataset?.effort || 4)
+          ? hudState.snapshot?.modelSettings?.[slot]?.effort || Number(opt?.dataset?.effort || 4)
           : null;
         await updateModelSlot(slot, {
           model,
@@ -1586,7 +1569,9 @@ function connectSseStream() {
     try {
       const payload = JSON.parse(event.data);
       applySnapshot(payload);
-    } catch {}
+    } catch {
+      /* Optional cleanup or data is unavailable; retain the current state. */
+    }
   });
 
   es.addEventListener("error", () => {
@@ -1603,7 +1588,9 @@ async function initHud() {
       const snapshot = await res.json();
       applySnapshot(snapshot);
     }
-  } catch {}
+  } catch {
+    /* Optional cleanup or data is unavailable; retain the current state. */
+  }
 
   connectSseStream();
 

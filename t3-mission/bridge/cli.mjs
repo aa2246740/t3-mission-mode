@@ -1,10 +1,24 @@
 #!/usr/bin/env node
-import { inspectLocalWorkerLifetime, writeLocalWorkerMarker, removeLocalWorkerMarker, isLocalWorkerMarkerOwned } from '../kernel/local-worker-lifecycle.mjs';
+import {
+  inspectLocalWorkerLifetime,
+  writeLocalWorkerMarker,
+  removeLocalWorkerMarker,
+  isLocalWorkerMarkerOwned,
+} from "../kernel/local-worker-lifecycle.mjs";
 import { signalOwnedLocalWorker, isRemoteWorker } from "../kernel/worker-process.mjs";
-import { decideDispatchOutcome, classifyControlReceipt, inspectRunDispatchBinding } from "../kernel/schema.mjs";
+import {
+  decideDispatchOutcome,
+  classifyControlReceipt,
+  inspectRunDispatchBinding,
+} from "../kernel/schema.mjs";
 import { workerDispatchBlockReason } from "../kernel/runner.mjs";
 import { getMissionPaths, tryLoadState, loadFeaturesDoc } from "../kernel/store.mjs";
-import { missionTransaction, readTransactionFile, runClaimedEffect, transactionHash } from '../kernel/mission-transaction.mjs';
+import {
+  missionTransaction,
+  readTransactionFile,
+  runClaimedEffect,
+  transactionHash,
+} from "../kernel/mission-transaction.mjs";
 import { dispatchRuntimeInvocation } from "../kernel/dispatch-journal.mjs";
 import { preSendFailure } from "./t3-adapter.mjs";
 import cp from "node:child_process";
@@ -16,12 +30,14 @@ import {
   callMissionTool,
   MISSION_TOOLS,
   resolveCanonicalToolName,
-  startStdioMcpServer
+  startStdioMcpServer,
 } from "./mcp-server.mjs";
 import { callT3McpTool, runFeature } from "./t3-adapter.mjs";
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function isPidAlive(pid) {
@@ -39,43 +55,86 @@ function isPidAlive(pid) {
 function runtimeDispatchBlockReasonImpl(missionDir, payload) {
   const current = tryLoadState(missionDir);
   // Incomplete standalone state has no lifecycle gate. External work still requires a registered invocation.
-  if (!current || (current.initialized === undefined && current.planAccepted === undefined && !current.missionId)) return null;
-  const state = current, doc = loadFeaturesDoc(missionDir);
+  if (
+    !current ||
+    (current.initialized === undefined && current.planAccepted === undefined && !current.missionId)
+  )
+    return null;
+  const state = current,
+    doc = loadFeaturesDoc(missionDir);
   const binding = inspectRunDispatchBinding(current, doc.features);
   if (binding.hasIdentity || binding.requiresBinding) return "DISPATCH_BINDING_REQUIRED";
   if (payload.dispatchPreflight) {
     const paths = getMissionPaths(missionDir);
     for (const key of ["statePath", "featuresPath", "modelSettingsPath", "progressLogPath"]) {
       const bytes = readTransactionFile(paths[key]);
-      if (payload.dispatchPreflight.base?.[key] !== (bytes === null ? null : transactionHash(bytes))) return "MISSION_STATE_CHANGED";
+      if (
+        payload.dispatchPreflight.base?.[key] !== (bytes === null ? null : transactionHash(bytes))
+      )
+        return "MISSION_STATE_CHANGED";
     }
   }
-  const worker = { runId: payload.runId || payload.feature?.runId, featureId: payload.feature?.id || payload.featureId };
+  const worker = {
+    runId: payload.runId || payload.feature?.runId,
+    featureId: payload.feature?.id || payload.featureId,
+  };
   if (payload.missionId !== state.missionId) return "MISSION_REPLACED";
   return workerDispatchBlockReason(state, worker, doc);
 }
 
-function runtimeDispatchBlockReason(dir, payload) { return missionTransaction(dir, () => runtimeDispatchBlockReasonImpl(dir, payload), { create: false }); }
+function runtimeDispatchBlockReason(dir, payload) {
+  return missionTransaction(dir, () => runtimeDispatchBlockReasonImpl(dir, payload), {
+    create: false,
+  });
+}
 
 async function runtimeEffect(missionDir, kind, worker, invoke, dispatchPayload) {
-  if (kind === 'dispatch') return dispatchRuntimeInvocation(missionDir, dispatchPayload, invoke, () => {
-    const reason = runtimeDispatchBlockReasonImpl(missionDir, dispatchPayload);
-    if (reason) throw preSendFailure(Object.assign(new Error(reason), { code: "MISSION_NOT_DISPATCHABLE" }));
-  });
+  if (kind === "dispatch")
+    return dispatchRuntimeInvocation(missionDir, dispatchPayload, invoke, () => {
+      const reason = runtimeDispatchBlockReasonImpl(missionDir, dispatchPayload);
+      if (reason)
+        throw preSendFailure(
+          Object.assign(new Error(reason), { code: "MISSION_NOT_DISPATCHABLE" }),
+        );
+    });
   const state = tryLoadState(missionDir);
   if (!state?.missionId) return invoke(undefined);
   const runId = worker.runId ?? state.activeWorker?.runId;
-  if (!runId) throw Object.assign(new Error('Runtime control requires a durable Mission run'), { code: 'MISSING_RUN_IDENTITY' });
-  const suffix = worker.controlRequestId ?? state.pauseEpoch ?? state.pausedAt ?? 'legacy';
+  if (!runId)
+    throw Object.assign(new Error("Runtime control requires a durable Mission run"), {
+      code: "MISSING_RUN_IDENTITY",
+    });
+  const suffix = worker.controlRequestId ?? state.pauseEpoch ?? state.pausedAt ?? "legacy";
   const effectId = `runtime-${kind}:${state.missionId}:${runId}:${suffix}`;
-  return runClaimedEffect(missionDir, effectId, () => invoke('t3-runtime:' + transactionHash(effectId)), { validate: () => {
-    const current = tryLoadState(missionDir);
-    if (current?.missionId !== state.missionId || current.revision !== state.revision || current.activeWorker?.runId !== runId)
-      throw preSendFailure(Object.assign(new Error("Runtime owner changed before effect claim"), { code: "MISSION_STATE_CHANGED" }));
-    if (kind === 'resume' && (current.planAccepted !== true || !['running', 'paused', 'orchestrator_turn'].includes(current.status) ||
-        (worker.pausedAt !== undefined && worker.pausedAt !== current.activeWorker.pausedAt)))
-      throw Object.assign(new Error("Current gate refuses the old Resume"), { code: "MISSION_NOT_DISPATCHABLE" });
-  } });
+  return runClaimedEffect(
+    missionDir,
+    effectId,
+    () => invoke("t3-runtime:" + transactionHash(effectId)),
+    {
+      validate: () => {
+        const current = tryLoadState(missionDir);
+        if (
+          current?.missionId !== state.missionId ||
+          current.revision !== state.revision ||
+          current.activeWorker?.runId !== runId
+        )
+          throw preSendFailure(
+            Object.assign(new Error("Runtime owner changed before effect claim"), {
+              code: "MISSION_STATE_CHANGED",
+            }),
+          );
+        if (
+          kind === "resume" &&
+          (current.planAccepted !== true ||
+            !["running", "paused", "orchestrator_turn"].includes(current.status) ||
+            (worker.pausedAt !== undefined && worker.pausedAt !== current.activeWorker.pausedAt))
+        )
+          throw Object.assign(new Error("Current gate refuses the old Resume"), {
+            code: "MISSION_NOT_DISPATCHABLE",
+          });
+      },
+    },
+  );
 }
 
 /**
@@ -227,7 +286,9 @@ export function parseCliArgs(argv = process.argv.slice(2), options = {}) {
 
   let parsedJson = {};
   if (rawJson === "-") {
-    rawJson = (typeof options.stdinText === "string" ? options.stdinText : fs.readFileSync(0, "utf8")).trim();
+    rawJson = (
+      typeof options.stdinText === "string" ? options.stdinText : fs.readFileSync(0, "utf8")
+    ).trim();
   }
   if (rawJson) {
     try {
@@ -238,7 +299,8 @@ export function parseCliArgs(argv = process.argv.slice(2), options = {}) {
       parsedJson = candidate;
     } catch (error) {
       throw new Error(
-        `Invalid --json payload: ${error instanceof Error ? error.message : String(error)}`
+        `Invalid --json payload: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
   }
@@ -251,14 +313,14 @@ export function parseCliArgs(argv = process.argv.slice(2), options = {}) {
   const payload = {
     ...parsedJson,
     ...extraFlags,
-    missionDir: resolvedMissionDir
+    missionDir: resolvedMissionDir,
   };
 
   return {
     command,
     missionDir: resolvedMissionDir,
     payload,
-    help
+    help,
   };
 }
 
@@ -280,7 +342,7 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
     if (help || !command) {
       const usage = {
         usage: "node t3-mission/bridge/cli.mjs <command> --mission-dir <dir> [--json <payload>]",
-        commands: MISSION_TOOLS.map((t) => t.name)
+        commands: MISSION_TOOLS.map((t) => t.name),
       };
       stdout.write(`${JSON.stringify(usage, null, 2)}\n`);
       return { exitCode: help ? 0 : 1, result: usage };
@@ -302,10 +364,7 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
       return { exitCode: 0, result: listResult };
     }
 
-    if (
-      normalizedCmd === "localworkerdaemon" ||
-      normalizedCmd === "local-worker-daemon"
-    ) {
+    if (normalizedCmd === "localworkerdaemon" || normalizedCmd === "local-worker-daemon") {
       const repoPath = String(payload.repoPath || missionDir);
       const runId = String(payload.runId || "run-1");
       const featureId = String(payload.featureId || "f1");
@@ -322,7 +381,7 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
         resumeCount: 0,
         lastTrigger: null,
         startedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       };
 
       const writeDaemonState = () => {
@@ -366,7 +425,10 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
           return;
         }
 
-        const lifetime = inspectLocalWorkerLifetime(statePath, runId, process.pid, { missingSince, seenState });
+        const lifetime = inspectLocalWorkerLifetime(statePath, runId, process.pid, {
+          missingSince,
+          seenState,
+        });
         missingSince = lifetime.missingSince;
         seenState = lifetime.seenState;
         if (lifetime.reason) cleanupAndExit();
@@ -376,13 +438,16 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
       return { exitCode: 0 };
     }
 
-    if (
-      normalizedCmd === "dispatchworkerruntime" ||
-      normalizedCmd === "dispatch-worker-runtime"
-    ) {
+    if (normalizedCmd === "dispatchworkerruntime" || normalizedCmd === "dispatch-worker-runtime") {
       const reason = runtimeDispatchBlockReason(missionDir, payload);
       if (reason) {
-        const result = { ok: false, accepted: false, dispatched: false, code: "MISSION_NOT_DISPATCHABLE", reason };
+        const result = {
+          ok: false,
+          accepted: false,
+          dispatched: false,
+          code: "MISSION_NOT_DISPATCHABLE",
+          reason,
+        };
         stdout.write(`${JSON.stringify(result)}\n`);
         return { exitCode: 0, result };
       }
@@ -401,28 +466,34 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
 
       if (process.env.T3_ACP_MCP_NODE && String(process.env.T3_ACP_MCP_NODE).trim()) {
         runtimeEvidence = { operation: "dispatch", expected: {} };
-        const delegated = await runtimeEffect(missionDir, "dispatch", { runId, clientRequestId: feature.clientRequestId }, () => runFeature(feature, slotConfig, {
-          missionId,
-          activeWorker: {
-            runId,
-            featureId,
-            workerNumber: payload.workerNumber || 1,
-            attempt: payload.attempt || 1,
-            clientRequestId: feature.clientRequestId
-          }
-        }), payload);
+        const delegated = await runtimeEffect(
+          missionDir,
+          "dispatch",
+          { runId, clientRequestId: feature.clientRequestId },
+          () =>
+            runFeature(feature, slotConfig, {
+              missionId,
+              activeWorker: {
+                runId,
+                featureId,
+                workerNumber: payload.workerNumber || 1,
+                attempt: payload.attempt || 1,
+                clientRequestId: feature.clientRequestId,
+              },
+            }),
+          payload,
+        );
         const verdict = decideDispatchOutcome(delegated, { expectedIdentity: { runId } });
         const result = {
           ...verdict.raw,
-          runtimeTransport: "t3-acp-mcp"
+          runtimeTransport: "t3-acp-mcp",
         };
         stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         return { exitCode: 0, result };
       }
 
       const allowLocalDaemon = Boolean(
-        process.env.T3_MISSION_LOCAL_WORKER_DAEMON === "1" ||
-          payload.allowLocalDaemon === true
+        process.env.T3_MISSION_LOCAL_WORKER_DAEMON === "1" || payload.allowLocalDaemon === true,
       );
 
       if (!allowLocalDaemon) {
@@ -434,7 +505,7 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
           accepted: false,
           preSend: true,
           runtimeTransport: "orchestrator-pending",
-          worktreePath: repoPath
+          worktreePath: repoPath,
         };
         stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         return { exitCode: 0, result };
@@ -447,77 +518,82 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
       const safePart = (val) => String(val).replace(/[^A-Za-z0-9_.-]/g, "_");
       const daemonStateFile = path.join(
         os.tmpdir(),
-        `t3-mission-local-worker-${safePart(missionId)}-${safePart(featureId)}-${safePart(runId)}-${process.pid}-${Date.now()}.json`
+        `t3-mission-local-worker-${safePart(missionId)}-${safePart(featureId)}-${safePart(runId)}-${process.pid}-${Date.now()}.json`,
       );
 
       const cliPath = fileURLToPath(import.meta.url);
-      const result = await runtimeEffect(missionDir, "dispatch", { runId }, async () => {
-      const child = cp.spawn(
-        process.execPath,
-        [
-          cliPath,
-          "LocalWorkerDaemon",
-          "--mission-dir",
-          missionDir,
-          "--repo-path",
-          repoPath,
-          "--run-id",
-          runId,
-          "--feature-id",
-          featureId,
-          "--state-file",
-          daemonStateFile
-        ],
-        {
-          detached: true,
-          stdio: "ignore",
-          env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }
-        }
+      const result = await runtimeEffect(
+        missionDir,
+        "dispatch",
+        { runId },
+        async () => {
+          const child = cp.spawn(
+            process.execPath,
+            [
+              cliPath,
+              "LocalWorkerDaemon",
+              "--mission-dir",
+              missionDir,
+              "--repo-path",
+              repoPath,
+              "--run-id",
+              runId,
+              "--feature-id",
+              featureId,
+              "--state-file",
+              daemonStateFile,
+            ],
+            {
+              detached: true,
+              stdio: "ignore",
+              env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+            },
+          );
+          await new Promise((resolve, reject) => {
+            child.once("spawn", resolve);
+            child.once("error", (error) => reject(preSendFailure(error)));
+          });
+          child.unref();
+
+          const waitStart = Date.now();
+          while (Date.now() - waitStart < 1500) {
+            if (fs.existsSync(daemonStateFile) && isPidAlive(child.pid)) {
+              break;
+            }
+            await sleep(10);
+          }
+
+          return {
+            ok: true,
+            dispatched: true,
+            taskId: `node:delegated-task:${missionId}:${featureId}:${runId}`,
+            childThreadId: `thread:delegated-task:${missionId}:${featureId}:${runId}`,
+            childRunId: `run:thread:${missionId}:${featureId}:${runId}:ordinal:1`,
+            worktreePath: repoPath,
+            workerPid: child.pid,
+            daemonStateFile,
+            daemonStatus: "running",
+            runtimeTransport: "bridge-cli-subprocess",
+          };
+        },
+        payload,
       );
-      await new Promise((resolve, reject) => {
-        child.once('spawn', resolve);
-        child.once('error', error => reject(preSendFailure(error)));
-      });
-      child.unref();
-
-      const waitStart = Date.now();
-      while (Date.now() - waitStart < 1500) {
-        if (fs.existsSync(daemonStateFile) && isPidAlive(child.pid)) {
-          break;
-        }
-        await sleep(10);
-      }
-
-      return {
-        ok: true,
-        dispatched: true,
-        taskId: `node:delegated-task:${missionId}:${featureId}:${runId}`,
-        childThreadId: `thread:delegated-task:${missionId}:${featureId}:${runId}`,
-        childRunId: `run:thread:${missionId}:${featureId}:${runId}:ordinal:1`,
-        worktreePath: repoPath,
-        workerPid: child.pid,
-        daemonStateFile,
-        daemonStatus: "running",
-        runtimeTransport: "bridge-cli-subprocess"
-      };
-      }, payload);
       stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return { exitCode: 0, result };
     }
 
-    if (
-      normalizedCmd === "pauseworkerruntime" ||
-      normalizedCmd === "pause-worker-runtime"
-    ) {
+    if (normalizedCmd === "pauseworkerruntime" || normalizedCmd === "pause-worker-runtime") {
       const activeWorker =
         payload.activeWorker && typeof payload.activeWorker === "object"
           ? /** @type {Record<string, any>} */ (payload.activeWorker)
           : {};
-      const requiresLocalDaemon = !isRemoteWorker(activeWorker) && Boolean(
-        typeof activeWorker.workerPid === "number" ||
+      const requiresLocalDaemon =
+        !isRemoteWorker(activeWorker) &&
+        Boolean(
+          typeof activeWorker.workerPid === "number" ||
           typeof activeWorker.daemonStateFile === "string" ||
-          activeWorker.runtimeTransport === "bridge-cli-subprocess"
-      );
+          activeWorker.runtimeTransport === "bridge-cli-subprocess",
+        );
 
       if (
         process.env.T3_ACP_MCP_NODE &&
@@ -525,9 +601,17 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
         activeWorker.childThreadId
       ) {
         runtimeEvidence = { operation: "pause", expected: activeWorker };
-        const response = await runtimeEffect(missionDir, "pause", activeWorker, clientRequestId => callT3McpTool("t3_thread_interrupt", {
-          threadId: activeWorker.childThreadId, clientRequestId
-        }, process.env, { expected: activeWorker, retainRaw: true }));
+        const response = await runtimeEffect(missionDir, "pause", activeWorker, (clientRequestId) =>
+          callT3McpTool(
+            "t3_thread_interrupt",
+            {
+              threadId: activeWorker.childThreadId,
+              clientRequestId,
+            },
+            process.env,
+            { expected: activeWorker, retainRaw: true },
+          ),
+        );
         const verdict = classifyControlReceipt(response, "pause", activeWorker);
         stdout.write(`${JSON.stringify(verdict.raw) ?? "null"}\n`);
         return { exitCode: 0, result: verdict.raw };
@@ -544,26 +628,31 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
               paused: false,
               canPause: false,
               code: "WORKER_NOT_ALIVE",
-              error: errorMsg
-            })}\n`
+              error: errorMsg,
+            })}\n`,
           );
           return { exitCode: 1, error: errorMsg };
         }
 
         try {
           if (!signalOwnedLocalWorker(activeWorker, missionDir, "SIGUSR1"))
-            throw Object.assign(new Error("Active worker process ownership could not be verified"), { code: "WORKER_OWNERSHIP_UNVERIFIED" });
+            throw Object.assign(
+              new Error("Active worker process ownership could not be verified"),
+              { code: "WORKER_OWNERSHIP_UNVERIFIED" },
+            );
         } catch (error) {
           const ownershipUnknown = error?.code === "WORKER_OWNERSHIP_UNVERIFIED";
-          const errorMsg = ownershipUnknown ? error.message : "Active worker daemon process is not alive";
+          const errorMsg = ownershipUnknown
+            ? error.message
+            : "Active worker daemon process is not alive";
           stderr.write(
             `${JSON.stringify({
               ok: false,
               paused: false,
               canPause: false,
               code: ownershipUnknown ? "WORKER_OWNERSHIP_UNVERIFIED" : "WORKER_NOT_ALIVE",
-              error: errorMsg
-            })}\n`
+              error: errorMsg,
+            })}\n`,
           );
           return { exitCode: 1, error: errorMsg };
         }
@@ -580,7 +669,9 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
                   break;
                 }
               }
-            } catch {}
+            } catch {
+              /* Optional cleanup or data is unavailable; retain the current state. */
+            }
             await sleep(10);
           }
           if (!transitioned || !isPidAlive(activeWorker.workerPid)) {
@@ -591,8 +682,8 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
                 paused: false,
                 canPause: false,
                 code: "WORKER_PAUSE_FAILED",
-                error: errorMsg
-              })}\n`
+                error: errorMsg,
+              })}\n`,
             );
             return { exitCode: 1, error: errorMsg };
           }
@@ -604,17 +695,25 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
               paused: false,
               canPause: false,
               code: "WORKER_PAUSE_FAILED",
-              error: errorMsg
-            })}\n`
+              error: errorMsg,
+            })}\n`,
           );
           return { exitCode: 1, error: errorMsg };
         }
       } else {
-        const bound = Boolean(activeWorker.taskId || activeWorker.childThreadId || isRemoteWorker(activeWorker));
+        const bound = Boolean(
+          activeWorker.taskId || activeWorker.childThreadId || isRemoteWorker(activeWorker),
+        );
         const result = bound
-          ? { ok: false, paused: false, canPause: false, code: "NO_T3_TRANSPORT", error: "No T3 transport is available to pause this remote worker" }
+          ? {
+              ok: false,
+              paused: false,
+              canPause: false,
+              code: "NO_T3_TRANSPORT",
+              error: "No T3 transport is available to pause this remote worker",
+            }
           : { ok: true, paused: true, pausedByPid: process.pid };
-        stdout.write(''+JSON.stringify(result)+'\n');
+        stdout.write("" + JSON.stringify(result) + "\n");
         return { exitCode: 0, result };
       }
 
@@ -625,30 +724,24 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
         childThreadId: activeWorker.childThreadId || null,
         workerPid: activeWorker.workerPid || null,
         daemonStatus: "paused",
-        pausedByPid: process.pid
+        pausedByPid: process.pid,
       };
       stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return { exitCode: 0, result };
     }
 
-    if (
-      normalizedCmd === "pausemissionruntime" ||
-      normalizedCmd === "pause-mission-runtime"
-    ) {
+    if (normalizedCmd === "pausemissionruntime" || normalizedCmd === "pause-mission-runtime") {
       const result = {
         ok: true,
         paused: true,
         status: "paused",
-        pausedByPid: process.pid
+        pausedByPid: process.pid,
       };
       stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return { exitCode: 0, result };
     }
 
-    if (
-      normalizedCmd === "resumeworkerruntime" ||
-      normalizedCmd === "resume-worker-runtime"
-    ) {
+    if (normalizedCmd === "resumeworkerruntime" || normalizedCmd === "resume-worker-runtime") {
       const activeWorker =
         payload.activeWorker && typeof payload.activeWorker === "object"
           ? /** @type {Record<string, any>} */ (payload.activeWorker)
@@ -663,17 +756,19 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
             ok: false,
             resumed: false,
             canResume: false,
-            error: errorMsg
-          })}\n`
+            error: errorMsg,
+          })}\n`,
         );
         return { exitCode: 1, error: errorMsg };
       }
 
-      const requiresLocalDaemon = !isRemoteWorker(activeWorker) && Boolean(
-        typeof activeWorker.workerPid === "number" ||
+      const requiresLocalDaemon =
+        !isRemoteWorker(activeWorker) &&
+        Boolean(
+          typeof activeWorker.workerPid === "number" ||
           typeof activeWorker.daemonStateFile === "string" ||
-          activeWorker.runtimeTransport === "bridge-cli-subprocess"
-      );
+          activeWorker.runtimeTransport === "bridge-cli-subprocess",
+        );
 
       if (
         process.env.T3_ACP_MCP_NODE &&
@@ -681,10 +776,22 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
         activeWorker.childThreadId
       ) {
         runtimeEvidence = { operation: "resume", expected: activeWorker };
-        const response = await runtimeEffect(missionDir, "resume", activeWorker, clientRequestId => callT3McpTool("t3_thread_send", {
-          threadId: activeWorker.childThreadId, clientRequestId,
-          message: diagnostic ? `${trigger}\n\n${diagnostic}` : trigger
-        }, process.env, { expected: activeWorker, retainRaw: true }));
+        const response = await runtimeEffect(
+          missionDir,
+          "resume",
+          activeWorker,
+          (clientRequestId) =>
+            callT3McpTool(
+              "t3_thread_send",
+              {
+                threadId: activeWorker.childThreadId,
+                clientRequestId,
+                message: diagnostic ? `${trigger}\n\n${diagnostic}` : trigger,
+              },
+              process.env,
+              { expected: activeWorker, retainRaw: true },
+            ),
+        );
         const verdict = classifyControlReceipt(response, "resume", activeWorker);
         stdout.write(`${JSON.stringify(verdict.raw) ?? "null"}\n`);
         return { exitCode: 0, result: verdict.raw };
@@ -701,26 +808,31 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
               resumed: false,
               canResume: false,
               code: "WORKER_NOT_ALIVE",
-              error: errorMsg
-            })}\n`
+              error: errorMsg,
+            })}\n`,
           );
           return { exitCode: 1, error: errorMsg };
         }
 
         try {
           if (!signalOwnedLocalWorker(activeWorker, missionDir, "SIGUSR2"))
-            throw Object.assign(new Error("Active worker process ownership could not be verified"), { code: "WORKER_OWNERSHIP_UNVERIFIED" });
+            throw Object.assign(
+              new Error("Active worker process ownership could not be verified"),
+              { code: "WORKER_OWNERSHIP_UNVERIFIED" },
+            );
         } catch (error) {
           const ownershipUnknown = error?.code === "WORKER_OWNERSHIP_UNVERIFIED";
-          const errorMsg = ownershipUnknown ? error.message : "Active worker daemon process is not alive";
+          const errorMsg = ownershipUnknown
+            ? error.message
+            : "Active worker daemon process is not alive";
           stderr.write(
             `${JSON.stringify({
               ok: false,
               resumed: false,
               canResume: false,
               code: ownershipUnknown ? "WORKER_OWNERSHIP_UNVERIFIED" : "WORKER_NOT_ALIVE",
-              error: errorMsg
-            })}\n`
+              error: errorMsg,
+            })}\n`,
           );
           return { exitCode: 1, error: errorMsg };
         }
@@ -737,7 +849,9 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
                   break;
                 }
               }
-            } catch {}
+            } catch {
+              /* Optional cleanup or data is unavailable; retain the current state. */
+            }
             await sleep(10);
           }
           if (!transitioned || !isPidAlive(activeWorker.workerPid)) {
@@ -748,8 +862,8 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
                 resumed: false,
                 canResume: false,
                 code: "WORKER_RESUME_FAILED",
-                error: errorMsg
-              })}\n`
+                error: errorMsg,
+              })}\n`,
             );
             return { exitCode: 1, error: errorMsg };
           }
@@ -761,13 +875,19 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
               resumed: false,
               canResume: false,
               code: "WORKER_RESUME_FAILED",
-              error: errorMsg
-            })}\n`
+              error: errorMsg,
+            })}\n`,
           );
           return { exitCode: 1, error: errorMsg };
         }
       } else {
-        const result = { ok: false, resumed: false, canResume: false, code: "NO_T3_TRANSPORT", error: "No T3 transport or local daemon is available" };
+        const result = {
+          ok: false,
+          resumed: false,
+          canResume: false,
+          code: "NO_T3_TRANSPORT",
+          error: "No T3 transport or local daemon is available",
+        };
         stdout.write(`${JSON.stringify(result)}\n`);
         return { exitCode: 0, result };
       }
@@ -780,7 +900,7 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
         workerPid: activeWorker.workerPid || null,
         daemonStatus: "running",
         trigger,
-        wokenByPid: process.pid
+        wokenByPid: process.pid,
       };
       stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return { exitCode: 0, result };
@@ -795,7 +915,7 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
 
     const result = await callMissionTool(canonicalTool, payload, {
       ...context,
-      missionDir
+      missionDir,
     });
 
     stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -817,17 +937,33 @@ export async function runCli(argv = process.argv.slice(2), context = {}) {
           : code === "HANDOFF_ATTENTION_REQUIRED"
             ? "HANDOFF_GATE_BLOCKED"
             : undefined;
-    const controlReceipt = runtimeEvidence && (runtimeEvidence.operation === "dispatch" ? decideDispatchOutcome(error?.runtimeResult, { expectedIdentity: runtimeEvidence.expected }).controlReceipt : classifyControlReceipt(error.runtimeResult ?? error, runtimeEvidence.operation, runtimeEvidence.expected));
+    const controlReceipt =
+      runtimeEvidence &&
+      (runtimeEvidence.operation === "dispatch"
+        ? decideDispatchOutcome(error?.runtimeResult, {
+            expectedIdentity: runtimeEvidence.expected,
+          }).controlReceipt
+        : classifyControlReceipt(
+            error.runtimeResult ?? error,
+            runtimeEvidence.operation,
+            runtimeEvidence.expected,
+          ));
     const errorPayload = {
       ok: false,
       ...(controlReceipt ? { controlReceipt } : {}),
       ...(Object.hasOwn(error, "runtimeResult") ? { runtimeResult: error.runtimeResult } : {}),
       code,
       ...(reasonCode ? { reasonCode } : {}),
-      error: message
+      error: message,
     };
     stderr.write(`${JSON.stringify(errorPayload)}\n`);
-    return { exitCode: 1, error: message, code, ...(controlReceipt ? { controlReceipt } : {}), ...(reasonCode ? { reasonCode } : {}) };
+    return {
+      exitCode: 1,
+      error: message,
+      code,
+      ...(controlReceipt ? { controlReceipt } : {}),
+      ...(reasonCode ? { reasonCode } : {}),
+    };
   }
 }
 
@@ -840,9 +976,7 @@ function resolveRealOrAbs(p) {
 }
 
 export function isExecutedAsMain(metaUrl, argv1 = process.argv[1]) {
-  return Boolean(
-    argv1 && resolveRealOrAbs(argv1) === resolveRealOrAbs(fileURLToPath(metaUrl))
-  );
+  return Boolean(argv1 && resolveRealOrAbs(argv1) === resolveRealOrAbs(fileURLToPath(metaUrl)));
 }
 
 const isMainModule = isExecutedAsMain(import.meta.url);
@@ -858,5 +992,5 @@ if (isMainModule) {
 export default {
   parseCliArgs,
   runCli,
-  isExecutedAsMain
+  isExecutedAsMain,
 };

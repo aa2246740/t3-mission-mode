@@ -1,0 +1,13 @@
+.git
+node_modules
+.mission
+coverage
+reports
+artifacts
+*.log
+*.tgz
+*.cpuprofile
+.env*
+!.env.example
+t3-mission/native/*.node
+t3-mission/native/*.node.json
