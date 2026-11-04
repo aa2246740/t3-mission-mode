@@ -3,23 +3,23 @@
   "rubricVersion": "droid-0.240.0",
   "repository": {
     "root": "/Users/wu/.agents/skills/t3-mission-mode",
-    "head": "8bcc7792dfe04bd2e6c5355b22ac9927667b4c28",
+    "head": "4e7f384511d4a21f9a5059bf5a8d797dbf66deff",
     "branch": "main",
     "origin": "https://github.com/aa2246740/t3-mission-mode",
     "identity": "https://github.com/aa2246740/t3-mission-mode",
     "dirty": false,
-    "fingerprint": "f63d46d20b9fe03d4f1ffba71eace13f7c73a63200c0bf17301a951a17504835"
+    "fingerprint": "3558c082c681df1ca24f8001cf64aff67d74c64ebbc69ffc416d90037c46f9e4"
   },
   "apps": {
     ".": {
-      "description": "Single installable T3 Mission Mode application: shared transactional kernel, CLI/MCP bridge, native lock, and local HTTP/SSE HUD."
+      "description": "One installable Mission application with a shared CLI/MCP, kernel, native lock, HUD and release lifecycle. bundled-skills are vendored upstream release dependencies, without independent build/release manifests here."
     }
   },
   "report": {
     "lint_config": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "ESLint recommended rules plus unused-variable, async, equality, and unreachable-code checks cover all JS/MJS source and tests."
+      "rationale": "ESLint covers first-party JS/MJS runtime, scripts and tests. Vendored upstream skills and generated reports are explicitly excluded."
     },
     "type_check": {
       "numerator": 1,
@@ -29,7 +29,7 @@
     "formatter": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "Prettier formatting is configured and checked across supported repository files."
+      "rationale": "Prettier checks first-party code and documentation; byte-preserved upstream skill payloads and report archives are excluded."
     },
     "pre_commit_hooks": {
       "numerator": 1,
@@ -54,12 +54,12 @@
     "large_file_detection": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "Quality checks reject tracked/untracked project files above 2 MiB; negative probes verified rejection."
+      "rationale": "The quality gate checks tracked and untracked non-ignored project files against a 2 MiB maximum. Current source, bundled skills and report archives pass."
     },
     "dead_code_detection": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "Unused imports/locals are detected across JS/MJS, existing dead helpers were removed, and negative verification proved rejection."
+      "rationale": "Knip and ESLint unused-variable/import checks cover first-party runtime, scripts and tests. Bundled upstream Python payloads are excluded from JS analysis."
     },
     "duplicate_code_detection": {
       "numerator": 1,
@@ -154,12 +154,12 @@
     "heavy_dependency_detection": {
       "numerator": null,
       "denominator": 1,
-      "rationale": "Non-bundled Node service/CLI with static browser assets; the stated non-bundled application N/A applies."
+      "rationale": "The Node service/CLI and static browser assets have no JS bundler. Vendored skill source payloads do not change the criterion's non-bundled application N/A."
     },
     "unused_dependencies_detection": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "Knip checks dependencies/binaries/unlisted references against actual runtime, scripts, and test entrypoints; only the documented system compiler is external."
+      "rationale": "Knip checks first-party dependency, binary and unlisted references. Vendored readiness runtime copies have no external Python dependencies."
     },
     "version_drift_detection": {
       "numerator": null,
@@ -204,7 +204,7 @@
     "test_coverage_thresholds": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "The real npm test entrypoint passes the enforced 80% lines/functions and 70% branches thresholds on Linux ARM64 with tmpfs fixtures; macOS/APFS and live provider evidence remain separate."
+      "rationale": "c8 enforces 80% lines/functions and 70% branches through the real npm test entrypoint in CI. Current frozen-source Linux ARM64 execution is retained separately from macOS focused verification and real-provider claims."
     },
     "test_naming_conventions": {
       "numerator": 1,
@@ -244,7 +244,7 @@
     "skills": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "Packaged skill has valid frontmatter and substantive agent workflow; root and packaged copies are byte-identical."
+      "rationale": "The synchronized root/packaged Mission skill and three portable bundled readiness skills have valid frontmatter and substantive instructions. Bundled payload hashes, cache exclusions and installer preservation were tested."
     },
     "documentation_freshness": {
       "numerator": 1,
@@ -254,7 +254,7 @@
     "api_schema_docs": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "A generated valid OpenAPI document describes actual HUD routes, JSON/SSE contracts, errors, command bodies, and request correlation."
+      "rationale": "Generated OpenAPI describes the actual HUD routes, including the steering selectors, required message, delivery result and refusal statuses."
     },
     "service_flow_documented": {
       "numerator": 1,
@@ -309,7 +309,7 @@
     "code_quality_metrics": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "CI retains enforced coverage, per-function complexity, duplication, timing, and stability reports; current local metrics are readable."
+      "rationale": "CI retains coverage, complexity, duplication, timing and stability metrics. Current quality metrics and GitHub CodeQL analyses are readable."
     },
     "error_tracking_contextualized": {
       "numerator": 0,
@@ -362,9 +362,9 @@
       "rationale": "CODEOWNERS assigns the actual repository owner across the project."
     },
     "automated_security_review": {
-      "numerator": 0,
+      "numerator": 1,
       "denominator": 1,
-      "rationale": "CodeQL SARIF and readable dependency-audit automation are configured, but GitHub returns no analysis and no actual automated security report has been published yet; keep this signal failed until one exists."
+      "rationale": "GitHub code-scanning APIs now return readable CodeQL analyses and a finding for 66dca9c. Automated SARIF reports are configured. This proves report generation, not a clean security verdict for the new source."
     },
     "dependency_update_automation": {
       "numerator": 0,
@@ -374,7 +374,7 @@
     "gitignore_comprehensive": {
       "numerator": 1,
       "denominator": 1,
-      "rationale": "Ignore rules cover env secrets, dependencies, IDE/OS files, coverage/reports/packages, and native build outputs; the example remains available."
+      "rationale": "Ignore rules cover secrets, dependencies, IDE/OS files, generated runtime reports, package/native outputs and Python caches. Only intentional reports/readiness JSON/Markdown archives are tracked."
     },
     "dast_scanning": {
       "numerator": 1,
@@ -442,15 +442,14 @@
       {
         "kind": "file",
         "path": "eslint.config.mjs",
-        "line": 6,
-        "note": "ESLint recommended rules plus unused-variable, async, equality, and unreachable-code checks cover all JS/MJS source and tests."
+        "note": "ESLint covers first-party JS/MJS runtime, scripts and tests. Vendored upstream skills and generated reports are explicitly excluded."
       },
       {
         "kind": "command",
         "command": "npm run lint",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 lint\n> eslint . --max-warnings 0",
+        "output": "> t3-mission-mode@1.0.0 lint\n> eslint . --max-warnings 0",
         "timeoutSeconds": 60
       }
     ],
@@ -458,7 +457,6 @@
       {
         "kind": "file",
         "path": "tsconfig.json",
-        "line": 4,
         "note": "Static checked JavaScript covers the actual HTTP security, logging, diagnostics, and route boundary; broader legacy typing is explicit debt."
       },
       {
@@ -466,7 +464,7 @@
         "command": "npm run typecheck",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 typecheck\n> tsc --noEmit",
+        "output": "> t3-mission-mode@1.0.0 typecheck\n> tsc --noEmit",
         "timeoutSeconds": 60
       }
     ],
@@ -474,15 +472,14 @@
       {
         "kind": "file",
         "path": ".prettierrc.json",
-        "line": 3,
-        "note": "Prettier formatting is configured and checked across supported repository files."
+        "note": "Prettier checks first-party code and documentation; byte-preserved upstream skill payloads and report archives are excluded."
       },
       {
         "kind": "command",
         "command": "npm run format:check",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 format:check\n> prettier --check .\n\nChecking formatting...\nAll matched files use Prettier code style!",
+        "output": "> t3-mission-mode@1.0.0 format:check\n> prettier --check .\n\nChecking formatting...\nAll matched files use Prettier code style!",
         "timeoutSeconds": 60
       }
     ],
@@ -490,7 +487,6 @@
       {
         "kind": "file",
         "path": ".githooks/pre-commit",
-        "line": 3,
         "note": "Checked-in pre-commit hook runs the quality gate and is enabled through this checkout-local hooksPath."
       },
       {
@@ -506,7 +502,6 @@
       {
         "kind": "file",
         "path": "tsconfig.json",
-        "line": 5,
         "note": "The checked operations boundary enables strict, unchecked-index, and exact-optional-property checks without suppressions."
       },
       {
@@ -514,7 +509,7 @@
         "command": "npm run typecheck",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 typecheck\n> tsc --noEmit",
+        "output": "> t3-mission-mode@1.0.0 typecheck\n> tsc --noEmit",
         "timeoutSeconds": 60
       }
     ],
@@ -522,7 +517,6 @@
       {
         "kind": "file",
         "path": "AGENTS.md",
-        "line": 31,
         "note": "AGENTS/CONTRIBUTING specify camelCase functions, PascalCase classes, UPPER_SNAKE_CASE constants, kebab-case modules, and test names."
       }
     ],
@@ -530,7 +524,6 @@
       {
         "kind": "file",
         "path": "scripts/complexity-budget.json",
-        "line": 2,
         "note": "AST complexity analysis enforces maximum 20 for new functions and frozen per-function legacy ceilings; metrics and owned debt are retained."
       },
       {
@@ -538,7 +531,7 @@
         "command": "python3 -c 'import json; from pathlib import Path; d=json.loads(Path(\"reports/quality.json\").read_text()); assert not d[\"failures\"]; print(json.dumps({\"checkedFiles\":d[\"checkedFiles\"],\"functions\":len(d[\"complexity\"]),\"failures\":d[\"failures\"]}))' ",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\"checkedFiles\": 216, \"functions\": 1221, \"failures\": []}",
+        "output": "{\"checkedFiles\": 285, \"functions\": 1346, \"failures\": []}",
         "timeoutSeconds": 60
       }
     ],
@@ -546,23 +539,21 @@
       {
         "kind": "file",
         "path": "scripts/check-quality.mjs",
-        "line": 21,
-        "note": "Quality checks reject tracked/untracked project files above 2 MiB; negative probes verified rejection."
+        "note": "The quality gate checks tracked and untracked non-ignored project files against a 2 MiB maximum. Current source, bundled skills and report archives pass."
       }
     ],
     "dead_code_detection": [
       {
         "kind": "file",
         "path": "eslint.config.mjs",
-        "line": 34,
-        "note": "Unused imports/locals are detected across JS/MJS, existing dead helpers were removed, and negative verification proved rejection."
+        "note": "Knip and ESLint unused-variable/import checks cover first-party runtime, scripts and tests. Bundled upstream Python payloads are excluded from JS analysis."
       },
       {
         "kind": "command",
         "command": "npm run lint",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 lint\n> eslint . --max-warnings 0",
+        "output": "> t3-mission-mode@1.0.0 lint\n> eslint . --max-warnings 0",
         "timeoutSeconds": 60
       }
     ],
@@ -570,15 +561,14 @@
       {
         "kind": "file",
         "path": ".jscpd.json",
-        "line": 7,
         "note": "jscpd scans production JS modules, enforces a 1% duplication ceiling, and emits reviewable metrics."
       },
       {
         "kind": "command",
-        "command": "npm run duplicates -- --output /tmp/t3-mission-readiness-final/duplication",
+        "command": "npm run duplicates -- --output /Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/duplication",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 duplicates\n> jscpd --config .jscpd.json --output /tmp/t3-mission-readiness-final/duplication\n\nUsing config from .jscpd.json\n\u001b[1mDuplications detection: Found 3 exact clones with 57(0.30%) duplicated lines in 24 (1 formats) files.\u001b[22m\n\u001b[32mJSON report saved to /tmp/t3-mission-readiness-final/duplication/jscpd-report.json\u001b[39m",
+        "output": "> t3-mission-mode@1.0.0 duplicates\n> jscpd --config .jscpd.json --output /Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/duplication\n\nUsing config from .jscpd.json\n\u001b[1mDuplications detection: Found 3 exact clones with 57(0.28%) duplicated lines in 27 (1 formats) files.\u001b[22m\n\u001b[32mJSON report saved to /Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/duplication/jscpd-report.json\u001b[39m",
         "timeoutSeconds": 60
       }
     ],
@@ -586,7 +576,6 @@
       {
         "kind": "file",
         "path": "scripts/check-architecture.mjs",
-        "line": 5,
         "note": "An architectural fitness check rejects forbidden imports across kernel, bridge, HUD, operations, and native modules."
       },
       {
@@ -594,7 +583,7 @@
         "command": "npm run architecture",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 architecture\n> node scripts/check-architecture.mjs\n\nVerified 81 local imports across kernel, bridge, HUD, operations, and native layers.",
+        "output": "> t3-mission-mode@1.0.0 architecture\n> node scripts/check-architecture.mjs\n\nVerified 90 local imports across kernel, bridge, HUD, operations, and native layers.",
         "timeoutSeconds": 60
       }
     ],
@@ -602,7 +591,6 @@
       {
         "kind": "file",
         "path": "docs/technical-debt.md",
-        "line": 8,
         "note": "Owned debt entries have closure conditions; the quality checker rejects orphan TODO/FIXME/HACK references."
       }
     ],
@@ -610,7 +598,6 @@
       {
         "kind": "file",
         "path": "README.md",
-        "line": 307,
         "note": "Filesystem persistence, not database queries."
       }
     ],
@@ -618,7 +605,6 @@
       {
         "kind": "file",
         "path": "README.md",
-        "line": 236,
         "note": "README and development guide document native build/setup with local compiler and Node headers."
       }
     ],
@@ -626,7 +612,6 @@
       {
         "kind": "file",
         "path": "package-lock.json",
-        "line": 4,
         "note": "Exact direct tool versions, integrity hashes, transitive resolutions, and security override pins are committed."
       }
     ],
@@ -636,7 +621,7 @@
         "command": "gh auth status",
         "cwd": ".",
         "exitCode": 0,
-        "output": "github.com\n  ✓ Logged in to github.com account aa2246740 (keyring)\n  - Active account: true\n  - Git operations protocol: https\n  - Token scopes: 'gist', 'read:org', 'repo'",
+        "output": "github.com\n  ✓ Logged in to github.com account aa2246740 (keyring)\n  - Active account: true\n  - Git operations protocol: https\n  - Token: gho_************************************\n  - Token scopes: 'gist', 'read:org', 'repo'",
         "timeoutSeconds": 60
       },
       {
@@ -670,7 +655,6 @@
       {
         "kind": "file",
         "path": "SKILL.md",
-        "line": 150,
         "note": "The maintained packaged skill actively directs agent implementation, isolated work, and validation handoffs."
       }
     ],
@@ -688,7 +672,7 @@
         "command": "gh run list --limit 50 --json databaseId,name,conclusion,createdAt,updatedAt",
         "cwd": ".",
         "exitCode": 0,
-        "output": "[]",
+        "output": "[{\"conclusion\":\"\",\"createdAt\":\"2026-11-04T02:20:45Z\",\"databaseId\":41760128182,\"name\":\"Quality and recovery validation\",\"updatedAt\":\"2026-11-04T02:20:50Z\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-04T02:20:45Z\",\"databaseId\":41760128015,\"name\":\"Security analysis\",\"updatedAt\":\"2026-11-04T02:22:32Z\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-03T13:11:06Z\",\"databaseId\":41642076678,\"name\":\"Security analysis\",\"updatedAt\":\"2026-11-03T13:13:09Z\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-03T13:11:06Z\",\"databaseId\":41642076558,\"name\":\"Quality and recovery validation\",\"updatedAt\":\"2026-11-03T13:56:04Z\"}]",
         "timeoutSeconds": 60
       }
     ],
@@ -696,7 +680,6 @@
       {
         "kind": "file",
         "path": "scripts/timed-command.mjs",
-        "line": 12,
         "note": "Native setup/package durations are explicitly measured; CI retains build-timings artifacts and npm caching."
       },
       {
@@ -722,7 +705,7 @@
         "command": "gh run list --limit 50 --json databaseId,name,conclusion,createdAt,updatedAt",
         "cwd": ".",
         "exitCode": 0,
-        "output": "[]",
+        "output": "[{\"conclusion\":\"\",\"createdAt\":\"2026-11-04T02:20:45Z\",\"databaseId\":41760128182,\"name\":\"Quality and recovery validation\",\"updatedAt\":\"2026-11-04T02:20:50Z\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-04T02:20:45Z\",\"databaseId\":41760128015,\"name\":\"Security analysis\",\"updatedAt\":\"2026-11-04T02:22:32Z\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-03T13:11:06Z\",\"databaseId\":41642076678,\"name\":\"Security analysis\",\"updatedAt\":\"2026-11-03T13:13:09Z\"},{\"conclusion\":\"success\",\"createdAt\":\"2026-11-03T13:11:06Z\",\"databaseId\":41642076558,\"name\":\"Quality and recovery validation\",\"updatedAt\":\"2026-11-03T13:56:04Z\"}]",
         "timeoutSeconds": 60
       },
       {
@@ -738,7 +721,6 @@
       {
         "kind": "file",
         "path": "docs/development.md",
-        "line": 10,
         "note": "A documented npm ci/setup/qa sequence builds the native lock and runs an isolated development target."
       }
     ],
@@ -746,7 +728,6 @@
       {
         "kind": "file",
         "path": "t3-mission/hud/server.mjs",
-        "line": 971,
         "note": "Permanent default-off allowLocalDaemon switch is wired into runtime adapter construction."
       }
     ],
@@ -754,7 +735,6 @@
       {
         "kind": "file",
         "path": ".github/workflows/release.yml",
-        "line": 39,
         "note": "Tagged release workflow generates GitHub release notes; a bounded git-log notes CLI also exists."
       }
     ],
@@ -764,7 +744,7 @@
         "command": "cat package.json .gitignore",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
+        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"bundled-skills\",\n    \"reports/readiness\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/*\n!reports/readiness/\nreports/readiness/*\n!reports/readiness/*.json\n!reports/readiness/*.md\n__pycache__/\n*.pyc\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
         "timeoutSeconds": 60
       },
       {
@@ -772,7 +752,7 @@
         "command": "find . -maxdepth 2 -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './reports/*' -not -path './coverage/*' | sort | head -100",
         "cwd": ".",
         "exitCode": 0,
-        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
+        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./bundled-skills/manifest.json\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/bundle-readiness.mjs\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-hud-redesign.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
         "timeoutSeconds": 60
       }
     ],
@@ -782,7 +762,7 @@
         "command": "cat package.json .gitignore",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
+        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"bundled-skills\",\n    \"reports/readiness\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/*\n!reports/readiness/\nreports/readiness/*\n!reports/readiness/*.json\n!reports/readiness/*.md\n__pycache__/\n*.pyc\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
         "timeoutSeconds": 60
       },
       {
@@ -790,7 +770,7 @@
         "command": "find . -maxdepth 2 -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './reports/*' -not -path './coverage/*' | sort | head -100",
         "cwd": ".",
         "exitCode": 0,
-        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
+        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./bundled-skills/manifest.json\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/bundle-readiness.mjs\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-hud-redesign.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
         "timeoutSeconds": 60
       }
     ],
@@ -800,7 +780,7 @@
         "command": "cat package.json .gitignore",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
+        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"bundled-skills\",\n    \"reports/readiness\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/*\n!reports/readiness/\nreports/readiness/*\n!reports/readiness/*.json\n!reports/readiness/*.md\n__pycache__/\n*.pyc\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
         "timeoutSeconds": 60
       },
       {
@@ -808,7 +788,7 @@
         "command": "find . -maxdepth 2 -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './reports/*' -not -path './coverage/*' | sort | head -100",
         "cwd": ".",
         "exitCode": 0,
-        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
+        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./bundled-skills/manifest.json\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/bundle-readiness.mjs\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-hud-redesign.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
         "timeoutSeconds": 60
       }
     ],
@@ -818,7 +798,7 @@
         "command": "cat package.json .gitignore",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
+        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"bundled-skills\",\n    \"reports/readiness\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/*\n!reports/readiness/\nreports/readiness/*\n!reports/readiness/*.json\n!reports/readiness/*.md\n__pycache__/\n*.pyc\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
         "timeoutSeconds": 60
       }
     ],
@@ -826,15 +806,14 @@
       {
         "kind": "file",
         "path": "knip.json",
-        "line": 2,
-        "note": "Knip checks dependencies/binaries/unlisted references against actual runtime, scripts, and test entrypoints; only the documented system compiler is external."
+        "note": "Knip checks first-party dependency, binary and unlisted references. Vendored readiness runtime copies have no external Python dependencies."
       },
       {
         "kind": "command",
         "command": "npm run dependencies:check",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 dependencies:check\n> knip --dependencies",
+        "output": "> t3-mission-mode@1.0.0 dependencies:check\n> knip --dependencies",
         "timeoutSeconds": 60
       }
     ],
@@ -844,7 +823,7 @@
         "command": "cat package.json .gitignore",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
+        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"bundled-skills\",\n    \"reports/readiness\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/*\n!reports/readiness/\nreports/readiness/*\n!reports/readiness/*.json\n!reports/readiness/*.md\n__pycache__/\n*.pyc\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
         "timeoutSeconds": 60
       },
       {
@@ -852,7 +831,7 @@
         "command": "find . -maxdepth 2 -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './reports/*' -not -path './coverage/*' | sort | head -100",
         "cwd": ".",
         "exitCode": 0,
-        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
+        "output": "./.c8rc.json\n./.dockerignore\n./.env.example\n./.githooks/pre-commit\n./.github/CODEOWNERS\n./.github/labels.json\n./.github/pull_request_template.md\n./.github/renovate.json\n./.gitignore\n./.jscpd.json\n./.node-version\n./.npmignore\n./.npmrc\n./.prettierignore\n./.prettierrc.json\n./AGENTS.md\n./CONTRIBUTING.md\n./Containerfile.test\n./DESIGN-autopilot-wp2.md\n./DESIGN-autopilot.md\n./DESIGN-transactions.md\n./LICENSE\n./README.md\n./SKILL.md\n./bundled-skills/manifest.json\n./docs/api.md\n./docs/data-handling.md\n./docs/development.md\n./docs/feature-flags.md\n./docs/openapi.json\n./docs/technical-debt.md\n./e2e_v8_first_principles_hud_report.json\n./eslint.config.mjs\n./install.sh\n./knip.json\n./package-lock.json\n./package.json\n./scripts/bundle-readiness.mjs\n./scripts/check-architecture.mjs\n./scripts/check-docs.mjs\n./scripts/check-quality.mjs\n./scripts/complexity-budget.json\n./scripts/generate-docs.mjs\n./scripts/profile.mjs\n./scripts/qa.mjs\n./scripts/release-notes.mjs\n./scripts/setup.mjs\n./scripts/sync-labels.mjs\n./scripts/test-environment.mjs\n./scripts/test-stability.mjs\n./scripts/test.mjs\n./scripts/timed-command.mjs\n./scripts/verify-hud-redesign.mjs\n./scripts/verify-package.mjs\n./tsconfig.json",
         "timeoutSeconds": 60
       }
     ],
@@ -860,7 +839,6 @@
       {
         "kind": "file",
         "path": ".github/workflows/release.yml",
-        "line": 4,
         "note": "A tag-triggered release pipeline validates, packs, verifies the extracted archive, checksums, and publishes it. Historical deployment success is not claimed."
       }
     ],
@@ -868,7 +846,6 @@
       {
         "kind": "file",
         "path": "docs/feature-flags.md",
-        "line": 14,
         "note": "Permanent flag ownership, callers, release review, and dead-backend/alias removal conditions are documented."
       }
     ],
@@ -878,22 +855,35 @@
         "command": "find t3-mission/test -maxdepth 1 -name '*.test.mjs' | sort | head -130",
         "cwd": ".",
         "exitCode": 0,
-        "output": "t3-mission/test/a10-capacity.test.mjs\nt3-mission/test/a10-late-matrix-shard-1.test.mjs\nt3-mission/test/a10-late-matrix-shard-2.test.mjs\nt3-mission/test/a10-late-matrix-shard-3.test.mjs\nt3-mission/test/a10-late-matrix.test.mjs\nt3-mission/test/a10-r9-regressions.test.mjs\nt3-mission/test/a11-r10-regressions.test.mjs\nt3-mission/test/a11-reconciliation.test.mjs\nt3-mission/test/a12-archive-matrix.test.mjs\nt3-mission/test/a12-git-budget.test.mjs\nt3-mission/test/a12-r11-historical.test.mjs\nt3-mission/test/a12-r11-regressions.test.mjs\nt3-mission/test/a13-ra1.test.mjs\nt3-mission/test/a14-compensation.test.mjs\nt3-mission/test/a14-r12-regressions.test.mjs\nt3-mission/test/a15-bounded-stalled-guard.test.mjs\nt3-mission/test/a15-compensation-matrix.test.mjs\nt3-mission/test/a15-git-provenance.test.mjs\nt3-mission/test/a15-r13-compensation-lifecycle.test.mjs\nt3-mission/test/a15-r13-independent-r13-control.test.mjs\nt3-mission/test/a15-readonly-and-stdin.test.mjs\nt3-mission/test/a2-read-lifetime.test.mjs\nt3-mission/test/a4-bridge-control.test.mjs\nt3-mission/test/a4-confirmation.test.mjs\nt3-mission/test/a4-recovery.test.mjs\nt3-mission/test/a4-review-boundaries.test.mjs\nt3-mission/test/a5-auth-recovery.test.mjs\nt3-mission/test/a5-control-claims.test.mjs\nt3-mission/test/a5-control-matrix.test.mjs\nt3-mission/test/a5-git-budget.test.mjs\nt3-mission/test/a5-r4-default-cli-pause.test.mjs\nt3-mission/test/a5-r4-extended-controls.test.mjs\nt3-mission/test/a5-r4-hud-identity.test.mjs\nt3-mission/test/a5-r4-new-boundaries.test.mjs\nt3-mission/test/a5-transport-errors.test.mjs\nt3-mission/test/a6-cli-outcome.test.mjs\nt3-mission/test/a6-dispatch-decision.test.mjs\nt3-mission/test/a6-observation-decision.test.mjs\nt3-mission/test/a6-r5-dispatch-evidence.test.mjs\nt3-mission/test/a6-r5-extra-boundaries.test.mjs\nt3-mission/test/a6-r5-global-controls.test.mjs\nt3-mission/test/a6-r5-recovery-evidence.test.mjs\nt3-mission/test/a7-hud-status-matrix.test.mjs\nt3-mission/test/a7-order-matrix.test.mjs\nt3-mission/test/a7-r6-a6b-legacy.test.mjs\nt3-mission/test/a7-r6-a6b.test.mjs\nt3-mission/test/a7-r6-paused-retry.test.mjs\nt3-mission/test/a7-r6-receipt-order.test.mjs\nt3-mission/test/a7-r6-recovery-coordinate.test.mjs\nt3-mission/test/a7-recovery-coordinates.test.mjs\nt3-mission/test/a8-exception-fields.test.mjs\nt3-mission/test/a8-invocation-matrix.test.mjs\nt3-mission/test/a8-invocation-wal.test.mjs\nt3-mission/test/a8-late-execution.test.mjs\nt3-mission/test/a8-r7-boundaries.test.mjs\nt3-mission/test/a8-r7-late-terminal.test.mjs\nt3-mission/test/a8-r7-order-restart.test.mjs\nt3-mission/test/a9-capacity-presend.test.mjs\nt3-mission/test/a9-legacy-provenance.test.mjs\nt3-mission/test/a9-multiple-late.test.mjs\nt3-mission/test/a9-r8-direct-runtime-same-key.test.mjs\nt3-mission/test/a9-r8-independent.test.mjs\nt3-mission/test/a9-r8-positive-controls.test.mjs\nt3-mission/test/a9-r8-public-invocations.test.mjs\nt3-mission/test/a9-r8-public-refusal-transitions.test.mjs\nt3-mission/test/a9-runtime-token.test.mjs\nt3-mission/test/approval-recovery.test.mjs\nt3-mission/test/approve-hook-contract.test.mjs\nt3-mission/test/autopilot-wp2.test.mjs\nt3-mission/test/autopilot.test.mjs\nt3-mission/test/bounded-timer.test.mjs\nt3-mission/test/bridge.test.mjs\nt3-mission/test/dispatch-journal.test.mjs\nt3-mission/test/dispatch-ownership.test.mjs\nt3-mission/test/hud.test.mjs\nt3-mission/test/integration-a1.test.mjs\nt3-mission/test/integration-recovery.test.mjs\nt3-mission/test/kernel-unavailable.test.mjs\nt3-mission/test/kernel.test.mjs\nt3-mission/test/lifecycle-boundary.test.mjs\nt3-mission/test/mission-observer.test.mjs\nt3-mission/test/ops.test.mjs\nt3-mission/test/pi-dispatch-options.test.mjs\nt3-mission/test/r9-entrypoints.test.mjs\nt3-mission/test/r9-final-matrix.test.mjs\nt3-mission/test/r9-independent.test.mjs\nt3-mission/test/r9-preflight-minimal.test.mjs\nt3-mission/test/r9b-http-contracts.test.mjs\nt3-mission/test/receipt-boundary.test.mjs\nt3-mission/test/review-regressions.test.mjs\nt3-mission/test/security-http.test.mjs\nt3-mission/test/timer-reconcile.test.mjs\nt3-mission/test/transaction-alias.test.mjs\nt3-mission/test/transactions.test.mjs\nt3-mission/test/worker-lifetime.test.mjs\nt3-mission/test/wp3-continuation.test.mjs",
+        "output": "t3-mission/test/a10-capacity.test.mjs\nt3-mission/test/a10-late-matrix-shard-1.test.mjs\nt3-mission/test/a10-late-matrix-shard-2.test.mjs\nt3-mission/test/a10-late-matrix-shard-3.test.mjs\nt3-mission/test/a10-late-matrix.test.mjs\nt3-mission/test/a10-r9-regressions.test.mjs\nt3-mission/test/a11-r10-regressions.test.mjs\nt3-mission/test/a11-reconciliation.test.mjs\nt3-mission/test/a12-archive-matrix.test.mjs\nt3-mission/test/a12-git-budget.test.mjs\nt3-mission/test/a12-r11-historical.test.mjs\nt3-mission/test/a12-r11-regressions.test.mjs\nt3-mission/test/a13-ra1.test.mjs\nt3-mission/test/a14-compensation.test.mjs\nt3-mission/test/a14-r12-regressions.test.mjs\nt3-mission/test/a15-bounded-stalled-guard.test.mjs\nt3-mission/test/a15-compensation-matrix.test.mjs\nt3-mission/test/a15-git-provenance.test.mjs\nt3-mission/test/a15-r13-compensation-lifecycle.test.mjs\nt3-mission/test/a15-r13-independent-r13-control.test.mjs\nt3-mission/test/a15-readonly-and-stdin.test.mjs\nt3-mission/test/a2-read-lifetime.test.mjs\nt3-mission/test/a4-bridge-control.test.mjs\nt3-mission/test/a4-confirmation.test.mjs\nt3-mission/test/a4-recovery.test.mjs\nt3-mission/test/a4-review-boundaries.test.mjs\nt3-mission/test/a5-auth-recovery.test.mjs\nt3-mission/test/a5-control-claims.test.mjs\nt3-mission/test/a5-control-matrix.test.mjs\nt3-mission/test/a5-git-budget.test.mjs\nt3-mission/test/a5-r4-default-cli-pause.test.mjs\nt3-mission/test/a5-r4-extended-controls.test.mjs\nt3-mission/test/a5-r4-hud-identity.test.mjs\nt3-mission/test/a5-r4-new-boundaries.test.mjs\nt3-mission/test/a5-transport-errors.test.mjs\nt3-mission/test/a6-cli-outcome.test.mjs\nt3-mission/test/a6-dispatch-decision.test.mjs\nt3-mission/test/a6-observation-decision.test.mjs\nt3-mission/test/a6-r5-dispatch-evidence.test.mjs\nt3-mission/test/a6-r5-extra-boundaries.test.mjs\nt3-mission/test/a6-r5-global-controls.test.mjs\nt3-mission/test/a6-r5-recovery-evidence.test.mjs\nt3-mission/test/a7-hud-status-matrix.test.mjs\nt3-mission/test/a7-order-matrix.test.mjs\nt3-mission/test/a7-r6-a6b-legacy.test.mjs\nt3-mission/test/a7-r6-a6b.test.mjs\nt3-mission/test/a7-r6-paused-retry.test.mjs\nt3-mission/test/a7-r6-receipt-order.test.mjs\nt3-mission/test/a7-r6-recovery-coordinate.test.mjs\nt3-mission/test/a7-recovery-coordinates.test.mjs\nt3-mission/test/a8-exception-fields.test.mjs\nt3-mission/test/a8-invocation-matrix.test.mjs\nt3-mission/test/a8-invocation-wal.test.mjs\nt3-mission/test/a8-late-execution.test.mjs\nt3-mission/test/a8-r7-boundaries.test.mjs\nt3-mission/test/a8-r7-late-terminal.test.mjs\nt3-mission/test/a8-r7-order-restart.test.mjs\nt3-mission/test/a9-capacity-presend.test.mjs\nt3-mission/test/a9-legacy-provenance.test.mjs\nt3-mission/test/a9-multiple-late.test.mjs\nt3-mission/test/a9-r8-direct-runtime-same-key.test.mjs\nt3-mission/test/a9-r8-independent.test.mjs\nt3-mission/test/a9-r8-positive-controls.test.mjs\nt3-mission/test/a9-r8-public-invocations.test.mjs\nt3-mission/test/a9-r8-public-refusal-transitions.test.mjs\nt3-mission/test/a9-runtime-token.test.mjs\nt3-mission/test/approval-recovery.test.mjs\nt3-mission/test/approve-hook-contract.test.mjs\nt3-mission/test/autopilot-wp2.test.mjs\nt3-mission/test/autopilot.test.mjs\nt3-mission/test/bounded-timer.test.mjs\nt3-mission/test/bridge.test.mjs\nt3-mission/test/bundled-readiness.test.mjs\nt3-mission/test/dispatch-journal.test.mjs\nt3-mission/test/dispatch-ownership.test.mjs\nt3-mission/test/hud-redesign.test.mjs\nt3-mission/test/hud.test.mjs\nt3-mission/test/integration-a1.test.mjs\nt3-mission/test/integration-recovery.test.mjs\nt3-mission/test/kernel-unavailable.test.mjs\nt3-mission/test/kernel.test.mjs\nt3-mission/test/lifecycle-boundary.test.mjs\nt3-mission/test/mission-observer.test.mjs\nt3-mission/test/ops.test.mjs\nt3-mission/test/pi-dispatch-options.test.mjs\nt3-mission/test/r9-entrypoints.test.mjs\nt3-mission/test/r9-final-matrix.test.mjs\nt3-mission/test/r9-independent.test.mjs\nt3-mission/test/r9-preflight-minimal.test.mjs\nt3-mission/test/r9b-http-contracts.test.mjs\nt3-mission/test/receipt-boundary.test.mjs\nt3-mission/test/review-regressions.test.mjs\nt3-mission/test/security-http.test.mjs\nt3-mission/test/session-steering.test.mjs\nt3-mission/test/timer-reconcile.test.mjs\nt3-mission/test/transaction-alias.test.mjs\nt3-mission/test/transactions.test.mjs\nt3-mission/test/worker-lifetime.test.mjs\nt3-mission/test/wp3-continuation.test.mjs",
         "timeoutSeconds": 60
       },
       {
         "kind": "file",
         "path": "t3-mission/test/ops.test.mjs",
-        "line": 8,
         "note": "Behavior assertions for actual redaction and diagnostic APIs."
+      },
+      {
+        "kind": "file",
+        "path": "t3-mission/test/session-steering.test.mjs",
+        "note": "Current bundled readiness/steering implementation and behavioral verification."
+      },
+      {
+        "kind": "file",
+        "path": "t3-mission/test/bundled-readiness.test.mjs",
+        "note": "Current bundled readiness/steering implementation and behavioral verification."
       }
     ],
     "integration_tests_exist": [
       {
         "kind": "file",
         "path": "t3-mission/test/integration-recovery.test.mjs",
-        "line": 1,
         "note": "Integration suites exercise recovery, native storage, CLI/MCP, and running HTTP services; legacy handler fixtures now use real loopback requests."
+      },
+      {
+        "kind": "file",
+        "path": "t3-mission/test/hud-redesign.test.mjs",
+        "note": "Current bundled readiness/steering implementation and behavioral verification."
       }
     ],
     "unit_tests_runnable": [
@@ -918,7 +908,6 @@
       {
         "kind": "file",
         "path": "scripts/test.mjs",
-        "line": 55,
         "note": "The runner writes per-run timing and JUnit per-test results; CI retains timing/coverage/stability artifacts for review."
       }
     ],
@@ -926,7 +915,6 @@
       {
         "kind": "file",
         "path": "scripts/test-stability.mjs",
-        "line": 4,
         "note": "A configured CI stability check compares two independent security/runtime-boundary runs, retains results, and never hides a failed attempt."
       },
       {
@@ -934,7 +922,7 @@
         "command": "python3 -c 'import json; from pathlib import Path; d=json.loads(Path(\"reports/test-stability.json\").read_text()); assert len(d[\"runs\"])==2 and all(r[\"exitCode\"]==0 for r in d[\"runs\"]) and not d[\"inconsistentOutcomes\"]; print(json.dumps({\"runs\":[{k:r[k] for k in [\"run\",\"exitCode\",\"durationMs\"]} for r in d[\"runs\"]],\"inconsistentOutcomes\":d[\"inconsistentOutcomes\"]}))'",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\"runs\": [{\"run\": 1, \"exitCode\": 0, \"durationMs\": 731.383416}, {\"run\": 2, \"exitCode\": 0, \"durationMs\": 3779.792125}], \"inconsistentOutcomes\": false}",
+        "output": "{\"runs\": [{\"run\": 1, \"exitCode\": 0, \"durationMs\": 678.555292}, {\"run\": 2, \"exitCode\": 0, \"durationMs\": 3640.683709}], \"inconsistentOutcomes\": false}",
         "timeoutSeconds": 60
       },
       {
@@ -950,31 +938,14 @@
       {
         "kind": "file",
         "path": ".c8rc.json",
-        "line": 11,
-        "note": "The real npm test entrypoint passes the enforced 80% lines/functions and 70% branches thresholds on Linux ARM64 with tmpfs fixtures; macOS/APFS and live provider evidence remain separate."
+        "note": "c8 enforces 80% lines/functions and 70% branches through the real npm test entrypoint in CI. Current frozen-source Linux ARM64 execution is retained separately from macOS focused verification and real-provider claims."
       },
       {
         "kind": "command",
-        "command": "python3 -c 'import json; from pathlib import Path; p=Path(\"/tmp/t3-mission-readiness-fix/linux-verified-coverage/coverage-summary.json\"); d=json.loads(p.read_text())[\"total\"]; r=json.loads(Path(\"/tmp/t3-mission-readiness-fix/linux-verified-receipt.json\").read_text()); assert r[\"coverageExitCode\"]==0 and d[\"lines\"][\"pct\"]>=80 and d[\"branches\"][\"pct\"]>=70 and d[\"functions\"][\"pct\"]>=80; print(json.dumps({\"testedLayer\":r[\"testedLayer\"],\"sourceFingerprint\":r[\"sourceFingerprint\"],\"coverage\":d}))' ",
+        "command": "python3 -B -c 'import json; from pathlib import Path; d=json.loads(Path('\"'\"'/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/linux-coverage/coverage-summary.json'\"'\"').read_text())[\"total\"]; r=json.loads(Path('\"'\"'/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/linux-reports/test-run.json'\"'\"').read_text()); i=json.loads(Path('\"'\"'/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/linux-source-integrity.json'\"'\"').read_text()); assert r[\"exitCode\"]==0 and d[\"lines\"][\"pct\"]>=80 and d[\"branches\"][\"pct\"]>=70 and d[\"functions\"][\"pct\"]>=80 and i[\"matchedFiles\"]==285 and not i[\"mismatches\"]; print(json.dumps({\"testedLayer\":\"Linux ARM64, Node 26.7.0, complete npm test via c8 on frozen source; Apple Container with tmpfs fixtures\",\"source\":i,\"testRun\":r,\"coverage\":d}))'",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\"testedLayer\": \"Linux ARM64, Node 26.7.0; complete npm test via c8; real Linux tmpfs Mission fixtures; init reaps subprocesses\", \"sourceFingerprint\": \"7919cdc0e7a3aab17ac52b7ac9a97b4f899995719e7bd6f9ae51bbf398d7cccc\", \"coverage\": {\"lines\": {\"total\": 19171, \"covered\": 17679, \"skipped\": 0, \"pct\": 92.21}, \"statements\": {\"total\": 19171, \"covered\": 17679, \"skipped\": 0, \"pct\": 92.21}, \"functions\": {\"total\": 562, \"covered\": 548, \"skipped\": 0, \"pct\": 97.5}, \"branches\": {\"total\": 7844, \"covered\": 6489, \"skipped\": 0, \"pct\": 82.72}, \"branchesTrue\": {\"total\": 0, \"covered\": 0, \"skipped\": 0, \"pct\": 100}}}",
-        "timeoutSeconds": 60
-      },
-      {
-        "kind": "command",
-        "command": "python3 -c 'import json; from pathlib import Path; p=Path(\"/tmp/t3-mission-readiness-fix\"); d=json.loads((p/\"linux-verified-reports/test-run.json\").read_text()); r=json.loads((p/\"linux-verified-receipt.json\").read_text()); assert d[\"exitCode\"]==0 and r[\"coverageExitCode\"]==0 and r[\"matrixCasesPassed\"]==1610; print(json.dumps({\"result\":d,\"receipt\":r}))' ",
-        "cwd": ".",
-        "exitCode": 0,
-        "output": "{\"result\": {\"command\": \"npm test\", \"node\": \"v26.7.0\", \"files\": 96, \"concurrency\": 4, \"durationMs\": 1114827.3638890001, \"exitCode\": 0, \"signal\": null, \"evidenceRoot\": null}, \"receipt\": {\"coverageExitCode\": 0, \"command\": \"container exec --workdir /app t3-mission-readiness-r3-20261103 npm run coverage\", \"testedLayer\": \"Linux ARM64, Node 26.7.0; complete npm test via c8; real Linux tmpfs Mission fixtures; init reaps subprocesses\", \"imageDigest\": \"sha256:d9b6a51da466a8677a48a65a0abc3b535c7a379369782f5018458f868e840e58\", \"sourceFingerprint\": \"7919cdc0e7a3aab17ac52b7ac9a97b4f899995719e7bd6f9ae51bbf398d7cccc\", \"matchedFiles\": 216, \"matrixCasesPassed\": 1610, \"matrixNamesUnique\": true, \"tests\": 13231, \"passed\": 13230, \"failed\": 0, \"skipped\": 1, \"skipReason\": \"macOS sandbox-exec unavailable on Linux; independently passed on macOS\", \"providerDispatchVerified\": false, \"rebootOrPowerLossVerified\": false, \"coverage\": {\"lines\": {\"total\": 19171, \"covered\": 17679, \"skipped\": 0, \"pct\": 92.21}, \"statements\": {\"total\": 19171, \"covered\": 17679, \"skipped\": 0, \"pct\": 92.21}, \"functions\": {\"total\": 562, \"covered\": 548, \"skipped\": 0, \"pct\": 97.5}, \"branches\": {\"total\": 7844, \"covered\": 6489, \"skipped\": 0, \"pct\": 82.72}, \"branchesTrue\": {\"total\": 0, \"covered\": 0, \"skipped\": 0, \"pct\": 100}}}}",
-        "timeoutSeconds": 60
-      },
-      {
-        "kind": "command",
-        "command": "python3 -c 'import hashlib,json,subprocess; from pathlib import Path; w=Path(\"/tmp/t3-mission-readiness-fix\"); m=json.loads((w/\"test-source-final-manifest.json\").read_text()); bad=[n for n,h in m[\"files\"].items() if hashlib.sha256(Path(n).read_bytes()).hexdigest()!=h]; assert not bad,bad; print(json.dumps({\"head\":subprocess.check_output([\"git\",\"rev-parse\",\"HEAD\"],text=True).strip(),\"sourceFingerprint\":m[\"sourceFingerprint\"],\"matchedFiles\":m[\"fileCount\"],\"mismatches\":bad}))' ",
-        "cwd": ".",
-        "exitCode": 0,
-        "output": "{\"head\": \"8bcc7792dfe04bd2e6c5355b22ac9927667b4c28\", \"sourceFingerprint\": \"7919cdc0e7a3aab17ac52b7ac9a97b4f899995719e7bd6f9ae51bbf398d7cccc\", \"matchedFiles\": 216, \"mismatches\": []}",
+        "output": "{\"testedLayer\": \"Linux ARM64, Node 26.7.0, complete npm test via c8 on frozen source; Apple Container with tmpfs fixtures\", \"source\": {\"sourceHead\": \"4e7f384511d4a21f9a5059bf5a8d797dbf66deff\", \"sourceFingerprint\": \"3558c082c681df1ca24f8001cf64aff67d74c64ebbc69ffc416d90037c46f9e4\", \"matchedFiles\": 285, \"mismatches\": [], \"platform\": \"linux\", \"architecture\": \"arm64\", \"node\": \"v26.7.0\"}, \"testRun\": {\"command\": \"npm test\", \"node\": \"v26.7.0\", \"files\": 99, \"concurrency\": 4, \"durationMs\": 820883.7631699999, \"exitCode\": 0, \"signal\": null, \"evidenceRoot\": null}, \"coverage\": {\"lines\": {\"total\": 20189, \"covered\": 18544, \"skipped\": 0, \"pct\": 91.85}, \"statements\": {\"total\": 20189, \"covered\": 18544, \"skipped\": 0, \"pct\": 91.85}, \"functions\": {\"total\": 637, \"covered\": 617, \"skipped\": 0, \"pct\": 96.86}, \"branches\": {\"total\": 8300, \"covered\": 6854, \"skipped\": 0, \"pct\": 82.57}, \"branchesTrue\": {\"total\": 0, \"covered\": 0, \"skipped\": 0, \"pct\": 100}}}",
         "timeoutSeconds": 60
       }
     ],
@@ -982,7 +953,6 @@
       {
         "kind": "file",
         "path": "scripts/test.mjs",
-        "line": 12,
         "note": "The runner explicitly discovers only *.test.mjs behavior suites, matching documented conventions."
       }
     ],
@@ -990,7 +960,6 @@
       {
         "kind": "file",
         "path": "scripts/test-environment.mjs",
-        "line": 11,
         "note": "Node process isolation, bounded concurrency, unique per-suite evidence/TMPDIR, and success cleanup prevent shared fixture state."
       }
     ],
@@ -998,17 +967,16 @@
       {
         "kind": "file",
         "path": "docs/development.md",
-        "line": 11,
         "note": "Complete standalone QA documents local compiler/headers, setup, no credentials/transport, ephemeral launch, actual state/settings interaction, and cleanup."
       }
     ],
     "interactive_qa_runnable": [
       {
         "kind": "command",
-        "command": "env TMPDIR=/tmp/t3-mission-readiness-final/qa-fixtures npm run qa",
+        "command": "env TMPDIR=/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/qa-fixtures npm run qa",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
+        "output": "> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
         "timeoutSeconds": 60
       }
     ],
@@ -1016,7 +984,6 @@
       {
         "kind": "file",
         "path": "AGENTS.md",
-        "line": 1,
         "note": "Root AGENTS.md documents actual setup/build/check/test/QA commands, conventions, storage fences, and evidence limits."
       }
     ],
@@ -1024,7 +991,6 @@
       {
         "kind": "file",
         "path": "README.md",
-        "line": 13,
         "note": "Root README documents installation, usage, native build, development, and diagnostics."
       }
     ],
@@ -1032,7 +998,6 @@
       {
         "kind": "file",
         "path": "scripts/generate-docs.mjs",
-        "line": 3,
         "note": "API reference and OpenAPI are generated from runtime route metadata and actual MCP schemas; drift checks pass."
       },
       {
@@ -1040,7 +1005,7 @@
         "command": "npm run docs:check",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 docs:check\n> node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\n\n2 generated API documents verified\nVerified 8 documents, their npm commands, local links, and identical skill copies.",
+        "output": "> t3-mission-mode@1.0.0 docs:check\n> node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\n\n2 generated API documents verified\nVerified 8 documents, their npm commands, local links, and identical skill copies.",
         "timeoutSeconds": 60
       }
     ],
@@ -1048,16 +1013,35 @@
       {
         "kind": "file",
         "path": "t3-mission/skill/SKILL.md",
-        "line": 2,
-        "note": "Packaged skill has valid frontmatter and substantive agent workflow; root and packaged copies are byte-identical."
+        "note": "The synchronized root/packaged Mission skill and three portable bundled readiness skills have valid frontmatter and substantive instructions. Bundled payload hashes, cache exclusions and installer preservation were tested."
       },
       {
         "kind": "command",
         "command": "python3 -c 'import hashlib; from pathlib import Path; a=Path(\"SKILL.md\").read_bytes(); b=Path(\"t3-mission/skill/SKILL.md\").read_bytes(); assert a==b; print(\"Skill copies identical; SHA256\",hashlib.sha256(a).hexdigest())' ",
         "cwd": ".",
         "exitCode": 0,
-        "output": "Skill copies identical; SHA256 fab405e484ea4d9f9d08bb433a4b97fecb22f089e41578da19bc6804c1ea6957",
+        "output": "Skill copies identical; SHA256 c6fdcf653b084748bcc999cf4f3b3b4179814bdd9df3ac6254c3617aba7bf0f5",
         "timeoutSeconds": 60
+      },
+      {
+        "kind": "file",
+        "path": "bundled-skills/agent-readiness/SKILL.md",
+        "note": "Current bundled readiness/steering implementation and behavioral verification."
+      },
+      {
+        "kind": "file",
+        "path": "bundled-skills/readiness-report/SKILL.md",
+        "note": "Current bundled readiness/steering implementation and behavioral verification."
+      },
+      {
+        "kind": "file",
+        "path": "bundled-skills/readiness-fix/SKILL.md",
+        "note": "Current bundled readiness/steering implementation and behavioral verification."
+      },
+      {
+        "kind": "file",
+        "path": "bundled-skills/manifest.json",
+        "note": "Current bundled readiness/steering implementation and behavioral verification."
       }
     ],
     "documentation_freshness": [
@@ -1074,15 +1058,14 @@
       {
         "kind": "file",
         "path": "docs/openapi.json",
-        "line": 2,
-        "note": "A generated valid OpenAPI document describes actual HUD routes, JSON/SSE contracts, errors, command bodies, and request correlation."
+        "note": "Generated OpenAPI describes the actual HUD routes, including the steering selectors, required message, delivery result and refusal statuses."
       },
       {
         "kind": "command",
         "command": "npm run docs:check",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 docs:check\n> node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\n\n2 generated API documents verified\nVerified 8 documents, their npm commands, local links, and identical skill copies.",
+        "output": "> t3-mission-mode@1.0.0 docs:check\n> node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\n\n2 generated API documents verified\nVerified 8 documents, their npm commands, local links, and identical skill copies.",
         "timeoutSeconds": 60
       }
     ],
@@ -1090,7 +1073,6 @@
       {
         "kind": "file",
         "path": "README.md",
-        "line": 197,
         "note": "Mermaid diagram and transaction design docs explain T3 host transport, bridge, kernel, HUD, and durable storage."
       }
     ],
@@ -1098,7 +1080,6 @@
       {
         "kind": "file",
         "path": "scripts/check-docs.mjs",
-        "line": 6,
         "note": "Automation verifies AGENTS npm commands/local links, generated docs, and skill synchronization; CI runs its documented workflows."
       },
       {
@@ -1106,7 +1087,7 @@
         "command": "npm run docs:check",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 docs:check\n> node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\n\n2 generated API documents verified\nVerified 8 documents, their npm commands, local links, and identical skill copies.",
+        "output": "> t3-mission-mode@1.0.0 docs:check\n> node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\n\n2 generated API documents verified\nVerified 8 documents, their npm commands, local links, and identical skill copies.",
         "timeoutSeconds": 60
       }
     ],
@@ -1124,7 +1105,6 @@
       {
         "kind": "file",
         "path": ".env.example",
-        "line": 2,
         "note": "Nonsecret environment template and docs explain exported paths, optional transport/notification variables, and default-off local execution."
       }
     ],
@@ -1132,15 +1112,14 @@
       {
         "kind": "file",
         "path": "docs/development.md",
-        "line": 5,
         "note": "Development docs explicitly identify optional T3 transport and provide a complete mock-free local HTTP QA path without credentials or external services."
       },
       {
         "kind": "command",
-        "command": "env TMPDIR=/tmp/t3-mission-readiness-final/qa-fixtures npm run qa",
+        "command": "env TMPDIR=/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/qa-fixtures npm run qa",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
+        "output": "> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
         "timeoutSeconds": 60
       }
     ],
@@ -1148,7 +1127,6 @@
       {
         "kind": "file",
         "path": "README.md",
-        "line": 307,
         "note": "Authoritative filesystem state."
       }
     ],
@@ -1166,7 +1144,6 @@
       {
         "kind": "file",
         "path": "t3-mission/ops/logger.mjs",
-        "line": 39,
         "note": "A dedicated JSON logger is wired into HTTP errors and scrubs sensitive nested context before stderr output."
       }
     ],
@@ -1174,7 +1151,6 @@
       {
         "kind": "file",
         "path": "t3-mission/ops/diagnostics.mjs",
-        "line": 57,
         "note": "Validated request IDs correlate HTTP responses/errors; existing clientRequestId/invocationId propagate through T3 actions and durable receipts."
       }
     ],
@@ -1182,15 +1158,14 @@
       {
         "kind": "file",
         "path": "t3-mission/ops/diagnostics.mjs",
-        "line": 88,
         "note": "Live Prometheus metrics report bounded route/status counts, duration sums, uptime, and local feature-use counters."
       },
       {
         "kind": "command",
-        "command": "env TMPDIR=/tmp/t3-mission-readiness-final/qa-fixtures npm run qa",
+        "command": "env TMPDIR=/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/qa-fixtures npm run qa",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
+        "output": "> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
         "timeoutSeconds": 60
       }
     ],
@@ -1198,23 +1173,14 @@
       {
         "kind": "file",
         "path": ".github/workflows/ci.yml",
-        "line": 60,
-        "note": "CI retains enforced coverage, per-function complexity, duplication, timing, and stability reports; current local metrics are readable."
+        "note": "CI retains coverage, complexity, duplication, timing and stability metrics. Current quality metrics and GitHub CodeQL analyses are readable."
       },
       {
         "kind": "command",
         "command": "python3 -c 'import json; from pathlib import Path; d=json.loads(Path(\"reports/quality.json\").read_text()); assert not d[\"failures\"]; print(json.dumps({\"checkedFiles\":d[\"checkedFiles\"],\"functions\":len(d[\"complexity\"]),\"failures\":d[\"failures\"]}))' ",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\"checkedFiles\": 216, \"functions\": 1221, \"failures\": []}",
-        "timeoutSeconds": 60
-      },
-      {
-        "kind": "command",
-        "command": "python3 -c 'import json; from pathlib import Path; p=Path(\"/tmp/t3-mission-readiness-fix/linux-verified-coverage/coverage-summary.json\"); d=json.loads(p.read_text())[\"total\"]; r=json.loads(Path(\"/tmp/t3-mission-readiness-fix/linux-verified-receipt.json\").read_text()); assert r[\"coverageExitCode\"]==0 and d[\"lines\"][\"pct\"]>=80 and d[\"branches\"][\"pct\"]>=70 and d[\"functions\"][\"pct\"]>=80; print(json.dumps({\"testedLayer\":r[\"testedLayer\"],\"sourceFingerprint\":r[\"sourceFingerprint\"],\"coverage\":d}))' ",
-        "cwd": ".",
-        "exitCode": 0,
-        "output": "{\"testedLayer\": \"Linux ARM64, Node 26.7.0; complete npm test via c8; real Linux tmpfs Mission fixtures; init reaps subprocesses\", \"sourceFingerprint\": \"7919cdc0e7a3aab17ac52b7ac9a97b4f899995719e7bd6f9ae51bbf398d7cccc\", \"coverage\": {\"lines\": {\"total\": 19171, \"covered\": 17679, \"skipped\": 0, \"pct\": 92.21}, \"statements\": {\"total\": 19171, \"covered\": 17679, \"skipped\": 0, \"pct\": 92.21}, \"functions\": {\"total\": 562, \"covered\": 548, \"skipped\": 0, \"pct\": 97.5}, \"branches\": {\"total\": 7844, \"covered\": 6489, \"skipped\": 0, \"pct\": 82.72}, \"branchesTrue\": {\"total\": 0, \"covered\": 0, \"skipped\": 0, \"pct\": 100}}}",
+        "output": "{\"checkedFiles\": 285, \"functions\": 1346, \"failures\": []}",
         "timeoutSeconds": 60
       },
       {
@@ -1229,8 +1195,16 @@
         "kind": "command",
         "command": "gh api repos/aa2246740/t3-mission-mode/code-scanning/analyses",
         "cwd": ".",
-        "exitCode": 1,
-        "output": "{\"message\":\"no analysis found\",\"documentation_url\":\"https://docs.github.com/rest/code-scanning/code-scanning#list-code-scanning-analyses-for-a-repository\",\"status\":\"404\"}gh: no analysis found (HTTP 404)\ngh: This API operation needs the \"admin:repo_hook\" scope. To request it, run:  gh auth refresh -h github.com -s admin:repo_hook",
+        "exitCode": 0,
+        "output": "[{\"ref\":\"refs/heads/main\",\"commit_sha\":\"66dca9cce8fd19063cf82beadf8c7e97f045e6f9\",\"analysis_key\":\".github/workflows/security.yml:codeql\",\"environment\":\"{}\",\"category\":\".github/workflows/security.yml:codeql\",\"error\":\"\",\"created_at\":\"2026-11-04T02:22:00Z\",\"results_count\":1,\"rules_count\":87,\"id\":2091368605,\"url\":\"https://api.github.com/repos/aa2246740/t3-mission-mode/code-scanning/analyses/2091368605\",\"sarif_id\":\"83ca8e70-d7f6-11f1-8670-41c88650cfb7\",\"tool\":{\"name\":\"CodeQL\",\"guid\":null,\"version\":\"2.27.4\"},\"deletable\":true,\"warning\":\"\"},{\"ref\":\"refs/heads/main\",\"commit_sha\":\"8bcc7792dfe04bd2e6c5355b22ac9927667b4c28\",\"analysis_key\":\".github/workflows/security.yml:codeql\",\"environment\":\"{}\",\"category\":\".github/workflows/security.yml:codeql\",\"error\":\"\",\"created_at\":\"2026-11-03T13:12:37Z\",\"results_count\":0,\"rules_count\":87,\"id\":2085845374,\"url\":\"https://api.github.com/repos/aa2246740/t3-mission-mode/code-scanning/analyses/2085845374\",\"sarif_id\":\"3cd1630e-d788-11f1-936b-2d28ca0ab3c9\",\"tool\":{\"name\":\"CodeQL\",\"guid\":null,\"version\":\"2.27.3\"},\"deletable\":false,\"warning\":\"\"}]",
+        "timeoutSeconds": 60
+      },
+      {
+        "kind": "command",
+        "command": "python3 -B -c 'import json; from pathlib import Path; d=json.loads(Path('\"'\"'/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/linux-coverage/coverage-summary.json'\"'\"').read_text())[\"total\"]; r=json.loads(Path('\"'\"'/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/linux-reports/test-run.json'\"'\"').read_text()); i=json.loads(Path('\"'\"'/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/linux-source-integrity.json'\"'\"').read_text()); assert r[\"exitCode\"]==0 and d[\"lines\"][\"pct\"]>=80 and d[\"branches\"][\"pct\"]>=70 and d[\"functions\"][\"pct\"]>=80 and i[\"matchedFiles\"]==285 and not i[\"mismatches\"]; print(json.dumps({\"testedLayer\":\"Linux ARM64, Node 26.7.0, complete npm test via c8 on frozen source; Apple Container with tmpfs fixtures\",\"source\":i,\"testRun\":r,\"coverage\":d}))'",
+        "cwd": ".",
+        "exitCode": 0,
+        "output": "{\"testedLayer\": \"Linux ARM64, Node 26.7.0, complete npm test via c8 on frozen source; Apple Container with tmpfs fixtures\", \"source\": {\"sourceHead\": \"4e7f384511d4a21f9a5059bf5a8d797dbf66deff\", \"sourceFingerprint\": \"3558c082c681df1ca24f8001cf64aff67d74c64ebbc69ffc416d90037c46f9e4\", \"matchedFiles\": 285, \"mismatches\": [], \"platform\": \"linux\", \"architecture\": \"arm64\", \"node\": \"v26.7.0\"}, \"testRun\": {\"command\": \"npm test\", \"node\": \"v26.7.0\", \"files\": 99, \"concurrency\": 4, \"durationMs\": 820883.7631699999, \"exitCode\": 0, \"signal\": null, \"evidenceRoot\": null}, \"coverage\": {\"lines\": {\"total\": 20189, \"covered\": 18544, \"skipped\": 0, \"pct\": 91.85}, \"statements\": {\"total\": 20189, \"covered\": 18544, \"skipped\": 0, \"pct\": 91.85}, \"functions\": {\"total\": 637, \"covered\": 617, \"skipped\": 0, \"pct\": 96.86}, \"branches\": {\"total\": 8300, \"covered\": 6854, \"skipped\": 0, \"pct\": 82.57}, \"branchesTrue\": {\"total\": 0, \"covered\": 0, \"skipped\": 0, \"pct\": 100}}}",
         "timeoutSeconds": 60
       }
     ],
@@ -1238,7 +1212,6 @@
       {
         "kind": "file",
         "path": "t3-mission/ops/diagnostics.mjs",
-        "line": 82,
         "note": "Bounded local diagnostics; this is not a configured Sentry-class integration."
       }
     ],
@@ -1246,7 +1219,6 @@
       {
         "kind": "file",
         "path": "docs/runbooks/operations.md",
-        "line": 16,
         "note": "Local diagnostic workflow, without automatic operator alerts."
       }
     ],
@@ -1254,7 +1226,6 @@
       {
         "kind": "file",
         "path": "AGENTS.md",
-        "line": 50,
         "note": "Agent instructions link a dedicated operational runbook covering installation impact, transaction faults, receipts, HTTP errors, and rollback."
       }
     ],
@@ -1262,7 +1233,6 @@
       {
         "kind": "file",
         "path": "docs/runbooks/operations.md",
-        "line": 6,
         "note": "Runbook identifies health/readiness/metrics/diagnostics views for comparing installed release impact and states their runtime limits."
       }
     ],
@@ -1270,15 +1240,14 @@
       {
         "kind": "file",
         "path": "t3-mission/hud/server.mjs",
-        "line": 2942,
         "note": "Actual liveness/readiness endpoints run on the local service; readiness reads a consistent snapshot and reports unavailable storage separately."
       },
       {
         "kind": "command",
-        "command": "env TMPDIR=/tmp/t3-mission-readiness-final/qa-fixtures npm run qa",
+        "command": "env TMPDIR=/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/qa-fixtures npm run qa",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
+        "output": "> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
         "timeoutSeconds": 60
       }
     ],
@@ -1286,7 +1255,6 @@
       {
         "kind": "file",
         "path": "t3-mission/kernel/autopilot-policy.mjs",
-        "line": 132,
         "note": "Existing provider resilience honors Retry-After, bounded exponential backoff, and a persistent consecutive-failure budget."
       }
     ],
@@ -1294,7 +1262,6 @@
       {
         "kind": "file",
         "path": "scripts/profile.mjs",
-        "line": 6,
         "note": "Configured development CPU profiling runs 100 real snapshot reads and settings QA, writing a local .cpuprofile without telemetry export."
       }
     ],
@@ -1354,7 +1321,6 @@
       {
         "kind": "file",
         "path": ".github/CODEOWNERS",
-        "line": 1,
         "note": "CODEOWNERS assigns the actual repository owner across the project."
       }
     ],
@@ -1362,23 +1328,22 @@
       {
         "kind": "file",
         "path": ".github/workflows/security.yml",
-        "line": 12,
-        "note": "Configured readable security reports; remote execution is not yet established."
+        "note": "GitHub code-scanning APIs now return readable CodeQL analyses and a finding for 66dca9c. Automated SARIF reports are configured. This proves report generation, not a clean security verdict for the new source."
       },
       {
         "kind": "command",
         "command": "gh api repos/aa2246740/t3-mission-mode/code-scanning/alerts",
         "cwd": ".",
-        "exitCode": 1,
-        "output": "{\"message\":\"no analysis found\",\"documentation_url\":\"https://docs.github.com/rest/code-scanning/code-scanning#list-code-scanning-alerts-for-a-repository\",\"status\":\"404\"}gh: no analysis found (HTTP 404)\ngh: This API operation needs the \"admin:repo_hook\" scope. To request it, run:  gh auth refresh -h github.com -s admin:repo_hook",
+        "exitCode": 0,
+        "output": "[{\"number\":1,\"created_at\":\"2026-11-04T02:22:00Z\",\"updated_at\":\"2026-11-04T02:22:00Z\",\"url\":\"https://api.github.com/repos/aa2246740/t3-mission-mode/code-scanning/alerts/1\",\"html_url\":\"https://github.com/aa2246740/t3-mission-mode/security/code-scanning/1\",\"state\":\"open\",\"fixed_at\":null,\"dismissed_by\":null,\"dismissed_at\":null,\"dismissed_reason\":null,\"dismissed_comment\":null,\"rule\":{\"id\":\"js/incomplete-multi-character-sanitization\",\"severity\":\"warning\",\"description\":\"Incomplete multi-character sanitization\",\"name\":\"js/incomplete-multi-character-sanitization\",\"tags\":[\"correctness\",\"external/cwe/cwe-020\",\"external/cwe/cwe-080\",\"external/cwe/cwe-116\",\"security\"],\"full_description\":\"A sanitizer that removes a sequence of characters may reintroduce the dangerous sequence.\",\"help\":\"# Incomplete multi-character sanitization\\nSanitizing untrusted input is a common technique for preventing injection attacks and other security vulnerabilities. Regular expressions are often used to perform this sanitization. However, when the regular expression matches multiple consecutive characters, replacing it just once can result in the unsafe text reappearing in the sanitized input.\\n\\nAttackers can exploit this issue by crafting inputs that, when sanitized with an ineffective regular expression, still contain malicious code or content. This can lead to code execution, data exposure, or other vulnerabilities.\\n\\n\\n## Recommendation\\nTo prevent this issue, it is highly recommended to use a well-tested sanitization library whenever possible. These libraries are more likely to handle corner cases and ensure effective sanitization.\\n\\nIf a library is not an option, you can consider alternative strategies to fix the issue. For example, applying the regular expression replacement repeatedly until no more replacements can be performed, or rewriting the regular expression to match single characters instead of the entire unsafe text.\\n\\n\\n## Example\\nConsider the following JavaScript code that aims to remove all HTML comment start and end tags:\\n\\n```javascript\\n\\nstr.replace(/<!--|--!?>/g, \\\"\\\");   \\n\\n```\\nGiven the input string \\\"&lt;!&lt;!--- comment ---&gt;&gt;\\\", the output will be \\\"&lt;!-- comment --&gt;\\\", which still contains an HTML comment.\\n\\nOne possible fix for this issue is to apply the regular expression replacement repeatedly until no more replacements can be performed. This ensures that the unsafe text does not re-appear in the sanitized input, effectively removing all instances of the targeted pattern:\\n\\n```javascript\\n\\nfunction removeHtmlComments(input) {  \\n  let previous;  \\n  do {  \\n    previous = input;  \\n    input = input.replace(/<!--|--!?>/g, \\\"\\\");  \\n  } while (input !== previous);  \\n  return input;  \\n}  \\n\\n```\\n\\n## Example\\nAnother example is the following regular expression intended to remove script tags:\\n\\n```javascript\\n\\nstr.replace(/<script\\\\b[^<]*(?:(?!<\\\\/script>)<[^<]*)*<\\\\/script>/g, \\\"\\\");  \\n\\n```\\nIf the input string is \\\"&lt;scrip&lt;script&gt;is removed&lt;/script&gt;t&gt;alert(123)&lt;/script&gt;\\\", the output will be \\\"&lt;script&gt;alert(123)&lt;/script&gt;\\\", which still contains a script tag.\\n\\nA fix for this issue is to rewrite the regular expression to match single characters (\\\"&lt;\\\" and \\\"&gt;\\\") instead of the entire unsafe text. This simplifies the sanitization process and ensures that all potentially unsafe characters are removed:\\n\\n```javascript\\n\\nfunction removeAllHtmlTags(input) {  \\n  return input.replace(/<|>/g, \\\"\\\");  \\n}\\n\\n```\\nAnother potential fix is to use the popular `sanitize-html` npm library. It keeps most of the safe HTML tags while removing all unsafe tags and attributes.\\n\\n```javascript\\n\\nconst sanitizeHtml = require(\\\"sanitize-html\\\");\\nfunction removeAllHtmlTags(input) {  \\n  return sanitizeHtml(input);  \\n}\\n\\n```\\n\\n## Example\\nLastly, consider a path sanitizer using the regular expression `/\\\\.\\\\.\\\\//`:\\n\\n```javascript\\n\\nstr.replace(/\\\\.\\\\.\\\\//g, \\\"\\\");  \\n\\n```\\nThe regular expression attempts to strip out all occurrences of `/../` from `str`. This will not work as expected: for the string `/./.././`, for example, it will remove the single occurrence of `/../` in the middle, but the remainder of the string then becomes `/../`, which is another instance of the substring we were trying to remove.\\n\\nA possible fix for this issue is to use the \\\"sanitize-filename\\\" npm library for path sanitization. This library is specifically designed to handle path sanitization, and should handle all corner cases and ensure effective sanitization:\\n\\n```javascript\\n\\nconst sanitize = require(\\\"sanitize-filename\\\");  \\n  \\nfunction sanitizePath(input) {  \\n  return sanitize(input);  \\n}  \\n\\n```\\n\\n## References\\n* OWASP Top 10: [A1 Injection](https://www.owasp.org/index.php/Top_10-2017_A1-Injection).\\n* Stack Overflow: [Removing all script tags from HTML with JS regular expression](https://stackoverflow.com/questions/6659351/removing-all-script-tags-from-html-with-js-regular-expression).\\n* Common Weakness Enumeration: [CWE-20](https://cwe.mitre.org/data/definitions/20.html).\\n* Common Weakness Enumeration: [CWE-80](https://cwe.mitre.org/data/definitions/80.html).\\n* Common Weakness Enumeration: [CWE-116](https://cwe.mitre.org/data/definitions/116.html).\\n\",\"security_severity_level\":\"high\"},\"tool\":{\"name\":\"CodeQL\",\"guid\":null,\"version\":\"2.27.4\"},\"most_recent_instance\":{\"ref\":\"refs/heads/main\",\"analysis_key\":\".github/workflows/security.yml:codeql\",\"environment\":\"{}\",\"category\":\".github/workflows/security.yml:codeql\",\"state\":\"open\",\"commit_sha\":\"66dca9cce8fd19063cf82beadf8c7e97f045e6f9\",\"message\":{\"text\":\"This string may still contain <script, which may cause an HTML element injection vulnerability.\"},\"location\":{\"path\":\"scripts/verify-hud-redesign.mjs\",\"start_line\":270,\"end_line\":272,\"start_column\":18,\"end_column\":64},\"classifications\":[]},\"instances_url\":\"https://api.github.com/repos/aa2246740/t3-mission-mode/code-scanning/alerts/1/instances\",\"dismissal_approved_by\":null,\"assignees\":[],\"linked_pull_requests\":[],\"linked_issues\":[]}]",
         "timeoutSeconds": 60
       },
       {
         "kind": "command",
         "command": "gh api repos/aa2246740/t3-mission-mode/code-scanning/analyses",
         "cwd": ".",
-        "exitCode": 1,
-        "output": "{\"message\":\"no analysis found\",\"documentation_url\":\"https://docs.github.com/rest/code-scanning/code-scanning#list-code-scanning-analyses-for-a-repository\",\"status\":\"404\"}gh: no analysis found (HTTP 404)\ngh: This API operation needs the \"admin:repo_hook\" scope. To request it, run:  gh auth refresh -h github.com -s admin:repo_hook",
+        "exitCode": 0,
+        "output": "[{\"ref\":\"refs/heads/main\",\"commit_sha\":\"66dca9cce8fd19063cf82beadf8c7e97f045e6f9\",\"analysis_key\":\".github/workflows/security.yml:codeql\",\"environment\":\"{}\",\"category\":\".github/workflows/security.yml:codeql\",\"error\":\"\",\"created_at\":\"2026-11-04T02:22:00Z\",\"results_count\":1,\"rules_count\":87,\"id\":2091368605,\"url\":\"https://api.github.com/repos/aa2246740/t3-mission-mode/code-scanning/analyses/2091368605\",\"sarif_id\":\"83ca8e70-d7f6-11f1-8670-41c88650cfb7\",\"tool\":{\"name\":\"CodeQL\",\"guid\":null,\"version\":\"2.27.4\"},\"deletable\":true,\"warning\":\"\"},{\"ref\":\"refs/heads/main\",\"commit_sha\":\"8bcc7792dfe04bd2e6c5355b22ac9927667b4c28\",\"analysis_key\":\".github/workflows/security.yml:codeql\",\"environment\":\"{}\",\"category\":\".github/workflows/security.yml:codeql\",\"error\":\"\",\"created_at\":\"2026-11-03T13:12:37Z\",\"results_count\":0,\"rules_count\":87,\"id\":2085845374,\"url\":\"https://api.github.com/repos/aa2246740/t3-mission-mode/code-scanning/analyses/2085845374\",\"sarif_id\":\"3cd1630e-d788-11f1-936b-2d28ca0ab3c9\",\"tool\":{\"name\":\"CodeQL\",\"guid\":null,\"version\":\"2.27.3\"},\"deletable\":false,\"warning\":\"\"}]",
         "timeoutSeconds": 60
       }
     ],
@@ -1386,7 +1351,6 @@
       {
         "kind": "file",
         "path": ".github/renovate.json",
-        "line": 4,
         "note": "Configured updater; actual PR evidence remains absent."
       },
       {
@@ -1402,8 +1366,7 @@
       {
         "kind": "file",
         "path": ".gitignore",
-        "line": 7,
-        "note": "Ignore rules cover env secrets, dependencies, IDE/OS files, coverage/reports/packages, and native build outputs; the example remains available."
+        "note": "Ignore rules cover secrets, dependencies, IDE/OS files, generated runtime reports, package/native outputs and Python caches. Only intentional reports/readiness JSON/Markdown archives are tracked."
       },
       {
         "kind": "command",
@@ -1426,7 +1389,6 @@
       {
         "kind": "file",
         "path": ".github/workflows/security.yml",
-        "line": 47,
         "note": "Automatic CI runs custom security attacks against an actual ephemeral HTTP service: cross-origin/Host spoofing, invalid JSON, body bounds, and data leakage."
       }
     ],
@@ -1436,13 +1398,12 @@
         "command": "cat package.json .gitignore",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
+        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"bundled-skills\",\n    \"reports/readiness\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/*\n!reports/readiness/\nreports/readiness/*\n!reports/readiness/*.json\n!reports/readiness/*.md\n__pycache__/\n*.pyc\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
         "timeoutSeconds": 60
       },
       {
         "kind": "file",
         "path": "docs/data-handling.md",
-        "line": 11,
         "note": "No user identity collection."
       }
     ],
@@ -1452,13 +1413,12 @@
         "command": "cat package.json .gitignore",
         "cwd": ".",
         "exitCode": 0,
-        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
+        "output": "{\n  \"name\": \"t3-mission-mode\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Durable multi-milestone Mission Mode for T3 Code with 3-role model slots, live SSE Mission HUD, Git-guarded pause/resume, and cross-provider autonomy mapping.\",\n  \"license\": \"MIT\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node scripts/test.mjs\",\n    \"hud\": \"node t3-mission/hud/server.mjs\",\n    \"build:lock\": \"node t3-mission/native/build.mjs\",\n    \"setup\": \"node scripts/setup.mjs\",\n    \"lint\": \"eslint . --max-warnings 0\",\n    \"format\": \"prettier --write .\",\n    \"format:check\": \"prettier --check .\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"architecture\": \"node scripts/check-architecture.mjs\",\n    \"quality\": \"node scripts/check-quality.mjs\",\n    \"dependencies:check\": \"knip --dependencies\",\n    \"duplicates\": \"jscpd --config .jscpd.json\",\n    \"docs:generate\": \"node scripts/generate-docs.mjs\",\n    \"docs:check\": \"node scripts/generate-docs.mjs --check && node scripts/check-docs.mjs\",\n    \"check\": \"npm run lint && npm run typecheck && npm run format:check && npm run architecture && npm run quality && npm run dependencies:check && npm run duplicates && npm run docs:check\",\n    \"coverage\": \"c8 npm test\",\n    \"test:security\": \"node --test --test-concurrency=1 t3-mission/test/ops.test.mjs t3-mission/test/security-http.test.mjs\",\n    \"test:stability\": \"node scripts/test-stability.mjs\",\n    \"qa\": \"node scripts/qa.mjs\",\n    \"profile\": \"node scripts/profile.mjs\",\n    \"release:notes\": \"node scripts/release-notes.mjs\"\n  },\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"devDependencies\": {\n    \"@eslint/js\": \"10.0.1\",\n    \"@types/node\": \"22.20.5\",\n    \"acorn\": \"8.19.0\",\n    \"c8\": \"12.0.0\",\n    \"eslint\": \"10.14.0\",\n    \"globals\": \"17.14.0\",\n    \"jscpd\": \"5.4.2\",\n    \"knip\": \"6.44.1\",\n    \"prettier\": \"3.9.10\",\n    \"typescript\": \"5.9.3\"\n  },\n  \"overrides\": {\n    \"minimatch\": \"11.0.4\",\n    \"glob\": \"14.0.3\"\n  },\n  \"repository\": {\n    \"type\": \"git\",\n    \"url\": \"https://github.com/aa2246740/t3-mission-mode.git\"\n  },\n  \"files\": [\n    \"SKILL.md\",\n    \"README.md\",\n    \"AGENTS.md\",\n    \"CONTRIBUTING.md\",\n    \"LICENSE\",\n    \"install.sh\",\n    \"bundled-skills\",\n    \"reports/readiness\",\n    \"scripts\",\n    \"docs\",\n    \"t3-mission/skill\",\n    \"t3-mission/kernel\",\n    \"t3-mission/bridge\",\n    \"t3-mission/hud\",\n    \"t3-mission/ops\",\n    \"t3-mission/test\",\n    \"t3-mission/native/*.c\",\n    \"t3-mission/native/build.mjs\",\n    \"Containerfile.test\",\n    \".dockerignore\",\n    \".env.example\",\n    \".node-version\"\n  ]\n}\n.DS_Store\nThumbs.db\n.mission/\nnode_modules/\n*.log\n.env\n.env.*\n!.env.example\n.idea/\n.vscode/\ncoverage/\nreports/*\n!reports/readiness/\nreports/readiness/*\n!reports/readiness/*.json\n!reports/readiness/*.md\n__pycache__/\n*.pyc\nartifacts/\n*.cpuprofile\n*.heapprofile\n*.tgz\n*.tsbuildinfo\nt3-mission/native/*.node\nt3-mission/native/*.node.json",
         "timeoutSeconds": 60
       },
       {
         "kind": "file",
         "path": "docs/data-handling.md",
-        "line": 9,
         "note": "No remote analytics or user identity collection."
       }
     ],
@@ -1466,7 +1426,6 @@
       {
         "kind": "file",
         "path": ".github/workflows/release.yml",
-        "line": 37,
         "note": "Workflows use scoped GitHub secrets; env secrets are ignored with a nonsecret template and handling guidance."
       }
     ],
@@ -1474,7 +1433,6 @@
       {
         "kind": "file",
         "path": "t3-mission/ops/logger.mjs",
-        "line": 1,
         "note": "Logger and bounded error retention redact credential fields, token-shaped IDs, emails, bearer values, and common local paths; behavior tests verify it."
       }
     ],
@@ -1482,7 +1440,6 @@
       {
         "kind": "file",
         "path": ".github/renovate.json",
-        "line": 4,
         "note": "Renovate and CONTRIBUTING require a seven-day routine dependency delay; documented security exceptions require advisory evidence."
       }
     ],
@@ -1490,7 +1447,6 @@
       {
         "kind": "file",
         "path": ".github/ISSUE_TEMPLATE/bug.yml",
-        "line": 9,
         "note": "Structured bug and feature issue forms require reproduction/evidence or acceptance details."
       }
     ],
@@ -1506,7 +1462,6 @@
       {
         "kind": "file",
         "path": ".github/labels.json",
-        "line": 3,
         "note": "Checked-in taxonomy and repeatable label-sync tool."
       }
     ],
@@ -1524,7 +1479,6 @@
       {
         "kind": "file",
         "path": ".github/pull_request_template.md",
-        "line": 5,
         "note": "PR template requires the change, tested layer/commands/SHA, and review/rollback context."
       }
     ],
@@ -1532,15 +1486,14 @@
       {
         "kind": "file",
         "path": "t3-mission/ops/diagnostics.mjs",
-        "line": 7,
         "note": "Local-only aggregate counters; no product analytics platform is configured."
       },
       {
         "kind": "command",
-        "command": "env TMPDIR=/tmp/t3-mission-readiness-final/qa-fixtures npm run qa",
+        "command": "env TMPDIR=/Volumes/Workspace/Projects/Codex-Tasks/2026-11-04/t3-mission-steering-readiness-xw6ltxgb/qa-fixtures npm run qa",
         "cwd": ".",
         "exitCode": 0,
-        "output": "\n> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
+        "output": "> t3-mission-mode@1.0.0 qa\n> node scripts/qa.mjs\n\n{\"ok\":true,\"layer\":\"local-http-and-filesystem\",\"authentication\":\"loopback/no credentials\",\"iterations\":1,\"checks\":[\"onboarding\",\"liveness\",\"readiness\",\"state\",\"request-id\",\"model-settings\",\"aggregate-usage\",\"metrics\"],\"providerDispatch\":false}",
         "timeoutSeconds": 60
       }
     ],
@@ -1556,7 +1509,6 @@
       {
         "kind": "file",
         "path": "docs/runbooks/operations.md",
-        "line": 49,
         "note": "Manual incident reporting remains required."
       }
     ]
@@ -1581,9 +1533,9 @@
   "summary": {
     "achievedLevel": 5,
     "overallProgress": {
-      "checksPassed": 6100,
+      "checksPassed": 6200,
       "checksTotal": 7400,
-      "percentComplete": 82.43243243243244
+      "percentComplete": 83.78378378378379
     },
     "levelBreakdowns": [
       {
@@ -1595,9 +1547,9 @@
       },
       {
         "level": 2,
-        "checksPassed": 1700,
+        "checksPassed": 1800,
         "checksTotal": 2400,
-        "percentComplete": 70.83333333333334,
+        "percentComplete": 75,
         "isUnlocked": true
       },
       {
@@ -2179,9 +2131,9 @@
       {
         "criterionId": "automated_security_review",
         "level": 2,
-        "passed": 0,
+        "passed": 1,
         "total": 1,
-        "isComplete": false,
+        "isComplete": true,
         "isSkipped": false
       },
       {
@@ -2297,7 +2249,7 @@
         "isSkipped": false
       }
     ],
-    "scorePercent": 82.43243243243244,
+    "scorePercent": 83.78378378378379,
     "categoryBreakdowns": [
       {
         "categoryId": "style",
@@ -2344,9 +2296,9 @@
       {
         "categoryId": "security",
         "name": "Security",
-        "checksPassed": 700,
+        "checksPassed": 800,
         "checksTotal": 1000,
-        "percentComplete": 70
+        "percentComplete": 80
       },
       {
         "categoryId": "task_discovery",
@@ -2365,580 +2317,21 @@
     ]
   },
   "comparison": {
-    "previousReportId": "20261103T093440Z-9ca92126ec92",
-    "previousCreatedAt": "2026-11-03T09:34:40.986208+00:00",
-    "previousCommit": "bd2ff5a4449d6e80bda15b73aef396e6a548bafb",
+    "previousReportId": "20261103T131021Z-b39c1ddeaf23",
+    "previousCreatedAt": "2026-11-03T13:10:21.357015+00:00",
+    "previousCommit": "8bcc7792dfe04bd2e6c5355b22ac9927667b4c28",
     "criteria": [
       {
-        "criterionId": "lint_config",
+        "criterionId": "automated_security_review",
         "before": {
           "numerator": 0,
           "denominator": 1,
-          "rationale": "No linter or static analyzer is configured."
+          "rationale": "CodeQL SARIF and readable dependency-audit automation are configured, but GitHub returns no analysis and no actual automated security report has been published yet; keep this signal failed until one exists."
         },
         "after": {
           "numerator": 1,
           "denominator": 1,
-          "rationale": "ESLint recommended rules plus unused-variable, async, equality, and unreachable-code checks cover all JS/MJS source and tests."
-        }
-      },
-      {
-        "criterionId": "type_check",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No static type checker configuration exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Static checked JavaScript covers the actual HTTP security, logging, diagnostics, and route boundary; broader legacy typing is explicit debt."
-        }
-      },
-      {
-        "criterionId": "formatter",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No automated formatter configuration exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Prettier formatting is configured and checked across supported repository files."
-        }
-      },
-      {
-        "criterionId": "pre_commit_hooks",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No checked-in quality Git hooks exist."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Checked-in pre-commit hook runs the quality gate and is enabled through this checkout-local hooksPath."
-        }
-      },
-      {
-        "criterionId": "strict_typing",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "JavaScript supports stricter checking, but no strict type-checking configuration is enabled."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "The checked operations boundary enables strict, unchecked-index, and exact-optional-property checks without suppressions."
-        }
-      },
-      {
-        "criterionId": "naming_consistency",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No enforced or documented function/file naming convention exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "AGENTS/CONTRIBUTING specify camelCase functions, PascalCase classes, UPPER_SNAKE_CASE constants, kebab-case modules, and test names."
-        }
-      },
-      {
-        "criterionId": "cyclomatic_complexity",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No complexity analyzer or monitored thresholds exist."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "AST complexity analysis enforces maximum 20 for new functions and frozen per-function legacy ceilings; metrics and owned debt are retained."
-        }
-      },
-      {
-        "criterionId": "large_file_detection",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No file-size hook, CI threshold, LFS policy, or max-lines rule is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Quality checks reject tracked/untracked project files above 2 MiB; negative probes verified rejection."
-        }
-      },
-      {
-        "criterionId": "dead_code_detection",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No unused/dead-code analyzer is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Unused imports/locals are detected across JS/MJS, existing dead helpers were removed, and negative verification proved rejection."
-        }
-      },
-      {
-        "criterionId": "duplicate_code_detection",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No duplicate-code analysis is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "jscpd scans production JS modules, enforces a 1% duplication ceiling, and emits reviewable metrics."
-        }
-      },
-      {
-        "criterionId": "code_modularization",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Kernel, bridge, HUD, and native boundaries are meaningful but no architectural rule enforces them."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "An architectural fitness check rejects forbidden imports across kernel, bridge, HUD, operations, and native modules."
-        }
-      },
-      {
-        "criterionId": "tech_debt_tracking",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Design notes exist but no tracked debt register or TODO/FIXME enforcement is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Owned debt entries have closure conditions; the quality checker rejects orphan TODO/FIXME/HACK references."
-        }
-      },
-      {
-        "criterionId": "deps_pinned",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "The Node package has no committed lockfile, including for its currently empty dependency set."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Exact direct tool versions, integrity hashes, transitive resolutions, and security override pins are committed."
-        }
-      },
-      {
-        "criterionId": "build_performance_tracking",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No CI history, build timing retention, cache, or deliberate build-performance monitoring exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Native setup/package durations are explicitly measured; CI retains build-timings artifacts and npm caching."
-        }
-      },
-      {
-        "criterionId": "release_notes_automation",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No release-note or changelog generator is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Tagged release workflow generates GitHub release notes; a bounded git-log notes CLI also exists."
-        }
-      },
-      {
-        "criterionId": "unused_dependencies_detection",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No unused-dependency check is configured, even though there are currently no package dependencies."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Knip checks dependencies/binaries/unlisted references against actual runtime, scripts, and test entrypoints; only the documented system compiler is external."
-        }
-      },
-      {
-        "criterionId": "release_automation",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No automated release or deployment pipeline is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "A tag-triggered release pipeline validates, packs, verifies the extracted archive, checksums, and publishes it. Historical deployment success is not claimed."
-        }
-      },
-      {
-        "criterionId": "dead_feature_flag_detection",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "The local-daemon feature toggle has no documented flag lifecycle/cleanup or stale-flag check."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Permanent flag ownership, callers, release review, and dead-backend/alias removal conditions are documented."
-        }
-      },
-      {
-        "criterionId": "test_performance_tracking",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Test timings are not retained or analyzed by a configured CI/reporting workflow."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "The runner writes per-run timing and JUnit per-test results; CI retains timing/coverage/stability artifacts for review."
-        }
-      },
-      {
-        "criterionId": "flaky_test_detection",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No PR check history, retry configuration, quarantine, or stability tracking exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "A configured CI stability check compares two independent security/runtime-boundary runs, retains results, and never hides a failed attempt."
-        }
-      },
-      {
-        "criterionId": "test_coverage_thresholds",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No minimum code coverage percentage is enforced."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "The real npm test entrypoint passes the enforced 80% lines/functions and 70% branches thresholds on Linux ARM64 with tmpfs fixtures; macOS/APFS and live provider evidence remain separate."
-        }
-      },
-      {
-        "criterionId": "interactive_qa_exists",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Launch commands exist, but no complete standalone QA sequence documents auth handling and a concrete read-only interaction."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Complete standalone QA documents local compiler/headers, setup, no credentials/transport, ephemeral launch, actual state/settings interaction, and cleanup."
-        }
-      },
-      {
-        "criterionId": "interactive_qa_runnable",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "An inferred standalone HUD API read succeeded, but the prerequisite complete documented QA path fails, so runnable readiness is not established."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Fresh execution of the target QA entrypoint completed real loopback HTML/health/state/settings/metrics interactions in an external temporary workspace."
-        }
-      },
-      {
-        "criterionId": "agents_md",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No root AGENTS.md documents repository development commands and conventions."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Root AGENTS.md documents actual setup/build/check/test/QA commands, conventions, storage fences, and evidence limits."
-        }
-      },
-      {
-        "criterionId": "automated_doc_generation",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "All documentation is static; no configured generator or publishing workflow exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "API reference and OpenAPI are generated from runtime route metadata and actual MCP schemas; drift checks pass."
-        }
-      },
-      {
-        "criterionId": "api_schema_docs",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "The HUD exposes HTTP APIs, but there is no OpenAPI/Swagger specification."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "A generated valid OpenAPI document describes actual HUD routes, JSON/SSE contracts, errors, command bodies, and request correlation."
-        }
-      },
-      {
-        "criterionId": "agents_md_validation",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Root AGENTS.md is absent; no command or link validation is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Automation verifies AGENTS npm commands/local links, generated docs, and skill synchronization; CI runs its documented workflows."
-        }
-      },
-      {
-        "criterionId": "local_services_setup",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "T3 is an external execution host, but no self-contained local host/transport service setup or documented mock QA path exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Development docs explicitly identify optional T3 transport and provide a complete mock-free local HTTP QA path without credentials or external services."
-        }
-      },
-      {
-        "criterionId": "structured_logging",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No dedicated structured logger module or logging library exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "A dedicated JSON logger is wired into HTTP errors and scrubs sensitive nested context before stderr output."
-        }
-      },
-      {
-        "criterionId": "metrics_collection",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No metrics/telemetry collection is instrumented."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Live Prometheus metrics report bounded route/status counts, duration sums, uptime, and local feature-use counters."
-        }
-      },
-      {
-        "criterionId": "code_quality_metrics",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No code quality analyses or coverage/complexity metrics configuration exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "CI retains enforced coverage, per-function complexity, duplication, timing, and stability reports; current local metrics are readable."
-        }
-      },
-      {
-        "criterionId": "runbooks_documented",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No dedicated runbooks directory or incident-response playbook pointer exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Agent instructions link a dedicated operational runbook covering installation impact, transaction faults, receipts, HTTP errors, and rollback."
-        }
-      },
-      {
-        "criterionId": "deployment_observability",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No install/release-impact monitoring or deployment diagnostics pointer is documented."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Runbook identifies health/readiness/metrics/diagnostics views for comparing installed release impact and states their runtime limits."
-        }
-      },
-      {
-        "criterionId": "health_checks",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "The local HTTP HUD has no dedicated liveness/readiness endpoint."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Actual liveness/readiness endpoints run on the local service; readiness reads a consistent snapshot and reports unavailable storage separately."
-        }
-      },
-      {
-        "criterionId": "profiling_instrumentation",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Profiling is meaningful for the stateful HTTP/kernel runtime, but no profiling workflow is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Configured development CPU profiling runs 100 real snapshot reads and settings QA, writing a local .cpuprofile without telemetry export."
-        }
-      },
-      {
-        "criterionId": "codeowners",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No CODEOWNERS file assigns repository ownership."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "CODEOWNERS assigns the actual repository owner across the project."
-        }
-      },
-      {
-        "criterionId": "gitignore_comprehensive",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": ".gitignore omits environment secrets, IDE metadata, coverage, and general build artifacts."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Ignore rules cover env secrets, dependencies, IDE/OS files, coverage/reports/packages, and native build outputs; the example remains available."
-        }
-      },
-      {
-        "criterionId": "dast_scanning",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Existing endpoint tests are not run by CI; no dynamic security test pipeline exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Automatic CI runs custom security attacks against an actual ephemeral HTTP service: cross-origin/Host spoofing, invalid JSON, body bounds, and data leakage."
-        }
-      },
-      {
-        "criterionId": "secrets_management",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No secrets manager integration, workflow secret usage, or ignored .env plus example pattern is configured."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Workflows use scoped GitHub secrets; env secrets are ignored with a nonsecret template and handling guidance."
-        }
-      },
-      {
-        "criterionId": "log_scrubbing",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No configured log redaction/scrubbing utility or handling documentation exists."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Logger and bounded error retention redact credential fields, token-shaped IDs, emails, bearer values, and common local paths; behavior tests verify it."
-        }
-      },
-      {
-        "criterionId": "min_release_age",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No explicit minimum waiting period for adopting dependency updates is documented or enforced."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Renovate and CONTRIBUTING require a seven-day routine dependency delay; documented security exceptions require advisory evidence."
-        }
-      },
-      {
-        "criterionId": "issue_templates",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No structured issue templates exist."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Structured bug and feature issue forms require reproduction/evidence or acceptance details."
-        }
-      },
-      {
-        "criterionId": "issue_labeling_system",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "Remote labels contain default types but no consistent priority and area taxonomy."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "Actual repository labels now include P0-P3 priorities, bug/feature/chore types, and kernel/bridge/HUD/native/tooling/documentation areas."
-        }
-      },
-      {
-        "criterionId": "pr_templates",
-        "before": {
-          "numerator": 0,
-          "denominator": 1,
-          "rationale": "No PR template documents description, testing, and context."
-        },
-        "after": {
-          "numerator": 1,
-          "denominator": 1,
-          "rationale": "PR template requires the change, tested layer/commands/SHA, and review/rollback context."
+          "rationale": "GitHub code-scanning APIs now return readable CodeQL analyses and a finding for 66dca9c. Automated SARIF reports are configured. This proves report generation, not a clean security verdict for the new source."
         }
       }
     ],
@@ -2946,15 +2339,15 @@
       {
         "path": ".",
         "before": {
-          "description": "Single installable T3 Mission Mode application: transactional kernel, CLI/MCP bridge, and shared local HTTP/SSE HUD."
+          "description": "Single installable T3 Mission Mode application: shared transactional kernel, CLI/MCP bridge, native lock, and local HTTP/SSE HUD."
         },
         "after": {
-          "description": "Single installable T3 Mission Mode application: shared transactional kernel, CLI/MCP bridge, native lock, and local HTTP/SSE HUD."
+          "description": "One installable Mission application with a shared CLI/MCP, kernel, native lock, HUD and release lifecycle. bundled-skills are vendored upstream release dependencies, without independent build/release manifests here."
         }
       }
     ]
   },
-  "createdAt": "2026-11-03T13:10:21.357015+00:00",
-  "id": "20261103T131021Z-b39c1ddeaf23",
+  "createdAt": "2026-11-04T03:39:48.052033+00:00",
+  "id": "20261104T033948Z-cf4ee2e74558",
   "validatorVersion": "0.1.0"
 }
