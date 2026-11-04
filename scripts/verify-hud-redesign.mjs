@@ -277,6 +277,41 @@ async function verifyLiveFeed(page) {
     .find((row) => row.type === "session_steered");
   assert.equal(instruction.threadId, "fixture-thread");
   assert.equal(instruction.runId, "fixture-run");
+  await page.route(
+    "**/api/mission/steer",
+    (route) =>
+      route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Fixture bridge unavailable" }),
+      }),
+    { times: 1 },
+  );
+  await page.locator("#session-steer-input").fill("Keep this instruction after a send failure.");
+  await page.locator("#btn-steer-session").click();
+  await page.waitForFunction(() =>
+    document
+      .getElementById("session-steer-feedback")
+      .textContent.includes("Fixture bridge unavailable"),
+  );
+  assert.equal(
+    await page.locator("#session-steer-input").inputValue(),
+    "Keep this instruction after a send failure.",
+  );
+  assert.equal(
+    await page
+      .locator("#session-steer-feedback")
+      .evaluate((feedback) => getComputedStyle(feedback).color),
+    "rgb(185, 28, 28)",
+  );
+  assert.equal(await page.locator("#btn-steer-session").isEnabled(), true);
+  await page.locator("#btn-steer-session").click();
+  await page.waitForFunction(() =>
+    document.getElementById("session-steer-feedback").textContent.includes("Recorded locally"),
+  );
+  checks.push(
+    "failed steering retains its draft, displays the error and permits an explicit retry",
+  );
   checks.push(
     "thread jump anchor, steering submit, delivery feedback, live feed and draft focus across SSE",
   );

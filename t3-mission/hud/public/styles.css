@@ -1808,7 +1808,7 @@ body {
 }
 
 .session-steer-feedback.is-error {
-  color: var(--status-failed-fg);
+  color: var(--status-rose-fg);
 }
 
 button:focus-visible,
