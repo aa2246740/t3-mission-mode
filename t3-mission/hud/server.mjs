@@ -31,6 +31,11 @@ import { applyAutopilotCommand } from "../kernel/autopilot-commands.mjs";
 import { callT3McpTool, preSendFailure } from "../bridge/t3-adapter.mjs";
 import { inspectRepoAgentReadiness } from "./readiness.mjs";
 import {
+  validateSteeringRequest,
+  resolveSteeringTarget,
+  sendLiveThread,
+} from "./session-steering.mjs";
+import {
   readRecentObservations,
   observationFiles,
   buildThreadFeed,
@@ -500,6 +505,8 @@ function buildProgressLogEntries(existingLogs, entriesToAppend) {
     if (entryInput.workerNumber !== undefined) entry.workerNumber = entryInput.workerNumber;
     if (entryInput.milestoneId !== undefined) entry.milestoneId = entryInput.milestoneId;
     if (entryInput.details !== undefined) entry.details = entryInput.details;
+    for (const key of ["threadId", "sessionId", "runId", "role"])
+      if (entryInput[key] !== undefined) entry[key] = entryInput[key];
     return entry;
   });
 }
@@ -999,6 +1006,7 @@ export function createMissionHudServer({
   notifyUrl = process.env.T3_MISSION_NOTIFY_URL || null,
   diagnosticWriter,
   threadReader = readLiveThread,
+  threadSender = sendLiveThread,
 } = {}) {
   validateGitPreflightTimeout(gitPreflightTimeoutMs);
   const paths = resolveMissionPaths(missionDir || process.cwd());
@@ -1040,6 +1048,53 @@ export function createMissionHudServer({
   }
   async function handleResume(...args) {
     return runMissionSteps(paths.dotMissionDir, handleResumeSteps(...args), { create: true });
+  }
+  async function handleSteer(req, res) {
+    const body = validateSteeringRequest(await readJsonBody(req));
+    return runMissionSteps(paths.dotMissionDir, handleSteerSteps(body, res), { create: true });
+  }
+
+  function* handleSteerSteps(body, res) {
+    if (beginHudCommand("steer", body, res)) return;
+    const state = safeReadJsonSync(paths.statePath, null);
+    if (!isInitializedMissionState(state)) {
+      sendJson(res, 409, {
+        ok: false,
+        code: "MISSION_UNINITIALIZED",
+        error: "Initialize a Mission before steering a thread.",
+      });
+      return;
+    }
+    const doc = safeReadJsonSync(paths.featuresPath, { features: [] });
+    const target = resolveSteeringTarget(state, body, Array.isArray(doc) ? doc : doc.features);
+    const delivery = yield async () => {
+      try {
+        return await threadSender(target.threadId, body.message);
+      } catch {
+        throw Object.assign(
+          new Error(
+            "The T3 bridge could not send this instruction. Check the thread before retrying.",
+          ),
+          { statusCode: 502, code: "STEERING_FAILED" },
+        );
+      }
+    };
+    const entries = buildProgressLogEntries(readProgressLogSync(paths.progressLogPath), [
+      {
+        type: "session_steered",
+        message: body.message,
+        threadId: target.threadId,
+        sessionId: target.sessionId,
+        runId: target.runId,
+        featureId: target.featureId,
+        workerNumber: target.workerNumber,
+        role: "User",
+        details: { threadId: target.threadId, message: body.message, delivery },
+      },
+    ]);
+    commitMissionChanges([], entries);
+    broadcastSnapshot("session_steered");
+    sendJson(res, 200, { ok: true, threadId: target.threadId, message: body.message, delivery });
   }
 
   function buildInMemorySnapshot({
@@ -1156,6 +1211,7 @@ export function createMissionHudServer({
       path.join(paths.dotMissionDir, "observations.jsonl"),
       path.join(paths.dotMissionDir, "autopilot", "observations.jsonl"),
       path.join(paths.dotMissionDir, "readiness.json"),
+      path.join(paths.repoDir, "reports", "readiness", "latest.json"),
       ...observationFiles(paths.dotMissionDir),
     ];
     return targets
@@ -2994,6 +3050,15 @@ export function createMissionHudServer({
     sendJson(res, 200, { threadId, sessionId, source, unavailable, events });
   }
 
+  const commandHandlers = {
+    "/api/mission/approve": handleApprove,
+    "/api/mission/reject": handleReject,
+    "/api/mission/model-slots": handleModelSlots,
+    "/api/mission/pause": handlePause,
+    "/api/mission/resume": handleResume,
+    "/api/mission/steer": handleSteer,
+  };
+
   const server = http.createServer(async (req, res) => {
     setSecurityHeaders(res);
     const route = findHudRoute((req.method || "GET").toUpperCase(), (req.url || "/").split("?")[0]);
@@ -3116,28 +3181,8 @@ export function createMissionHudServer({
         return;
       }
 
-      if (method === "POST" && pathname === "/api/mission/approve") {
-        await handleApprove(req, res);
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/mission/reject") {
-        await handleReject(req, res);
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/mission/model-slots") {
-        await handleModelSlots(req, res);
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/mission/pause") {
-        await handlePause(req, res);
-        return;
-      }
-
-      if (method === "POST" && pathname === "/api/mission/resume") {
-        await handleResume(req, res);
+      if (method === "POST" && Object.hasOwn(commandHandlers, pathname)) {
+        await commandHandlers[pathname](req, res);
         return;
       }
 

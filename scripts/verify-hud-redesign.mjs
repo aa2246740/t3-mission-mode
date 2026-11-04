@@ -64,7 +64,7 @@ async function checkGeometry(page, name) {
   const problems = await page.evaluate(() => {
     const issues = [];
     if (document.documentElement.scrollWidth > window.innerWidth + 1) issues.push("page overflow");
-    for (const control of document.querySelectorAll("button, select, input")) {
+    for (const control of document.querySelectorAll("button, select, input, a.thread-open-link")) {
       const box = control.getBoundingClientRect();
       if (!box.width || !box.height) continue;
       if (box.left < -1 || box.right > window.innerWidth + 1)
@@ -238,8 +238,56 @@ async function verifyLiveFeed(page) {
   assert.match(inspector, /Render recorded observations/);
   assert.match(inspector, /npm run check/);
   assert.match(inspector, /Keep separate runs isolated/);
+  assert.equal(
+    await page.locator("#btn-open-thread-uri").getAttribute("href"),
+    "t3-thread://v1/fixture-thread",
+  );
+  await page.locator("#session-steer-input").fill("Verify the rollback path before continuing.");
+  const state = loadState(root);
+  state.title = "Mission with a retained steering draft";
+  saveState(root, state);
+  await page.waitForFunction(() =>
+    document.querySelector(".mission-title").textContent.includes("retained steering draft"),
+  );
+  assert.equal(
+    await page.locator("#session-steer-input").inputValue(),
+    "Verify the rollback path before continuing.",
+  );
+  assert.equal(
+    await page
+      .locator("#session-steer-input")
+      .evaluate((input) => input === document.activeElement),
+    true,
+  );
+  await page.locator("#btn-steer-session").click();
+  await page.waitForFunction(() =>
+    document.getElementById("session-steer-feedback").textContent.includes("Recorded locally"),
+  );
+  assert.equal(await page.locator("#session-steer-input").inputValue(), "");
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".session-live-feed")
+      .textContent.includes("Verify the rollback path before continuing."),
+  );
+  const instruction = fs
+    .readFileSync(path.join(mission, "progress_log.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse)
+    .find((row) => row.type === "session_steered");
+  assert.equal(instruction.threadId, "fixture-thread");
+  assert.equal(instruction.runId, "fixture-run");
+  checks.push(
+    "thread jump anchor, steering submit, delivery feedback, live feed and draft focus across SSE",
+  );
   checks.push("observation-only SSE, selected thread messages, brief, commands and issues");
   await capture(page, "desktop-session");
+  for (const width of [768, 375, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await checkGeometry(page, `${width}px session steering`);
+  }
+  await capture(page, "mobile-session");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator("#btn-back-orchestrator").click();
 }
 
@@ -267,9 +315,14 @@ async function exportRenderedHtml(page, name) {
     new URL("../t3-mission/hud/public/styles.css", import.meta.url),
     "utf8",
   );
-  const markup = (await page.content())
-    .replace(/<link[^>]*href="\/styles\.css"[^>]*>/, () => `<style>${css}</style>`)
-    .replace(/<script[^>]*src="\/app\.js"[^>]*><\/script>/, "");
+  const markup = await page.evaluate((styles) => {
+    const copy = document.documentElement.cloneNode(true);
+    for (const script of copy.querySelectorAll("script")) script.remove();
+    const style = document.createElement("style");
+    style.textContent = styles;
+    copy.querySelector('link[href="/styles.css"]')?.replaceWith(style);
+    return "<!DOCTYPE html>\n" + copy.outerHTML;
+  }, css);
   fs.writeFileSync(path.join(output, `${name}.html`), markup);
 }
 
@@ -285,6 +338,7 @@ try {
   fixture();
   hud = await createMissionHudServer({
     missionDir: mission,
+    threadSender: async () => "recorded",
     threadReader: async () => ({
       messages: [{ role: "assistant", text: "Fixture thread: reading command output" }],
     }),

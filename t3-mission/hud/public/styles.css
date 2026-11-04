@@ -1076,6 +1076,8 @@ body {
 
 .handoff-link-chip {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
@@ -1083,6 +1085,11 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
   font-size: 11px;
+}
+
+#handoff-thread-uri {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .handoff-section-title {
@@ -1744,7 +1751,69 @@ body {
   transform: translateY(0.5px) scale(0.99);
 }
 
+.thread-open-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.owner-thread-link:empty {
+  display: none;
+}
+
+.session-steer-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.session-steer-bar label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.session-steer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#session-steer-input {
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+#btn-steer-session {
+  min-height: 38px;
+}
+
+.session-steer-feedback {
+  min-height: 1em;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+
+.session-steer-feedback.is-error {
+  color: var(--status-failed-fg);
+}
+
 button:focus-visible,
+a:focus-visible,
+input:focus-visible,
 select:focus-visible,
 .feature-row:focus-visible,
 summary:focus-visible {
@@ -1804,7 +1873,8 @@ summary:focus-visible {
   .session-item,
   .milestone-swimlane-header,
   .filter-pill,
-  #plan-feedback {
+  #plan-feedback,
+  #session-steer-input {
     min-height: 44px;
   }
   .hud-workspace {

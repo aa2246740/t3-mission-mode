@@ -16,6 +16,7 @@ const hudState = {
   clientRunKey: null,
   threadFeeds: new Map(),
   threadFeedPending: false,
+  sessionSteering: new Map(),
 };
 
 function escapeHtml(value) {
@@ -25,6 +26,98 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function sessionThreadUri(session) {
+  const link = [session.link, session.threadUri].find(
+    (value) => typeof value === "string" && /^(?:t3-thread:\/\/v1\/|https:\/\/)/.test(value),
+  );
+  if (link) return link;
+  const id = session.childThreadId || session.threadId;
+  if (!id) return null;
+  return String(id).startsWith("t3-thread://v1/") ? id : `t3-thread://v1/${encodeURIComponent(id)}`;
+}
+
+function sessionSelectorId(session) {
+  return session.sessionId || session.runId || session.id || null;
+}
+
+function threadOpenLink(uri, id = "btn-open-thread-uri") {
+  return uri
+    ? `<a class="strip-btn thread-open-link" id="${id}" href="${escapeHtml(uri)}">↗ Open Thread</a>`
+    : "";
+}
+
+function steeringState(session) {
+  if (!hudState.sessionSteering.has(session.id))
+    hudState.sessionSteering.set(session.id, {
+      draft: "",
+      pending: false,
+      feedback: "",
+      failed: false,
+    });
+  return hudState.sessionSteering.get(session.id);
+}
+
+function renderSessionSteering(session) {
+  const steering = steeringState(session);
+  const available = Boolean(sessionThreadUri(session));
+  return `<form id="session-steer-bar" class="session-steer-bar">
+    <label for="session-steer-input">Steer Session</label>
+    <div class="session-steer-controls">
+      <input id="session-steer-input" type="text" placeholder="Send steering instruction to this thread..." value="${escapeHtml(steering.draft)}" aria-describedby="session-steer-feedback" ${!available || steering.pending ? "disabled" : ""}>
+      <button type="submit" class="strip-btn" id="btn-steer-session" ${!available || steering.pending || !steering.draft.trim() ? "disabled" : ""}>${steering.pending ? "Sending..." : "Send to Thread"}</button>
+    </div>
+    <div id="session-steer-feedback" class="session-steer-feedback ${steering.failed ? "is-error" : ""}" role="status" aria-live="polite">${escapeHtml(available ? steering.feedback : "This session has no thread yet.")}</div>
+  </form>`;
+}
+
+function steeringPayload(session, message) {
+  const target = session.runId
+    ? { runId: session.runId }
+    : session.sessionId
+      ? { sessionId: session.sessionId }
+      : { featureId: session.featureId };
+  if (session.childThreadId) target.childThreadId = session.childThreadId;
+  return { ...target, message };
+}
+
+async function submitSessionSteering(session) {
+  const steering = steeringState(session);
+  const message = steering.draft.trim();
+  if (!message || steering.pending) return;
+  steering.pending = true;
+  steering.failed = false;
+  steering.feedback = "Sending...";
+  renderCenterColumn(hudState.snapshot);
+  try {
+    const result = await postAction("/api/mission/steer", steeringPayload(session, message));
+    steering.draft = "";
+    steering.feedback =
+      result.delivery === "recorded"
+        ? "Recorded locally. The T3 bridge is unavailable."
+        : "Sent to thread.";
+  } catch (error) {
+    steering.failed = true;
+    steering.feedback = error.message;
+  } finally {
+    steering.pending = false;
+    renderCenterColumn(hudState.snapshot);
+  }
+}
+
+function bindSessionSteering(container, session) {
+  const form = container.querySelector("#session-steer-bar");
+  const input = container.querySelector("#session-steer-input");
+  const button = container.querySelector("#btn-steer-session");
+  input?.addEventListener("input", () => {
+    steeringState(session).draft = input.value;
+    if (button) button.disabled = !input.value.trim();
+  });
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    return submitSessionSteering(session);
+  });
 }
 
 function formatDurationHms(totalMs) {
@@ -185,7 +278,7 @@ function synthesizeSessions(state, features) {
   const byId = new Map();
 
   for (const [idx, s] of explicitSessions.entries()) {
-    const id = s.sessionId || s.runId || s.id || `session-${idx + 1}`;
+    const id = sessionSelectorId(s) || `session-${idx + 1}`;
     const matchedFeature = featuresList.find((f) => f.id && f.id === s.featureId) || null;
     const role = inferSessionRole(s, matchedFeature);
     const number = s.workerNumber ?? idx + 1;
@@ -227,6 +320,8 @@ function synthesizeSessions(state, features) {
 
     byId.set(id, {
       id,
+      sessionId: sessionSelectorId(s),
+      threadUri: sessionThreadUri({ ...h, ...s }),
       runId: s.runId || null,
       role,
       workerNumber: number,
@@ -321,6 +416,8 @@ function synthesizeSessions(state, features) {
 
     byId.set(id, {
       id,
+      sessionId: h.sessionId,
+      threadUri: sessionThreadUri({ ...h, ...f }),
       runId: h.runId || null,
       role,
       workerNumber: number,
@@ -388,6 +485,8 @@ function synthesizeSessions(state, features) {
 
     const sessionObj = {
       id: existing?.id || awId,
+      sessionId: sessionSelectorId(aw),
+      threadUri: sessionThreadUri({ ...existing, ...aw }),
       runId: aw.runId || existing?.runId || null,
       role,
       workerNumber: resolvedNumber,
@@ -1293,11 +1392,9 @@ function renderFeaturesAndAssertions(snapshot) {
   }
 }
 
-function captureFeedbackFocus() {
+function captureInputFocus(id) {
   const input = document.activeElement;
-  return input?.id === "plan-feedback"
-    ? { start: input.selectionStart, end: input.selectionEnd }
-    : null;
+  return input?.id === id ? { start: input.selectionStart, end: input.selectionEnd } : null;
 }
 
 function restoreFeedbackFocus(input, selection) {
@@ -1330,7 +1427,7 @@ function renderCenterColumn(snapshot) {
 
   // 2. High-Clarity Plan Review Banner when status === "awaiting_input" && !planAccepted
   const showApprovalCard = state.status === "awaiting_input" && !state.planAccepted;
-  const feedbackFocus = captureFeedbackFocus();
+  const feedbackFocus = captureInputFocus("plan-feedback");
   if (approvalEl) {
     if (showApprovalCard) {
       if (
@@ -1433,9 +1530,8 @@ function renderCenterColumn(snapshot) {
       inspectorEl?.classList.remove("hidden");
       handoffEl.classList.remove("hidden");
       boardEl?.classList.add("hidden");
-      const threadUri = selectedSession.childThreadId
-        ? `t3-thread://v1/${selectedSession.childThreadId}`
-        : "Unavailable";
+      const threadUri = sessionThreadUri(selectedSession);
+      const steerFocus = captureInputFocus("session-steer-input");
       const commands = Array.isArray(selectedSession.handoff?.commandsRun)
         ? selectedSession.handoff.commandsRun
         : [];
@@ -1473,12 +1569,14 @@ function renderCenterColumn(snapshot) {
             </details>
           </div>
           <div class="handoff-link-chip">
-            <code class="mono" id="handoff-thread-uri">${escapeHtml(threadUri)}</code>
+            <code class="mono" id="handoff-thread-uri">${escapeHtml(threadUri || "Unavailable")}</code>
+            ${threadOpenLink(threadUri)}
             <button
               type="button"
               class="strip-btn"
               id="btn-copy-thread-uri"
               data-thread-uri="${escapeHtml(threadUri)}"
+              ${threadUri ? "" : "disabled"}
             >
               ${hudState.copiedThreadUri === threadUri ? "\u2713 Copied" : "Copy URI"}
             </button>
@@ -1487,6 +1585,8 @@ function renderCenterColumn(snapshot) {
             </button>
           </div>
         </div>
+
+        ${renderSessionSteering(selectedSession)}
 
         ${renderSessionActivity(snapshot, selectedSession)}
 
@@ -1548,6 +1648,9 @@ function renderCenterColumn(snapshot) {
             : ""
         }
       `;
+
+      bindSessionSteering(handoffEl, selectedSession);
+      restoreFeedbackFocus(handoffEl.querySelector("#session-steer-input"), steerFocus);
 
       handoffEl.querySelector("#btn-back-orchestrator")?.addEventListener("click", () => {
         hudState.selectedSessionId = "orchestrator";
@@ -1615,6 +1718,7 @@ function renderCenterColumn(snapshot) {
             : `Mission status is ${state.status || "planning"}.`;
 
     streamEl.innerHTML = `
+      <div class="owner-thread-link">${threadOpenLink(sessionThreadUri({ childThreadId: state.ownerThreadId }), selectedSession ? "btn-open-owner-thread-uri" : "btn-open-thread-uri")}</div>
       <div class="stream-card diagnostic-card ${activeError ? "error" : ""} ${activeExecutionClass(state)}" id="resume-diagnostic-card">
         <div class="stream-card-header">
           <span class="stream-tag">${activeError ? "Action Blocked" : isDispatchPending ? "Awaiting Orchestrator Dispatch" : "Execution Status"}</span>

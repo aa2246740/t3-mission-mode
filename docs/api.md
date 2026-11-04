@@ -6,26 +6,27 @@ The HUD listens on loopback by default. Standalone QA needs no credentials and s
 
 Cross-origin requests and foreign Host headers are refused. Commands accept JSON objects up to 1 MiB. `X-Request-ID` is echoed for diagnostics. SSE events contain Mission snapshots; keep this listener private.
 
-| Method | Path                       | Behavior                                                           |
-| ------ | -------------------------- | ------------------------------------------------------------------ |
-| GET    | `/`                        | Open the Mission HUD                                               |
-| GET    | `/index.html`              | Open the Mission HUD                                               |
-| GET    | `/app.js`                  | Load the HUD script                                                |
-| GET    | `/styles.css`              | Load HUD styles                                                    |
-| GET    | `/style.css`               | Load HUD styles                                                    |
-| GET    | `/api/mission/state`       | Read a consistent Mission snapshot                                 |
-| GET    | `/api/mission/thread-feed` | Read recent Mission observations and bound session thread messages |
-| GET    | `/api/mission/stream`      | Subscribe to Mission snapshots                                     |
-| GET    | `/api/mission/events`      | Subscribe to Mission snapshots                                     |
-| POST   | `/api/mission/approve`     | Approve the current plan                                           |
-| POST   | `/api/mission/reject`      | Request plan changes                                               |
-| POST   | `/api/mission/model-slots` | Update model settings                                              |
-| POST   | `/api/mission/pause`       | Commit the Pause gate and request runtime control                  |
-| POST   | `/api/mission/resume`      | Preflight and resume the bound run                                 |
-| GET    | `/healthz`                 | Check HTTP process liveness                                        |
-| GET    | `/readyz`                  | Check whether a Mission snapshot can be read                       |
-| GET    | `/metrics`                 | Read local aggregate Prometheus metrics                            |
-| GET    | `/api/mission/diagnostics` | Read aggregate usage and recent redacted errors                    |
+| Method | Path                       | Behavior                                                                   |
+| ------ | -------------------------- | -------------------------------------------------------------------------- |
+| GET    | `/`                        | Open the Mission HUD                                                       |
+| GET    | `/index.html`              | Open the Mission HUD                                                       |
+| GET    | `/app.js`                  | Load the HUD script                                                        |
+| GET    | `/styles.css`              | Load HUD styles                                                            |
+| GET    | `/style.css`               | Load HUD styles                                                            |
+| GET    | `/api/mission/state`       | Read a consistent Mission snapshot                                         |
+| GET    | `/api/mission/thread-feed` | Read recent Mission observations and bound session thread messages         |
+| GET    | `/api/mission/stream`      | Subscribe to Mission snapshots                                             |
+| GET    | `/api/mission/events`      | Subscribe to Mission snapshots                                             |
+| POST   | `/api/mission/approve`     | Approve the current plan                                                   |
+| POST   | `/api/mission/reject`      | Request plan changes                                                       |
+| POST   | `/api/mission/model-slots` | Update model settings                                                      |
+| POST   | `/api/mission/pause`       | Commit the Pause gate and request runtime control                          |
+| POST   | `/api/mission/resume`      | Preflight and resume the bound run                                         |
+| POST   | `/api/mission/steer`       | Send a steering instruction to a bound Mission thread or record it locally |
+| GET    | `/healthz`                 | Check HTTP process liveness                                                |
+| GET    | `/readyz`                  | Check whether a Mission snapshot can be read                               |
+| GET    | `/metrics`                 | Read local aggregate Prometheus metrics                                    |
+| GET    | `/api/mission/diagnostics` | Read aggregate usage and recent redacted errors                            |
 
 The machine-readable contract is [openapi.json](openapi.json). Lifecycle-specific payloads still obey the kernel gates; arbitrary extra JSON properties confer no authority.
 

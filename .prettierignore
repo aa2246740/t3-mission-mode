@@ -1,6 +1,7 @@
 node_modules/
 coverage/
 reports/
+bundled-skills/
 artifacts/
 package-lock.json
 docs/screenshots/

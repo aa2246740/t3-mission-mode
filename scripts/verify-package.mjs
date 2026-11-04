@@ -34,10 +34,45 @@ assert.equal(
   false,
   "The distribution must not contain a machine-specific native binary.",
 );
+const readinessSkills = ["agent-readiness", "readiness-report", "readiness-fix"];
+for (const name of readinessSkills) {
+  for (const file of [
+    "SKILL.md",
+    "LICENSE",
+    "NOTICE.md",
+    "LICENSE-SCOPE.md",
+    "_runtime/scripts/readiness.py",
+  ])
+    assert.ok(
+      members.includes(`package/bundled-skills/${name}/${file}`),
+      `Missing bundled skill file ${name}/${file}`,
+    );
+}
+for (const file of [
+  "bundled-skills/manifest.json",
+  "reports/readiness/latest.json",
+  "reports/readiness/latest.md",
+])
+  assert.ok(members.includes(`package/${file}`), `Missing readiness artifact ${file}`);
+assert.equal(
+  members.some((member) => /__pycache__|\.pyc$/.test(member)),
+  false,
+);
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "mission-package-"));
 try {
   execFileSync("tar", ["-xzf", absoluteArchive, "-C", temporary]);
   const packaged = path.join(temporary, "package");
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(packaged, "bundled-skills/manifest.json"), "utf8"),
+  );
+  for (const [file, expected] of Object.entries(manifest.sha256))
+    assert.equal(
+      createHash("sha256")
+        .update(fs.readFileSync(path.join(packaged, "bundled-skills", file)))
+        .digest("hex"),
+      expected,
+      file,
+    );
   assert.equal(
     fs.readFileSync(path.join(packaged, "SKILL.md"), "utf8"),
     fs.readFileSync(path.join(packaged, "t3-mission/skill/SKILL.md"), "utf8"),
@@ -62,6 +97,9 @@ try {
     platform: process.platform,
     architecture: process.arch,
     node: process.version,
+    bundledReadinessSkills: readinessSkills,
+    bundledFilesVerified: Object.keys(manifest.sha256).length,
+    readinessReportsIncluded: true,
   };
   fs.mkdirSync("reports", { recursive: true });
   fs.writeFileSync("reports/package-verification.json", JSON.stringify(result, null, 2) + "\n");

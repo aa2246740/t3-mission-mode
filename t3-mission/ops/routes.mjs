@@ -100,6 +100,13 @@ export const HUD_ROUTES = Object.freeze([
     kind: "write",
   },
   {
+    method: "POST",
+    path: "/api/mission/steer",
+    operationId: "steerSession",
+    summary: "Send a steering instruction to a bound Mission thread or record it locally",
+    kind: "write",
+  },
+  {
     method: "GET",
     path: "/healthz",
     operationId: "getHealth",

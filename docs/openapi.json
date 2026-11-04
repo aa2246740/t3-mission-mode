@@ -654,9 +654,113 @@
         }
       }
     },
+    "/api/mission/steer": {
+      "post": {
+        "operationId": "steerSession_14",
+        "summary": "Send a steering instruction to a bound Mission thread or record it locally",
+        "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok", "threadId", "message", "delivery"],
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "threadId": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "delivery": {
+                      "enum": ["sent", "recorded"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": {
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "featureId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "childThreadId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "commandId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
-        "operationId": "getHealth_14",
+        "operationId": "getHealth_15",
         "summary": "Check HTTP process liveness",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [
@@ -693,7 +797,7 @@
     },
     "/readyz": {
       "get": {
-        "operationId": "getReadiness_15",
+        "operationId": "getReadiness_16",
         "summary": "Check whether a Mission snapshot can be read",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [
@@ -733,7 +837,7 @@
     },
     "/metrics": {
       "get": {
-        "operationId": "getMetrics_16",
+        "operationId": "getMetrics_17",
         "summary": "Read local aggregate Prometheus metrics",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [
@@ -769,7 +873,7 @@
     },
     "/api/mission/diagnostics": {
       "get": {
-        "operationId": "getDiagnostics_17",
+        "operationId": "getDiagnostics_18",
         "summary": "Read aggregate usage and recent redacted errors",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [

@@ -23,6 +23,21 @@ else
   echo "  -> Already running from canonical skill path ${CANONICAL_DIR}"
 fi
 
+# Keep an existing readiness installation; link the bundled copy when absent.
+READINESS_SKILLS=(agent-readiness readiness-report readiness-fix)
+for readiness_skill in "${READINESS_SKILLS[@]}"; do
+  bundled_dir="${CANONICAL_DIR}/bundled-skills/${readiness_skill}"
+  if [ ! -f "${bundled_dir}/SKILL.md" ]; then
+    echo "Missing bundled skill: ${bundled_dir}" >&2
+    exit 1
+  fi
+  readiness_dir="${HOME}/.agents/skills/${readiness_skill}"
+  if [ ! -e "${readiness_dir}" ] && [ ! -L "${readiness_dir}" ]; then
+    ln -s "${bundled_dir}" "${readiness_dir}"
+    echo "  -> Linked ${readiness_dir} -> ${bundled_dir}"
+  fi
+done
+
 # Ensure ~/.agent/skills -> ~/.agents/skills compatibility symlink
 mkdir -p "${HOME}/.agent"
 if [ ! -e "${HOME}/.agent/skills" ]; then
@@ -49,6 +64,12 @@ for dir in "${TARGET_DIRS[@]}"; do
     mkdir -p "${dir}"
     ln -sfn "${CANONICAL_DIR}" "${dir}/${SKILL_NAME}"
     echo "  -> Linked ${dir}/${SKILL_NAME} -> ${CANONICAL_DIR}"
+    for readiness_skill in "${READINESS_SKILLS[@]}"; do
+      if [ ! -e "${dir}/${readiness_skill}" ] && [ ! -L "${dir}/${readiness_skill}" ]; then
+        ln -s "${HOME}/.agents/skills/${readiness_skill}" "${dir}/${readiness_skill}"
+        echo "  -> Linked ${dir}/${readiness_skill}"
+      fi
+    done
   fi
 done
 

@@ -9,7 +9,13 @@ node_modules/
 .idea/
 .vscode/
 coverage/
-reports/
+reports/*
+!reports/readiness/
+reports/readiness/*
+!reports/readiness/*.json
+!reports/readiness/*.md
+__pycache__/
+*.pyc
 artifacts/
 *.cpuprofile
 *.heapprofile

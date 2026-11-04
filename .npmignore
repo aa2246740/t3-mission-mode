@@ -6,7 +6,13 @@ node_modules/
 .env
 .env.*
 !.env.example
-reports/
+reports/*
+!reports/readiness/
+reports/readiness/*
+!reports/readiness/*.json
+!reports/readiness/*.md
+__pycache__/
+*.pyc
 coverage/
 artifacts/
 *.log

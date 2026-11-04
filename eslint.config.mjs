@@ -2,7 +2,9 @@ import js from "@eslint/js";
 import globals from "globals";
 
 export default [
-  { ignores: ["node_modules/**", "coverage/**", "reports/**", "artifacts/**"] },
+  {
+    ignores: ["node_modules/**", "coverage/**", "reports/**", "artifacts/**", "bundled-skills/**"],
+  },
   js.configs.recommended,
   {
     files: ["t3-mission/test/**/*.mjs"],

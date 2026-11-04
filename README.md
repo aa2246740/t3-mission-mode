@@ -77,6 +77,8 @@ npm run setup
 
 `install.sh` installs the canonical package into `~/.agents/skills/t3-mission-mode`, creates `~/.agent/skills -> ~/.agents/skills` if needed, and links the skill into all detected agent skill directories (`~/.codex/skills`, `~/.claude/skills`, `~/.gemini/antigravity-cli/skills`, `~/.gemini/skills`, `~/.factory/skills`, `~/.pi/agent/skills`, `~/.cursor/skills`, etc.).
 
+The repository bundles `agent-readiness`, `readiness-report`, and `readiness-fix` in `bundled-skills/`. The installer links these skills when absent and preserves existing installations. The official 84-criterion assessment is archived in [reports/readiness/latest.md](reports/readiness/latest.md).
+
 ### 2. Trigger in T3 Code / 在 T3 Code 中启动与恢复
 
 - **Start a new Mission / 开启新 Mission**:

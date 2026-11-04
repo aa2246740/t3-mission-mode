@@ -8,5 +8,6 @@
     "scripts/**/*.mjs"
   ],
   "project": ["t3-mission/**/*.{js,mjs}", "scripts/**/*.mjs"],
+  "ignore": ["bundled-skills/**", "reports/**"],
   "ignoreBinaries": ["cc"]
 }

@@ -3,6 +3,7 @@
 Mission JSON, prompts, handoffs, provider receipts, paths, and progress logs belong
 to the project owner. They can contain confidential code or personal information.
 Keep `.mission/` outside version control and do not attach it wholesale to issues.
+HUD steering instructions are user content. The loopback steering endpoint sends them only to the selected Mission thread when transport is configured, and stores successful or local-only instructions in `.mission/progress_log.jsonl` for the session feed. Review this journal before sharing it.
 Preserve its full contents for authorized recovery rather than selectively
 removing locks, journals, or receipts.
 

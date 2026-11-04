@@ -94,12 +94,16 @@ export function inspectRepoAgentReadiness(
     const result = normalizeAgentReadiness(report, file);
     if (result.evaluated) return result;
   }
-  const localFile = path.join(missionDir, "readiness.json");
-  const local = readReport(localFile);
-  const localRoot = local?.repository?.root ?? local?.repoPath;
-  if (local && (!localRoot || canonicalPath(localRoot) === target)) {
-    const result = normalizeAgentReadiness(local, localFile);
-    if (result.evaluated) return result;
+  for (const file of [
+    path.join(repoPath, "reports", "readiness", "latest.json"),
+    path.join(missionDir, "readiness.json"),
+  ]) {
+    const local = readReport(file);
+    const localRoot = local?.repository?.root ?? local?.repoPath;
+    if (local && (!localRoot || canonicalPath(localRoot) === target)) {
+      const result = normalizeAgentReadiness(local, file);
+      if (result.evaluated) return result;
+    }
   }
   return normalizeAgentReadiness(embedded);
 }

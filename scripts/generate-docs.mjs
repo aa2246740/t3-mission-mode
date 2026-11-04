@@ -70,6 +70,33 @@ for (const [index, route] of HUD_ROUTES.entries()) {
     for (const status of ["400", "409", "413"])
       operation.responses[status] = { $ref: "#/components/responses/Error" };
   }
+  if (route.operationId === "steerSession") {
+    const request = operation.requestBody;
+    request.required = true;
+    request.content["application/json"].schema = {
+      type: "object",
+      required: ["message"],
+      properties: Object.fromEntries(
+        ["sessionId", "runId", "featureId", "childThreadId", "message", "commandId"].map((name) => [
+          name,
+          { type: "string", minLength: 1 },
+        ]),
+      ),
+      additionalProperties: true,
+    };
+    operation.responses[200].content["application/json"].schema = {
+      type: "object",
+      required: ["ok", "threadId", "message", "delivery"],
+      properties: {
+        ok: { const: true },
+        threadId: { type: "string" },
+        message: { type: "string" },
+        delivery: { enum: ["sent", "recorded"] },
+      },
+    };
+    for (const status of ["404", "502"])
+      operation.responses[status] = { $ref: "#/components/responses/Error" };
+  }
   if (route.path === "/readyz")
     operation.responses["503"] = { $ref: "#/components/responses/Error" };
   paths[route.path] = { [route.method.toLowerCase()]: operation };

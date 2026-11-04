@@ -176,6 +176,24 @@ test("missing, local, mismatched and embedded readiness remain non-blocking", (t
   );
 });
 
+test("repository readiness archive is a fallback after official state and before Mission metadata", (t) => {
+  const repo = temporary(t);
+  const stateDir = path.join(repo, "external-state");
+  const archived = path.join(repo, "reports", "readiness", "latest.json");
+  writeJson(archived, { repository: { root: repo }, level: 5, score: 82.4 });
+  writeJson(path.join(repo, ".mission", "readiness.json"), { level: 2, score: 35 });
+  assert.equal(inspectRepoAgentReadiness(repo, { stateDir }).reportPath, archived);
+  assert.equal(inspectRepoAgentReadiness(repo, { stateDir }).score, 82.4);
+  const official = path.join(stateDir, "official.json");
+  writeJson(official, { repository: { root: repo }, level: 4, score: 70 });
+  assert.equal(inspectRepoAgentReadiness(repo, { stateDir }).reportPath, official);
+  fs.rmSync(official);
+  writeJson(archived, { repoPath: "/foreign", level: 5, score: 99 });
+  assert.equal(inspectRepoAgentReadiness(repo, { stateDir }).level, 2);
+  fs.writeFileSync(archived, "{");
+  assert.equal(inspectRepoAgentReadiness(repo, { stateDir }).level, 2);
+});
+
 for (const [score, tone, callout] of [
   [82.4, "high", false],
   [60, "medium", false],
@@ -385,8 +403,69 @@ test("session inspector includes the current run's activity and escapes agent co
   const inspector = ui.elements.get("session-handoff-view").innerHTML;
   assert.match(inspector, /Live Thread &amp; Agent Activity/);
   assert.match(inspector, /Check changes/);
+  assert.match(
+    inspector,
+    /<a class="strip-btn thread-open-link" id="btn-open-thread-uri" href="t3-thread:\/\/v1\/thread1">↗ Open Thread<\/a>/,
+  );
+  assert.match(inspector, /id="session-steer-bar"/);
+  assert.match(inspector, /id="session-steer-input"/);
+  assert.match(inspector, /id="btn-steer-session"[^>]*disabled/);
   assert.match(inspector, /&lt;script&gt;unsafe&lt;\/script&gt;/);
   assert.doesNotMatch(inspector, /Old attempt|model_slots_updated/);
+});
+
+test("thread jump links support session URIs and the Mission owner, with escaped attributes", () => {
+  const ui = client();
+  ui.context.data = snapshot({
+    status: "running",
+    planAccepted: true,
+    ownerThreadId: "owner",
+    sessions: [{ runId: "r1", link: 't3-thread://v1/thread1?label="quoted"', status: "paused" }],
+  });
+  ui.run('hudState.snapshot = data; hudState.selectedSessionId = "r1"; renderCenterColumn(data)');
+  assert.match(
+    ui.elements.get("session-handoff-view").innerHTML,
+    /href="t3-thread:\/\/v1\/thread1\?label=&quot;quoted&quot;"/,
+  );
+  ui.run('hudState.selectedSessionId = "orchestrator"; renderCenterColumn(data)');
+  assert.match(
+    ui.elements.get("orchestrator-stream").innerHTML,
+    /id="btn-open-thread-uri" href="t3-thread:\/\/v1\/owner"/,
+  );
+  assert.equal(ui.run('sessionThreadUri({link:"javascript:alert(1)"})'), null);
+});
+
+test("session steering retains drafts across snapshots and reports recorded, sent and failed submissions", async () => {
+  const ui = client();
+  ui.context.data = snapshot({
+    status: "paused",
+    planAccepted: true,
+    sessions: [{ runId: "r1", featureId: "f1", childThreadId: "t1", status: "paused" }],
+  });
+  ui.run(
+    'hudState.snapshot = data; hudState.selectedSessionId = "r1"; const session = synthesizeSessions(data.state, [])[0]; steeringState(session).draft = "Keep <tests>."; renderCenterColumn(data)',
+  );
+  assert.match(ui.elements.get("session-handoff-view").innerHTML, /value="Keep &lt;tests&gt;\."/);
+  const calls = [];
+  ui.context.fetch = async (url, request) => {
+    calls.push([url, JSON.parse(request.body)]);
+    return { ok: true, json: async () => ({ delivery: "recorded" }) };
+  };
+  await ui.run("submitSessionSteering(session)");
+  assert.deepEqual(calls, [
+    ["/api/mission/steer", { runId: "r1", childThreadId: "t1", message: "Keep <tests>." }],
+  ]);
+  assert.equal(ui.run("steeringState(session).draft"), "");
+  assert.match(ui.elements.get("session-handoff-view").innerHTML, /Recorded locally/);
+  ui.context.fetch = async () => ({ ok: false, status: 502, text: async () => "offline" });
+  ui.run('steeringState(session).draft = "Retain me"');
+  await ui.run("submitSessionSteering(session)");
+  assert.equal(ui.run("steeringState(session).draft"), "Retain me");
+  assert.equal(ui.run("steeringState(session).failed"), true);
+  assert.match(ui.elements.get("session-handoff-view").innerHTML, /offline/);
+  ui.context.fetch = async () => ({ ok: true, json: async () => ({ delivery: "sent" }) });
+  await ui.run("submitSessionSteering(session)");
+  assert.match(ui.elements.get("session-handoff-view").innerHTML, /Sent to thread\./);
 });
 
 test("thread endpoint binds reads to Mission sessions and preserves local activity on reader failure", async (t) => {

@@ -1,7 +1,7 @@
 {
   "path": ["t3-mission"],
   "format": ["javascript"],
-  "ignore": ["**/test/**", "**/native/**"],
+  "ignore": ["**/test/**", "**/native/**", "bundled-skills/**", "reports/**"],
   "minLines": 15,
   "minTokens": 100,
   "threshold": 1,

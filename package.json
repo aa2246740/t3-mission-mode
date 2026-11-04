@@ -57,6 +57,8 @@
     "CONTRIBUTING.md",
     "LICENSE",
     "install.sh",
+    "bundled-skills",
+    "reports/readiness",
     "scripts",
     "docs",
     "t3-mission/skill",
