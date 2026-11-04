@@ -1,3 +1,4 @@
+import { startElapsedClock } from "./elapsed.mjs";
 import { commandTransaction } from "./mission-transaction.mjs";
 import { isRemoteWorker, signalOwnedLocalWorker } from "./worker-process.mjs";
 import fs from "node:fs";
@@ -155,6 +156,7 @@ function approveMissionPlanImpl(missionDir) {
       ? state.activeWorker.status
       : "orchestrator_turn";
   }
+  if (["orchestrator_turn", "running"].includes(state.status)) startElapsedClock(state);
   state.revision = (state.revision || 1) + 1;
   saveState(missionDir, state);
 

@@ -45,6 +45,13 @@ export const HUD_ROUTES = Object.freeze([
   },
   {
     method: "GET",
+    path: "/api/mission/thread-feed",
+    operationId: "getThreadFeed",
+    summary: "Read recent Mission observations and bound session thread messages",
+    kind: "read",
+  },
+  {
+    method: "GET",
     path: "/api/mission/stream",
     operationId: "streamMission",
     summary: "Subscribe to Mission snapshots",

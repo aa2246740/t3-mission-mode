@@ -227,10 +227,10 @@
         }
       }
     },
-    "/api/mission/stream": {
+    "/api/mission/thread-feed": {
       "get": {
-        "operationId": "streamMission_6",
-        "summary": "Subscribe to Mission snapshots",
+        "operationId": "getThreadFeed_6",
+        "summary": "Read recent Mission observations and bound session thread messages",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [
           {
@@ -245,11 +245,12 @@
         ],
         "responses": {
           "200": {
-            "description": "SSE connection; mission_snapshot events contain a snapshot.",
+            "description": "Successful response",
             "content": {
-              "text/event-stream": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "type": "object",
+                  "additionalProperties": true
                 }
               }
             }
@@ -263,7 +264,7 @@
         }
       }
     },
-    "/api/mission/events": {
+    "/api/mission/stream": {
       "get": {
         "operationId": "streamMission_7",
         "summary": "Subscribe to Mission snapshots",
@@ -299,9 +300,45 @@
         }
       }
     },
+    "/api/mission/events": {
+      "get": {
+        "operationId": "streamMission_8",
+        "summary": "Subscribe to Mission snapshots",
+        "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,80}$"
+            },
+            "description": "Optional correlation ID; returned as a response header."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE connection; mission_snapshot events contain a snapshot.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/mission/approve": {
       "post": {
-        "operationId": "approveMission_8",
+        "operationId": "approveMission_9",
         "summary": "Approve the current plan",
         "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
         "parameters": [
@@ -364,7 +401,7 @@
     },
     "/api/mission/reject": {
       "post": {
-        "operationId": "rejectMission_9",
+        "operationId": "rejectMission_10",
         "summary": "Request plan changes",
         "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
         "parameters": [
@@ -430,7 +467,7 @@
     },
     "/api/mission/model-slots": {
       "post": {
-        "operationId": "updateModelSlots_10",
+        "operationId": "updateModelSlots_11",
         "summary": "Update model settings",
         "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
         "parameters": [
@@ -493,7 +530,7 @@
     },
     "/api/mission/pause": {
       "post": {
-        "operationId": "pauseMission_11",
+        "operationId": "pauseMission_12",
         "summary": "Commit the Pause gate and request runtime control",
         "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
         "parameters": [
@@ -556,7 +593,7 @@
     },
     "/api/mission/resume": {
       "post": {
-        "operationId": "resumeMission_12",
+        "operationId": "resumeMission_13",
         "summary": "Preflight and resume the bound run",
         "description": "Local same-origin command. Approval, revision, Git, and dispatch-receipt gates remain authoritative. Reuse commandId only with the identical payload.",
         "parameters": [
@@ -619,7 +656,7 @@
     },
     "/healthz": {
       "get": {
-        "operationId": "getHealth_13",
+        "operationId": "getHealth_14",
         "summary": "Check HTTP process liveness",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [
@@ -656,7 +693,7 @@
     },
     "/readyz": {
       "get": {
-        "operationId": "getReadiness_14",
+        "operationId": "getReadiness_15",
         "summary": "Check whether a Mission snapshot can be read",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [
@@ -696,7 +733,7 @@
     },
     "/metrics": {
       "get": {
-        "operationId": "getMetrics_15",
+        "operationId": "getMetrics_16",
         "summary": "Read local aggregate Prometheus metrics",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [
@@ -732,7 +769,7 @@
     },
     "/api/mission/diagnostics": {
       "get": {
-        "operationId": "getDiagnostics_16",
+        "operationId": "getDiagnostics_17",
         "summary": "Read aggregate usage and recent redacted errors",
         "description": "Read-only observation. It does not dispatch, resume, reconcile, or modify a Mission.",
         "parameters": [

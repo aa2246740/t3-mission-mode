@@ -35,6 +35,11 @@
   --font-sans:
     -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 140ms;
+  --duration-normal: 240ms;
+  --duration-slow: 420ms;
 }
 
 * {
@@ -262,6 +267,7 @@ body {
 }
 
 .metric-value {
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -269,17 +275,19 @@ body {
 
 .metric-bar {
   width: 100%;
-  height: 4px;
+  height: 5px;
   background: var(--border-subtle);
-  border-radius: 2px;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .metric-bar-fill {
   height: 100%;
   width: 0%;
-  border-radius: 2px;
-  transition: width 0.25s ease;
+  border-radius: 999px;
+  transition:
+    width 0.45s var(--ease-spring),
+    background-color 0.25s ease;
 }
 
 .progress-fill {
@@ -626,7 +634,7 @@ body {
 }
 
 .approval-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -1283,5 +1291,589 @@ body {
   .metric-box {
     min-width: 76px;
     padding: 3px 7px;
+  }
+}
+
+/* Decision gate: scope, feedback and actions form one reading sequence. */
+.approval-heading-group,
+.approval-controls-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.approval-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.approval-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulseDot 2s infinite var(--ease-in-out);
+}
+
+.approval-hint {
+  margin-top: 4px;
+}
+
+.approval-feedback-group {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.approval-feedback-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.approval-feedback-optional {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+#plan-feedback,
+.plan-feedback-input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  transition:
+    border-color 0.16s var(--ease-spring),
+    box-shadow 0.16s var(--ease-spring);
+}
+
+#plan-feedback:focus {
+  outline: none;
+  border-color: var(--status-running-fg);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.14);
+}
+
+.approval-actions-bar {
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.btn-request-changes:hover {
+  border-color: var(--status-amber-fg);
+  color: var(--status-amber-fg);
+  background: var(--status-amber-bg);
+}
+
+.btn-primary-approve {
+  min-height: 38px;
+  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.2);
+}
+
+.approval-actions-bar .strip-btn {
+  min-height: 38px;
+}
+
+/* Repository readiness is a recommendation, never an execution gate. */
+.readiness-badge {
+  display: inline-flex;
+  border: 1px solid var(--status-amber-border);
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 11px;
+  background: var(--status-amber-bg);
+  color: var(--status-amber-fg);
+  overflow-wrap: anywhere;
+}
+
+.readiness-badge[data-readiness-state="unevaluated"] {
+  border-style: dashed;
+}
+
+.readiness-badge[data-readiness-state="high"] {
+  color: var(--status-emerald-fg);
+  background: var(--status-emerald-bg);
+  border-color: var(--status-emerald-border);
+}
+
+.readiness-badge[data-readiness-state="low"] {
+  color: var(--status-rose-fg);
+  background: var(--status-rose-bg);
+  border-color: var(--status-rose-border);
+}
+
+.readiness-callout {
+  padding: 10px 12px;
+  border: 1px solid var(--status-amber-border);
+  border-radius: 6px;
+  color: var(--status-amber-fg);
+  background: var(--status-amber-bg);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* Disclosure changes visibility; every feature and assertion stays in the DOM. */
+.tab-hidden,
+.milestone-swimlane.collapsed .milestone-features-body {
+  display: none !important;
+}
+
+.board-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.board-view-tabs button,
+.filter-pill {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.board-view-tabs button[aria-selected="true"],
+.filter-pill[aria-pressed="true"] {
+  color: var(--status-running-fg);
+  border-color: var(--border-subtle);
+  background: var(--bg-card);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.assertion-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.assertions-list.is-collapsed-drawer {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.assertions-list[data-assertion-filter="passed"]
+  .assertion-row:not([data-assertion-status="passed"]),
+.assertions-list[data-assertion-filter="pending"]
+  .assertion-row:not([data-assertion-status="pending"]),
+.assertions-list[data-assertion-filter="failed"]
+  .assertion-row:not([data-assertion-status="failed"]) {
+  display: none;
+}
+
+.milestone-swimlane-header {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.milestone-toggle-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.feature-kind-pill,
+.feature-model-pill {
+  color: var(--text-primary);
+  opacity: 0.82;
+  font-size: 10px;
+}
+
+.feature-row[data-feature-status="pending"] .feature-handoff-preview.muted {
+  display: none;
+}
+
+.feature-row[data-feature-status="pending"]:hover .feature-handoff-preview.muted,
+.feature-row[data-feature-status="pending"]:focus-visible .feature-handoff-preview.muted {
+  display: block;
+}
+
+.feature-val-pills {
+  max-height: 44px;
+  overflow-y: auto;
+}
+
+.feature-row:hover {
+  transform: translateX(1px);
+}
+
+.session-item.is-running-session {
+  border-left: 3px solid var(--status-running-fg);
+}
+
+/* Activity is bounded independently of the structured handoff. */
+.live-agent-feed,
+.session-live-feed {
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.live-agent-feed.is-expanded {
+  max-height: 60vh;
+}
+
+.feed-event-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.feed-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.feed-event-meta .stream-time {
+  margin-left: auto;
+}
+
+.feed-role {
+  color: var(--status-running-fg);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.feed-type {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.feed-event-message {
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.feed-event-row[data-feed-type="command"],
+.feed-event-row[data-feed-type="tool_call"],
+.session-live-feed {
+  font-family: var(--font-mono);
+}
+
+.feed-empty,
+.task-brief {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+.task-brief p {
+  margin-top: 4px;
+  max-height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.handoff-git-meta {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.handoff-git-meta summary {
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+#handoff-what-was-implemented,
+#handoff-commands-run {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.log-row {
+  border-left: 3px solid var(--border-strong);
+}
+
+.log-row[data-log-type="worker_started"],
+.log-row[data-log-type="run_started"],
+.log-row[data-log-type="plan_approved"],
+.log-row[data-log-type="mission_approved"] {
+  border-left-color: var(--status-running-fg);
+}
+
+.log-row[data-log-type="feature_completed"],
+.log-row[data-log-type="validation_passed"] {
+  border-left-color: var(--status-emerald-fg);
+}
+
+.log-row[data-log-type="mission_paused"],
+.log-row[data-log-type="plan_rejected"] {
+  border-left-color: var(--status-amber-fg);
+}
+
+.log-row[data-log-type$="_rejected"]:not([data-log-type="plan_rejected"]),
+.log-row[data-log-type*="error"] {
+  border-left-color: var(--status-rose-fg);
+}
+
+/* Liveness and continuity use the same timing system. */
+@keyframes pulseRing {
+  0% {
+    box-shadow: 0 0 0 0 rgba(29, 78, 216, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(29, 78, 216, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(29, 78, 216, 0);
+  }
+}
+
+@keyframes activityShimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-strip {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.status-strip[data-status="running"] .status-dot,
+.status-strip[data-status="orchestrator_turn"] .status-dot,
+.status-strip[data-status="initializing"] .status-dot,
+.session-icon.running,
+.feature-check.running {
+  animation:
+    pulseDot 1.6s infinite var(--ease-in-out),
+    pulseRing 2s infinite var(--ease-spring);
+}
+
+.is-ticking #metric-time {
+  color: var(--status-running-fg);
+}
+
+.is-active-execution {
+  position: relative;
+  overflow: hidden;
+}
+
+.is-active-execution::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(29, 78, 216, 0.2),
+    var(--status-running-fg),
+    rgba(29, 78, 216, 0.2),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: activityShimmer 2.2s infinite linear;
+}
+
+.approval-card:not(.hidden),
+.session-handoff-view:not(.hidden),
+.stream-card {
+  animation: cardEnter var(--duration-normal) var(--ease-spring);
+}
+
+.feature-row,
+.session-item,
+.strip-btn,
+.btn-primary-approve,
+.board-view-tabs button {
+  transition:
+    background-color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.strip-btn:active:not(:disabled),
+.btn-primary-approve:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.99);
+}
+
+button:focus-visible,
+select:focus-visible,
+.feature-row:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--status-running-fg);
+  outline-offset: 2px;
+}
+
+.stream-card-header,
+.board-section-header,
+.handoff-header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  html,
+  body {
+    height: auto;
+    overflow-y: auto;
+  }
+  .hud-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .hud-workspace {
+    grid-template-columns: 180px minmax(0, 1fr);
+    overflow: visible;
+    flex: none;
+  }
+  .hud-col {
+    overflow: visible;
+  }
+  .hud-col-right {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .sessions-list {
+    max-height: 70vh;
+  }
+  .hud-topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .topbar-right {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 600px) {
+  .strip-btn,
+  .btn-primary-approve,
+  .slot-select,
+  .slot-effort-select,
+  .session-item,
+  .milestone-swimlane-header,
+  .filter-pill,
+  #plan-feedback {
+    min-height: 44px;
+  }
+  .hud-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hud-col-center {
+    order: -1;
+    padding: 12px;
+  }
+  .hud-col-right {
+    display: flex;
+  }
+  .hud-topbar {
+    padding: 12px;
+  }
+  .topbar-right {
+    align-items: stretch;
+  }
+  .topbar-metrics {
+    width: 100%;
+  }
+  .metric-box {
+    flex: 1;
+    min-width: 0;
+  }
+  .status-strip-actions {
+    flex-wrap: wrap;
+  }
+  .mission-title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .approval-card {
+    padding: 12px;
+  }
+  .approval-actions-bar {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+  .board-view-tabs button {
+    flex: 1 1 45%;
+    min-height: 44px;
+  }
+  .feature-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .feature-row-right {
+    margin-left: auto;
+  }
+  .handoff-link-chip {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  #handoff-thread-uri {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .sessions-list {
+    max-height: 320px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -28,7 +28,16 @@ import {
   resumeControlEffectId,
 } from "../kernel/runner.mjs";
 import { applyAutopilotCommand } from "../kernel/autopilot-commands.mjs";
-import { preSendFailure } from "../bridge/t3-adapter.mjs";
+import { callT3McpTool, preSendFailure } from "../bridge/t3-adapter.mjs";
+import { inspectRepoAgentReadiness } from "./readiness.mjs";
+import {
+  readRecentObservations,
+  observationFiles,
+  buildThreadFeed,
+  matchesFeedSession,
+  normalizeThreadMessages,
+} from "./thread-feed.mjs";
+export { inspectRepoAgentReadiness } from "./readiness.mjs";
 import {
   inspectDispatchIntent,
   inspectDispatchRecords,
@@ -961,6 +970,23 @@ function sendJson(res, statusCode, payload) {
   });
 }
 
+function readHudTelemetry(paths, state, progressLog) {
+  const observations = readRecentObservations(paths.dotMissionDir);
+  return {
+    observations,
+    threadFeed: buildThreadFeed(state, observations, progressLog || []),
+    readiness: inspectRepoAgentReadiness(state.repoPath || paths.repoDir, {
+      missionDir: paths.dotMissionDir,
+      embedded: state.readiness || state.agentReadiness,
+    }),
+  };
+}
+
+async function readLiveThread(threadId) {
+  if (!process.env.T3_ACP_MCP_NODE || !process.env.T3_ACP_MCP_ENTRYPOINT) return null;
+  return callT3McpTool("t3_thread_read", { threadId }, { env: process.env, timeoutMs: 3000 });
+}
+
 export function createMissionHudServer({
   missionDir,
   port = 0,
@@ -972,6 +998,7 @@ export function createMissionHudServer({
   gitPreflightTimeoutMs = DEFAULT_GIT_PREFLIGHT_TIMEOUT_MS,
   notifyUrl = process.env.T3_MISSION_NOTIFY_URL || null,
   diagnosticWriter,
+  threadReader = readLiveThread,
 } = {}) {
   validateGitPreflightTimeout(gitPreflightTimeoutMs);
   const paths = resolveMissionPaths(missionDir || process.cwd());
@@ -1068,6 +1095,7 @@ export function createMissionHudServer({
       modelSettings,
       progressLog: Array.isArray(progressLog) ? progressLog : [],
       catalog: BUILTIN_MODEL_CATALOG,
+      ...readHudTelemetry(paths, state, progressLog),
     };
   }
 
@@ -1080,6 +1108,9 @@ export function createMissionHudServer({
           initialized: snapshot.initialized,
           state: snapshot.state,
           features: snapshot.features,
+          readiness: snapshot.readiness,
+          observations: snapshot.observations,
+          threadFeed: snapshot.threadFeed,
           modelSettings: snapshot.modelSettings,
           progressLogLen: Array.isArray(snapshot.progressLog) ? snapshot.progressLog.length : 0,
           lastLogSeq: Array.isArray(snapshot.progressLog) ? snapshot.progressLog.at(-1)?.seq : null,
@@ -1122,6 +1153,10 @@ export function createMissionHudServer({
       paths.featuresPath,
       paths.modelSettingsPath,
       paths.progressLogPath,
+      path.join(paths.dotMissionDir, "observations.jsonl"),
+      path.join(paths.dotMissionDir, "autopilot", "observations.jsonl"),
+      path.join(paths.dotMissionDir, "readiness.json"),
+      ...observationFiles(paths.dotMissionDir),
     ];
     return targets
       .map((p) => {
@@ -2920,6 +2955,45 @@ export function createMissionHudServer({
     res.end(content);
   }
 
+  async function handleMissionRead(pathname, urlObj, snapshot, res) {
+    if (pathname === "/api/mission/state") {
+      sendJson(res, 200, snapshot);
+      return;
+    }
+    const threadId = urlObj.searchParams.get("threadId");
+    const sessionId = urlObj.searchParams.get("sessionId");
+    const sessions = [...snapshot.state.sessions, snapshot.state.activeWorker].filter(Boolean);
+    const session =
+      threadId || sessionId
+        ? sessions.findLast(
+            (row) =>
+              (!threadId || (row.childThreadId || row.threadId) === threadId) &&
+              (!sessionId || [row.sessionId, row.runId, row.id].includes(sessionId)),
+          )
+        : null;
+    const isOwner = threadId && threadId === snapshot.state.ownerThreadId;
+    if ((threadId || sessionId) && !session && !isOwner) {
+      sendJson(res, 404, { ok: false, code: "SESSION_NOT_FOUND" });
+      return;
+    }
+    let events = session
+      ? snapshot.threadFeed.filter((row) => matchesFeedSession(row, session))
+      : snapshot.threadFeed;
+    let source = "mission";
+    let unavailable = false;
+    if (threadId) {
+      try {
+        const response = await threadReader(threadId);
+        const messages = normalizeThreadMessages(response, threadId);
+        events = [...events, ...messages].slice(-50);
+        if (messages.length) source = "thread+mission";
+      } catch {
+        unavailable = true;
+      }
+    }
+    sendJson(res, 200, { threadId, sessionId, source, unavailable, events });
+  }
+
   const server = http.createServer(async (req, res) => {
     setSecurityHeaders(res);
     const route = findHudRoute((req.method || "GET").toUpperCase(), (req.url || "/").split("?")[0]);
@@ -2995,9 +3069,12 @@ export function createMissionHudServer({
         return;
       }
 
-      if (method === "GET" && pathname === "/api/mission/state") {
+      if (
+        method === "GET" &&
+        ["/api/mission/state", "/api/mission/thread-feed"].includes(pathname)
+      ) {
         const snapshot = loadSnapshot();
-        sendJson(res, 200, snapshot);
+        await handleMissionRead(pathname, urlObj, snapshot, res);
         return;
       }
 

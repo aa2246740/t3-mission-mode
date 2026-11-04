@@ -6,6 +6,16 @@ const hudState = {
   lastEventId: null,
   lastActionError: null,
   planFeedbackDraft: "",
+  boardTab: "all",
+  expandedMilestones: new Set(),
+  collapsedMilestones: new Set(),
+  assertionsExpanded: false,
+  assertionFilter: "all",
+  streamExpanded: false,
+  clientRunStartMs: null,
+  clientRunKey: null,
+  threadFeeds: new Map(),
+  threadFeedPending: false,
 };
 
 function escapeHtml(value) {
@@ -44,13 +54,59 @@ function computeLiveElapsedMs(state) {
     state.status === "running" ||
     state.status === "orchestrator_turn" ||
     state.status === "initializing";
-  if (isRunning && state.lastStartedAt) {
-    const started = Date.parse(state.lastStartedAt);
+  if (isRunning) {
+    const started = elapsedStartMs(state);
     if (!Number.isNaN(started) && Date.now() > started) {
       base += Date.now() - started;
     }
   }
   return base;
+}
+
+function elapsedStartMs(state) {
+  for (const value of [state.lastStartedAt, state.activeWorker?.startedAt, state.planApprovedAt]) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  const key = `${state.missionId || "mission"}:${state.pausedAt || ""}`;
+  if (hudState.clientRunKey !== key || hudState.clientRunStartMs === null) {
+    hudState.clientRunKey = key;
+    hudState.clientRunStartMs = Date.now();
+  }
+  return hudState.clientRunStartMs;
+}
+
+function updateElapsedAppearance(state) {
+  const active = ["running", "orchestrator_turn", "initializing"].includes(state.status);
+  document.getElementById("elapsed-metric")?.classList?.toggle?.("is-ticking", active);
+  document
+    .getElementById("metric-progress-bar")
+    ?.classList?.toggle?.("is-active-execution", active);
+  if (!active) {
+    hudState.clientRunStartMs = null;
+    hudState.clientRunKey = null;
+  }
+}
+
+function renderReadiness(snapshot) {
+  const readiness = snapshot.readiness || snapshot.state?.readiness || {};
+  const evaluated = readiness.evaluated === true;
+  const score = readiness.score;
+  const label = evaluated
+    ? `Readiness: Level ${readiness.level} · ${Number(score).toFixed(1)}%`
+    : "Readiness: Not Evaluated · Recommend /agent-readiness";
+  const tone = evaluated ? (score >= 80 ? "high" : score >= 40 ? "medium" : "low") : "unevaluated";
+  const badge = document.getElementById("readiness-badge");
+  if (badge) {
+    badge.textContent = label;
+    badge.dataset.readinessState = tone;
+    badge.title = [readiness.summary, readiness.recommendation].filter(Boolean).join(" ") || label;
+  }
+  const callout = document.getElementById("readiness-callout");
+  if (callout) {
+    callout.classList.toggle("hidden", evaluated && score >= 60);
+    callout.textContent = `${label}. Run /agent-readiness to find repository gaps before starting. This recommendation does not block approval.`;
+  }
 }
 
 function getStatusBannerText(state, initialized = true) {
@@ -394,6 +450,304 @@ function filterOrchestratorStreamEvents(entries) {
   return entries.filter((e) => e && e.type !== "model_slots_updated");
 }
 
+function activeExecutionClass(state) {
+  return ["running", "orchestrator_turn", "initializing"].includes(state.status)
+    ? "is-active-execution"
+    : "";
+}
+
+function normalizeActivityEvent(row) {
+  if (typeof row === "string") return { message: row, type: "message" };
+  if (!row || row.type === "model_slots_updated") return null;
+  const response = row.response?.structuredContent || row.response || {};
+  const message =
+    row.message || row.text || row.command || row.summary || response.message || response.status;
+  return message
+    ? { ...row, message: String(message), threadId: row.threadId || row.childThreadId }
+    : null;
+}
+
+function activityEvents(snapshot) {
+  const rows = Array.isArray(snapshot.threadFeed)
+    ? snapshot.threadFeed
+    : [...filterOrchestratorStreamEvents(snapshot.progressLog), ...(snapshot.observations || [])];
+  return rows.map(normalizeActivityEvent).filter(Boolean);
+}
+
+function feedRowsHtml(events) {
+  return (
+    events
+      .map(
+        (event) => `
+    <div class="feed-event-row" data-feed-type="${escapeHtml(event.type || "message")}">
+      <div class="feed-event-meta">
+        <span class="feed-role">${escapeHtml(event.role || "Orchestrator")}${event.workerNumber ? ` #${escapeHtml(event.workerNumber)}` : ""}</span>
+        <span class="feed-type mono">${escapeHtml(event.type || "message")}</span>
+        <span class="stream-time mono">${escapeHtml(formatRelativeTime(event.timestamp))}</span>
+      </div>
+      <div class="feed-event-message">${escapeHtml(event.message)}</div>
+    </div>`,
+      )
+      .join("") || '<div class="feed-empty">No activity recorded yet.</div>'
+  );
+}
+
+function taskBrief(snapshot, session) {
+  const feature = (snapshot.features || []).find((row) => row.id === session.featureId);
+  const raw = rawSession(snapshot, session);
+  const brief = raw?.taskBrief || raw?.brief || raw?.task || feature?.description || feature?.title;
+  return typeof brief === "string"
+    ? brief
+    : brief?.description || brief?.prompt || "No dispatched task brief recorded yet.";
+}
+
+function rawSession(snapshot, session) {
+  return snapshot.state.activeWorker?.runId === session.runId
+    ? snapshot.state.activeWorker
+    : (snapshot.state.sessions || []).find((row) => row.runId === session.runId);
+}
+
+function mergeActivityEvents(local, remote = []) {
+  return [...new Map([...local, ...remote].map((event) => [JSON.stringify(event), event])).values()]
+    .sort((a, b) => (Date.parse(a.timestamp) || 0) - (Date.parse(b.timestamp) || 0))
+    .slice(-50);
+}
+
+function renderActivityFeed(snapshot) {
+  const expanded = hudState.streamExpanded || hudState.boardTab === "stream";
+  const events = activityEvents(snapshot).slice(expanded ? -50 : -3);
+  const worker = snapshot.state.activeWorker;
+  return `<section class="stream-card live-agent-feed-card">
+    <div class="stream-card-header">
+      <span class="stream-tag">Live Agent &amp; Orchestrator Activity</span>
+      <button type="button" class="strip-btn" id="btn-toggle-stream" aria-expanded="${expanded}" aria-controls="overview-live-feed">${expanded ? "Compact (3)" : "Expand Stream"}</button>
+    </div>
+    ${worker ? `<div class="task-brief"><span class="feed-role">Task brief</span><p>${escapeHtml(taskBrief(snapshot, worker))}</p></div>` : ""}
+    <div class="live-agent-feed ${expanded ? "is-expanded" : ""}" id="overview-live-feed">${feedRowsHtml(events)}</div>
+  </section>`;
+}
+
+function eventMatchesSession(event, session) {
+  if (event.runId) return event.runId === session.runId;
+  if (event.threadId) return event.threadId === session.childThreadId;
+  if (event.sessionId) return event.sessionId === session.id;
+  return Boolean(event.featureId && event.featureId === session.featureId && !session.runId);
+}
+
+function sessionFeedKey(session) {
+  return `${session.runId || session.id}:${session.childThreadId || "local"}`;
+}
+
+function renderSessionActivity(snapshot, session) {
+  const local = activityEvents(snapshot).filter((event) => eventMatchesSession(event, session));
+  const remote = hudState.threadFeeds.get(sessionFeedKey(session));
+  const events = mergeActivityEvents(local, remote?.events);
+  const pending = rawSession(snapshot, session)?.dispatchPending === true;
+  const running = session.status === "running" && !pending;
+  return `<section class="stream-card diagnostic-card ${running ? "is-active-execution" : ""}" id="session-live-activity">
+    <div class="stream-card-header">
+      <span class="handoff-section-title">Live Thread &amp; Agent Activity</span>
+      <span class="status-pill ${escapeHtml(session.status)}">${pending ? "Awaiting Orchestrator Dispatch" : running ? '<span class="session-icon running"></span>Live Agent Execution' : escapeHtml(session.status)}</span>
+    </div>
+    <div class="task-brief"><span class="feed-role">Task brief</span><p>${escapeHtml(taskBrief(snapshot, session))}</p></div>
+    ${remote?.unavailable ? '<p class="feed-empty">Thread reader unavailable. Showing recorded Mission activity.</p>' : ""}
+    <div class="session-live-feed">${feedRowsHtml(events)}</div>
+  </section>`;
+}
+
+function bindStreamToggle(streamEl) {
+  streamEl?.querySelector?.("#btn-toggle-stream")?.addEventListener?.("click", () => {
+    hudState.streamExpanded = !hudState.streamExpanded;
+    if (hudState.boardTab === "stream" && !hudState.streamExpanded) hudState.boardTab = "all";
+    renderCenterColumn(hudState.snapshot);
+  });
+}
+
+async function refreshSelectedThread() {
+  const snapshot = hudState.snapshot;
+  if (!snapshot || hudState.selectedSessionId === "orchestrator" || hudState.threadFeedPending)
+    return;
+  const session = synthesizeSessions(snapshot.state, snapshot.features).find(
+    (row) => row.id === hudState.selectedSessionId,
+  );
+  if (!session?.childThreadId) return;
+  const key = sessionFeedKey(session);
+  hudState.threadFeedPending = true;
+  try {
+    const params = new URLSearchParams({
+      threadId: session.childThreadId,
+      sessionId: session.runId || session.id,
+    });
+    const response = await fetch(`/api/mission/thread-feed?${params}`);
+    if (!response.ok) return;
+    const feed = await response.json();
+    hudState.threadFeeds.set(key, feed);
+    if (hudState.selectedSessionId === session.id) {
+      const panel = document.getElementById("session-live-activity");
+      if (panel) panel.outerHTML = renderSessionActivity(hudState.snapshot, session);
+    }
+  } catch {
+    // SSE and the recorded Mission feed remain available during transport failures.
+  } finally {
+    hudState.threadFeedPending = false;
+  }
+}
+
+function milestoneCollapsed(group, state, assertions) {
+  if (group.items.some((feature) => feature.id === state.activeWorker?.featureId)) return false;
+  if (hudState.expandedMilestones.has(group.id)) return false;
+  if (hudState.collapsedMilestones.has(group.id)) return true;
+  return (
+    group.items.every((feature) => feature.status === "completed") &&
+    assertions.every((assertion) => assertion.status === "passed")
+  );
+}
+
+function milestoneAssertions(group, assertions) {
+  const linked = new Set(
+    group.items.flatMap((feature) => feature.fulfills || feature.assertions || []),
+  );
+  return assertions.filter(
+    (assertion) => assertion.milestoneId === group.id || linked.has(assertion.id),
+  );
+}
+
+function milestoneToggleLabel(collapsed) {
+  return collapsed ? "Expand" : "Collapse";
+}
+
+function sessionRunningClass(session) {
+  return session.status === "running" ? "is-running-session" : "";
+}
+
+function orchestratorDotClass(state) {
+  if (activeExecutionClass(state)) return "running";
+  return state.status === "completed" ? "completed" : "pending";
+}
+
+function bindMilestoneToggles(element) {
+  element?.querySelectorAll?.("[data-toggle-milestone]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.toggleMilestone;
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      const include = expanded ? hudState.collapsedMilestones : hudState.expandedMilestones;
+      const exclude = expanded ? hudState.expandedMilestones : hudState.collapsedMilestones;
+      include.add(id);
+      exclude.delete(id);
+      button.closest?.(".milestone-swimlane")?.classList.toggle("collapsed", expanded);
+      button.setAttribute("aria-expanded", String(!expanded));
+      const label = button.querySelector?.(".milestone-toggle-label");
+      if (label) label.textContent = milestoneToggleLabel(expanded);
+    });
+  });
+}
+
+function inspectFeatureSession(snapshot, featureId) {
+  const sessions = synthesizeSessions(snapshot.state, snapshot.features);
+  const match = sessions.findLast((session) => session.featureId === featureId);
+  if (!match) return;
+  hudState.selectedSessionId = match.id;
+  renderCenterColumn(hudState.snapshot);
+  renderSessionsColumn(hudState.snapshot);
+  void refreshSelectedThread();
+}
+
+function bindFeatureSelection(element, snapshot) {
+  element?.querySelectorAll?.(".feature-row").forEach((row) => {
+    row.addEventListener("click", () => inspectFeatureSession(snapshot, row.dataset.featureId));
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      inspectFeatureSession(snapshot, row.dataset.featureId);
+    });
+  });
+}
+
+function renderAssertionDisclosure(snapshot) {
+  const assertions = snapshot.state.assertions || [];
+  const collapsed =
+    hudState.boardTab === "all" && assertions.length > 6 && !hudState.assertionsExpanded;
+  const list = document.getElementById("assertions-list");
+  list?.classList?.toggle?.("is-collapsed-drawer", collapsed);
+  if (list)
+    list.dataset.assertionFilter =
+      hudState.boardTab === "contract" ? hudState.assertionFilter : "all";
+  const toggle = document.getElementById("btn-toggle-assertions");
+  if (toggle) {
+    toggle.textContent = collapsed
+      ? `Show all ${assertions.length} assertions`
+      : "Collapse assertions";
+    toggle.setAttribute?.("aria-expanded", String(!collapsed));
+    toggle.classList.toggle("tab-hidden", hudState.boardTab !== "all" || assertions.length <= 6);
+  }
+  document
+    .getElementById("assertion-filters")
+    ?.classList?.toggle?.("tab-hidden", hudState.boardTab !== "contract");
+}
+
+function renderBoardDisclosure(snapshot) {
+  const tab = hudState.boardTab;
+  for (const [id, hidden] of [
+    ["features-section", tab === "contract" || tab === "stream"],
+    ["assertions-section", tab === "features" || tab === "stream"],
+    ["orchestrator-stream", tab === "features" || tab === "contract"],
+  ])
+    document.getElementById(id)?.classList?.toggle?.("tab-hidden", hidden);
+  document
+    .getElementById("board-view-tabs")
+    ?.querySelectorAll?.("[data-board-tab]")
+    .forEach((button) => {
+      const selected = button.dataset.boardTab === tab;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+  renderAssertionDisclosure(snapshot);
+}
+
+function selectBoardTab(button) {
+  hudState.boardTab = button.dataset.boardTab;
+  if (hudState.boardTab === "stream") hudState.streamExpanded = true;
+  renderCenterColumn(hudState.snapshot);
+}
+
+function bindBoardListeners() {
+  const tabs = document.getElementById("board-view-tabs");
+  const buttons = Array.from(tabs?.querySelectorAll?.("[data-board-tab]") || []);
+  buttons.forEach((button, index) => {
+    button.addEventListener("click", () => selectBoardTab(button));
+    button.addEventListener("keydown", (event) => {
+      const indices = {
+        ArrowRight: (index + 1) % buttons.length,
+        ArrowLeft: (index + buttons.length - 1) % buttons.length,
+        Home: 0,
+        End: buttons.length - 1,
+      };
+      if (!(event.key in indices)) return;
+      event.preventDefault();
+      const target = buttons[indices[event.key]];
+      selectBoardTab(target);
+      target.focus();
+    });
+  });
+  document.getElementById("btn-toggle-assertions")?.addEventListener?.("click", () => {
+    hudState.assertionsExpanded = !hudState.assertionsExpanded;
+    renderAssertionDisclosure(hudState.snapshot);
+  });
+  document
+    .getElementById("assertion-filters")
+    ?.querySelectorAll?.("[data-assertion-filter]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        hudState.assertionFilter = button.dataset.assertionFilter;
+        document
+          .getElementById("assertion-filters")
+          .querySelectorAll("button")
+          .forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+        renderAssertionDisclosure(hudState.snapshot);
+      });
+    });
+}
+
 function formatApiErrorMessage(status, rawText) {
   let raw = String(rawText ?? "").trim();
   let resolvedStatus = status;
@@ -500,6 +854,7 @@ async function postJson(url, payload = {}) {
 const postAction = postJson;
 
 function renderTopBar(snapshot) {
+  renderReadiness(snapshot);
   const { state = {}, features } = snapshot;
   const repoEl = document.getElementById("mission-repo-path");
   const titleEl = document.getElementById("mission-title");
@@ -527,6 +882,7 @@ function renderTopBar(snapshot) {
 
   const elapsedMs = computeLiveElapsedMs(state);
   if (timeEl) timeEl.textContent = formatDurationHms(elapsedMs);
+  updateElapsedAppearance(state);
 
   const totalFeatures = Array.isArray(features) ? features.length : 0;
   const completedFeatures = Array.isArray(features)
@@ -690,7 +1046,7 @@ function renderSessionsColumn(snapshot) {
       data-session-id="orchestrator"
     >
       <span class="session-item-left">
-        <span class="session-icon running"></span>
+        <span class="session-icon ${orchestratorDotClass(state)}"></span>
         <span class="session-label">Orchestrator Overview</span>
       </span>
       <span class="session-time mono">live</span>
@@ -727,7 +1083,7 @@ function renderSessionsColumn(snapshot) {
       html += `
         <button
           type="button"
-          class="session-item ${isSelected ? "active" : ""}"
+          class="session-item ${isSelected ? "active" : ""} ${sessionRunningClass(item)}"
           data-session-id="${escapeHtml(item.id)}"
           data-feature-id="${escapeHtml(item.featureId || "")}"
         >
@@ -748,8 +1104,33 @@ function renderSessionsColumn(snapshot) {
       hudState.selectedSessionId = btn.dataset.sessionId || "orchestrator";
       renderCenterColumn(hudState.snapshot);
       renderSessionsColumn(hudState.snapshot);
+      void refreshSelectedThread();
     });
   });
+}
+
+function renderMilestoneStart(group, state, assertions) {
+  const doneInGroup = group.items.filter((f) => f.status === "completed").length;
+  const groupAssertions = milestoneAssertions(group, assertions);
+  const passedInGroup = groupAssertions.filter((a) => a.status === "passed").length;
+  const collapsed = milestoneCollapsed(group, state, groupAssertions);
+  const assertionMeta =
+    groupAssertions.length > 0
+      ? ` \u00b7 ${passedInGroup}/${groupAssertions.length} assertions`
+      : "";
+
+  return `
+        <div class="milestone-swimlane ${collapsed ? "collapsed" : ""}" data-milestone-id="${escapeHtml(group.id)}">
+          <button type="button" class="milestone-swimlane-header" data-toggle-milestone="${escapeHtml(group.id)}" aria-expanded="${!collapsed}" aria-controls="milestone-body-${escapeHtml(group.id)}">
+            <div class="milestone-swimlane-title">
+              <span class="milestone-badge">${escapeHtml(group.id.toUpperCase())}</span>
+              <span>${escapeHtml(group.title)}</span>
+            </div>
+            <span class="milestone-swimlane-meta mono">${doneInGroup}/${group.items.length} features${escapeHtml(assertionMeta)}</span>
+            <span class="milestone-toggle-label">${milestoneToggleLabel(collapsed)}</span>
+          </button>
+          <div class="milestone-features-body" id="milestone-body-${escapeHtml(group.id)}">
+      `;
 }
 
 function renderFeaturesAndAssertions(snapshot) {
@@ -788,24 +1169,7 @@ function renderFeaturesAndAssertions(snapshot) {
     let fHtml = "";
     for (const [, group] of groups.entries()) {
       if (group.items.length === 0) continue;
-      const doneInGroup = group.items.filter((f) => f.status === "completed").length;
-      const groupAssertions = assertions.filter((a) => a.milestoneId === group.id);
-      const passedInGroup = groupAssertions.filter((a) => a.status === "passed").length;
-      const assertionMeta =
-        groupAssertions.length > 0
-          ? ` \u00b7 ${passedInGroup}/${groupAssertions.length} assertions`
-          : "";
-
-      fHtml += `
-        <div class="milestone-swimlane" data-milestone-id="${escapeHtml(group.id)}">
-          <div class="milestone-swimlane-header">
-            <div class="milestone-swimlane-title">
-              <span class="milestone-badge">${escapeHtml(group.id.toUpperCase())}</span>
-              <span>${escapeHtml(group.title)}</span>
-            </div>
-            <span class="milestone-swimlane-meta mono">${doneInGroup}/${group.items.length} features${escapeHtml(assertionMeta)}</span>
-          </div>
-      `;
+      fHtml += renderMilestoneStart(group, state, assertions);
 
       for (const f of group.items) {
         const st = String(f.status || "pending").toLowerCase();
@@ -861,7 +1225,7 @@ function renderFeaturesAndAssertions(snapshot) {
           : "";
 
         fHtml += `
-          <div class="feature-row" data-feature-id="${escapeHtml(f.id)}" data-feature-status="${escapeHtml(st)}">
+          <div class="feature-row" data-feature-id="${escapeHtml(f.id)}" data-feature-status="${escapeHtml(st)}" role="button" tabindex="0" aria-label="Inspect ${escapeHtml(f.title || f.id)}">
             <div class="feature-row-main">
               <span class="feature-check ${checkClass}">${icon}</span>
               <div class="feature-info">
@@ -887,25 +1251,15 @@ function renderFeaturesAndAssertions(snapshot) {
           </div>
         `;
       }
-      fHtml += `</div>`;
+      fHtml += `</div></div>`;
     }
 
     featuresListEl.innerHTML =
       fHtml ||
       `<div style="padding:12px 14px;color:var(--text-muted);font-size:12px;">No features planned yet.</div>`;
 
-    featuresListEl.querySelectorAll(".feature-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        const fId = row.dataset.featureId;
-        const sessions = synthesizeSessions(state, features);
-        const match = sessions.find((s) => s.featureId === fId);
-        if (match) {
-          hudState.selectedSessionId = match.id;
-          renderCenterColumn(hudState.snapshot);
-          renderSessionsColumn(hudState.snapshot);
-        }
-      });
-    });
+    bindFeatureSelection(featuresListEl, snapshot);
+    bindMilestoneToggles(featuresListEl);
   }
 
   // 2. Validation Contract Matrix (Full list — never truncated)
@@ -939,8 +1293,21 @@ function renderFeaturesAndAssertions(snapshot) {
   }
 }
 
+function captureFeedbackFocus() {
+  const input = document.activeElement;
+  return input?.id === "plan-feedback"
+    ? { start: input.selectionStart, end: input.selectionEnd }
+    : null;
+}
+
+function restoreFeedbackFocus(input, selection) {
+  if (!input || !selection) return;
+  input.focus?.({ preventScroll: true });
+  input.setSelectionRange?.(selection.start, selection.end);
+}
+
 function renderCenterColumn(snapshot) {
-  const { initialized, state = {}, features, progressLog } = snapshot;
+  const { initialized, state = {}, features } = snapshot;
   const onboardingEl = document.getElementById("onboarding-card");
   const approvalEl = document.getElementById("plan-approval-card");
   const inspectorEl = document.getElementById("session-inspector");
@@ -963,6 +1330,7 @@ function renderCenterColumn(snapshot) {
 
   // 2. High-Clarity Plan Review Banner when status === "awaiting_input" && !planAccepted
   const showApprovalCard = state.status === "awaiting_input" && !state.planAccepted;
+  const feedbackFocus = captureFeedbackFocus();
   if (approvalEl) {
     if (showApprovalCard) {
       if (
@@ -981,32 +1349,28 @@ function renderCenterColumn(snapshot) {
       const draftValue = hudState.planFeedbackDraft || "";
       approvalEl.innerHTML = `
         <div class="approval-banner-top">
-          <div>
-            <span class="approval-badge">Plan Review &amp; Validation Contract</span>
-            <h2 class="approval-title" style="margin-top:4px;">${escapeHtml(state.title || "Mission Plan Ready for Approval")}</h2>
-          </div>
-          <div>
-            <button type="button" class="strip-btn" id="btn-reject-plan" data-action="reject-plan">Request Changes</button>
-            <button
-              type="button"
-              class="btn-primary-approve"
-              id="btn-approve"
-              data-testid="btn-approve-mission"
-              data-action="approve"
-            >
-              \u2713 Approve &amp; Start Mission
-            </button>
+          <div class="approval-heading-group">
+            <div class="approval-badge-row">
+              <span class="approval-badge">Plan Review &amp; Validation Contract</span>
+              <div class="approval-summary-pills">
+                <span class="approval-stat-pill mono">${milestones.length} Milestones</span>
+                <span class="approval-stat-pill mono">${featuresList.length} Planned Features</span>
+                <span class="approval-stat-pill mono">${assertions.length} Validation Assertions</span>
+              </div>
+            </div>
+            <h2 class="approval-title">${escapeHtml(state.title || "Mission Plan Ready for Approval")}</h2>
+            <div class="approval-hint">Review milestones and the Validation Contract, then approve to dispatch the first worker or request revisions.</div>
           </div>
         </div>
-        <label for="plan-feedback">Feedback (optional)</label>
-        <input id="plan-feedback" type="text" placeholder="Describe the requested changes" value="${escapeHtml(draftValue)}">
-        <div class="approval-summary-pills">
-          <span class="approval-stat-pill mono">${milestones.length} Milestones</span>
-          <span class="approval-stat-pill mono">${featuresList.length} Planned Features</span>
-          <span class="approval-stat-pill mono">${assertions.length} Validation Assertions</span>
-        </div>
-        <div class="approval-hint">
-          Review the full milestone roadmap and Validation Contract below, then approve to dispatch the first worker.
+        <div class="approval-feedback-group">
+          <label class="approval-feedback-label" for="plan-feedback">Revision Feedback <span class="approval-feedback-optional">(optional, sent with Request Changes)</span></label>
+          <div class="approval-controls-row">
+            <input id="plan-feedback" type="text" class="plan-feedback-input" placeholder="Describe requested changes to milestones, features, or VAL-* assertions..." value="${escapeHtml(draftValue)}">
+            <div class="approval-actions approval-actions-bar">
+              <button type="button" class="strip-btn btn-request-changes" id="btn-reject-plan" data-action="reject-plan">Request Changes</button>
+              <button type="button" class="btn-primary-approve" id="btn-approve" data-testid="btn-approve-mission" data-action="approve">\u2713 Approve &amp; Start Mission</button>
+            </div>
+          </div>
         </div>
       `;
       const feedbackInputEl = approvalEl.querySelector("#plan-feedback");
@@ -1048,6 +1412,7 @@ function renderCenterColumn(snapshot) {
           handleActionError(err);
         }
       });
+      restoreFeedbackFocus(feedbackInputEl, feedbackFocus);
     } else {
       hudState.planFeedbackDraft = "";
       approvalEl.innerHTML = "";
@@ -1100,10 +1465,12 @@ function renderCenterColumn(snapshot) {
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
               <span class="status-pill ${escapeHtml(selectedSession.status)}">${escapeHtml(kindBadge)} \u00b7 ${escapeHtml(selectedSession.status)}</span>
               ${modelMeta ? `<span class="feature-kind-pill mono">${escapeHtml(modelMeta)}</span>` : ""}
-              ${shaLabel ? `<span class="feature-kind-pill mono" title="${escapeHtml(shaLabel)}">${isValidator ? "Audited SHA" : "Commit"}: ${escapeHtml(shaLabel.substring(0, 8))}</span>` : ""}
-              ${branchLabel ? `<span class="feature-kind-pill mono">${escapeHtml(branchLabel)}</span>` : ""}
             </div>
             <h3 class="handoff-title" style="margin-top:8px;">${escapeHtml(selectedSession.label)}</h3>
+            <details class="handoff-git-meta"><summary>Git metadata</summary>
+              ${shaLabel ? `<span class="feature-kind-pill mono" title="${escapeHtml(shaLabel)}">${isValidator ? "Audited SHA" : "Commit"}: ${escapeHtml(shaLabel.substring(0, 8))}</span>` : ""}
+              ${branchLabel ? `<span class="feature-kind-pill mono">${escapeHtml(branchLabel)}</span>` : ""}
+            </details>
           </div>
           <div class="handoff-link-chip">
             <code class="mono" id="handoff-thread-uri">${escapeHtml(threadUri)}</code>
@@ -1120,6 +1487,8 @@ function renderCenterColumn(snapshot) {
             </button>
           </div>
         </div>
+
+        ${renderSessionActivity(snapshot, selectedSession)}
 
         <div>
           <div class="handoff-section-title">${isValidator ? "Validation Verdict & Summary" : "Salient Summary"}</div>
@@ -1166,7 +1535,7 @@ function renderCenterColumn(snapshot) {
                         : `\u2022 ${escapeHtml(iss.summary || iss.description || JSON.stringify(iss))}`,
                     )
                     .join("<br/>")
-                : "None \u2014 all assertions and checks clean."
+                : "No issues recorded yet."
             }
           </div>
         </div>
@@ -1245,33 +1614,22 @@ function renderCenterColumn(snapshot) {
               : `${activeRole}${activeWorkerNum} (${activeWorkerTitle}) is currently ${state.activeWorker.status || state.status}.`
             : `Mission status is ${state.status || "planning"}.`;
 
-    const filteredEvents = filterOrchestratorStreamEvents(progressLog);
-    const latestMilestoneEvent = filteredEvents.at(-1);
-
     streamEl.innerHTML = `
-      <div class="stream-card diagnostic-card ${activeError ? "error" : ""}" id="resume-diagnostic-card">
+      <div class="stream-card diagnostic-card ${activeError ? "error" : ""} ${activeExecutionClass(state)}" id="resume-diagnostic-card">
         <div class="stream-card-header">
           <span class="stream-tag">${activeError ? "Action Blocked" : isDispatchPending ? "Awaiting Orchestrator Dispatch" : "Execution Status"}</span>
           <span class="stream-time mono">${escapeHtml(isDispatchPending ? "Approved — waiting for Orchestrator to dispatch" : state.status || "planning")}</span>
         </div>
         <div class="stream-body">${escapeHtml(resumeDiagnostic)}</div>
       </div>
-      ${
-        latestMilestoneEvent
-          ? `<div class="stream-card">
-              <div class="stream-card-header">
-                <span class="stream-tag">Latest Event \u00b7 ${escapeHtml(latestMilestoneEvent.type || "info")}</span>
-                <span class="stream-time mono">${escapeHtml(formatRelativeTime(latestMilestoneEvent.timestamp, "now"))}</span>
-              </div>
-              <div class="stream-body">${escapeHtml(latestMilestoneEvent.message)}</div>
-            </div>`
-          : ""
-      }
+      ${renderActivityFeed(snapshot)}
     `;
+    bindStreamToggle(streamEl);
   }
 
   // 5. Render Milestone Swimlanes & Validation Contract Matrix
   renderFeaturesAndAssertions(snapshot);
+  renderBoardDisclosure(snapshot);
 }
 
 function renderRightColumn(snapshot) {
@@ -1503,6 +1861,7 @@ async function updateModelSlot(slot, { model, providerInstanceId, label, effort 
 }
 
 function bindStaticListeners() {
+  bindBoardListeners();
   document.getElementById("strip-approve-btn")?.addEventListener("click", async () => {
     try {
       await triggerApprove();
@@ -1602,6 +1961,7 @@ async function initHud() {
       }
     }
   }, 1000);
+  setInterval(refreshSelectedThread, 4000);
 }
 
 initHud();

@@ -9,7 +9,7 @@
   <body>
     <div class="hud-shell" id="hud-shell">
       <!-- Unified Top Header & Control Bar -->
-      <header class="hud-topbar" id="hud-topbar">
+      <header class="hud-topbar" id="hud-topbar" data-ud-check="mission-telemetry">
         <div class="topbar-left">
           <div class="topbar-meta-row">
             <div class="status-strip" id="status-strip" data-status="awaiting_input">
@@ -18,6 +18,12 @@
             </div>
             <span class="mission-badge">MISSION</span>
             <span class="mission-repo-path mono" id="mission-repo-path"></span>
+            <span
+              class="readiness-badge mono"
+              id="readiness-badge"
+              data-readiness-state="unevaluated"
+              >Readiness: Not Evaluated · Recommend /agent-readiness</span
+            >
             <span class="sse-indicator" id="sse-indicator" title="SSE Stream Status">● Live</span>
             <span class="status-subtext" id="status-strip-subtext"
               >Connecting to mission state...</span
@@ -28,7 +34,7 @@
 
         <div class="topbar-right">
           <div class="topbar-metrics">
-            <div class="metric-box">
+            <div class="metric-box" id="elapsed-metric">
               <span class="metric-label">ELAPSED</span>
               <span class="metric-value mono" id="metric-time">00:00:00</span>
             </div>
@@ -113,9 +119,17 @@
         >
           <!-- Uninitialized Banner (hidden when initialized) -->
           <div class="onboarding-card hidden" id="onboarding-card"></div>
+          <div class="readiness-callout hidden" id="readiness-callout" role="status"></div>
 
           <!-- Plan Review Banner (shown when status === 'awaiting_input' && !planAccepted) -->
-          <div class="approval-card hidden" id="plan-approval-card">
+          <div
+            class="approval-card hidden"
+            id="plan-approval-card"
+            data-ud-check="plan-review"
+            data-ud-motion="plan-entry"
+            data-ud-motion-type="reveal"
+            data-ud-motion-trigger-model="entry-play"
+          >
             <button type="button" class="strip-btn" id="btn-reject-plan" data-action="reject-plan">
               Request Changes
             </button>
@@ -128,6 +142,56 @@
 
           <!-- Primary Mission Execution Board -->
           <div class="execution-board" id="execution-board">
+            <div
+              class="board-view-tabs"
+              id="board-view-tabs"
+              role="tablist"
+              aria-label="Mission board view"
+            >
+              <button
+                type="button"
+                id="board-tab-all"
+                role="tab"
+                aria-selected="true"
+                aria-controls="features-section assertions-section orchestrator-stream"
+                data-board-tab="all"
+              >
+                Overview &amp; Milestones
+              </button>
+              <button
+                type="button"
+                id="board-tab-features"
+                role="tab"
+                aria-selected="false"
+                aria-controls="features-section"
+                data-board-tab="features"
+                tabindex="-1"
+              >
+                Milestones &amp; Features
+              </button>
+              <button
+                type="button"
+                id="board-tab-contract"
+                role="tab"
+                aria-selected="false"
+                aria-controls="assertions-section"
+                data-board-tab="contract"
+                tabindex="-1"
+              >
+                Validation Contract
+              </button>
+              <button
+                type="button"
+                id="board-tab-stream"
+                role="tab"
+                aria-selected="false"
+                aria-controls="orchestrator-stream"
+                data-board-tab="stream"
+                tabindex="-1"
+              >
+                Live Agent Stream
+              </button>
+            </div>
             <!-- Diagnostic / Active Turn Stream -->
             <div class="orchestrator-stream" id="orchestrator-stream"></div>
 
@@ -157,6 +221,54 @@
                   >
                 </div>
                 <span class="section-count mono" id="assertions-count">0/0</span>
+                <button
+                  type="button"
+                  class="strip-btn assertion-drawer-toggle"
+                  id="btn-toggle-assertions"
+                  aria-controls="assertions-list"
+                  aria-expanded="true"
+                >
+                  Show all assertions
+                </button>
+              </div>
+              <div
+                class="assertion-filters"
+                id="assertion-filters"
+                role="group"
+                aria-label="Filter assertions"
+              >
+                <button
+                  type="button"
+                  class="filter-pill"
+                  data-assertion-filter="all"
+                  aria-pressed="true"
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  data-assertion-filter="passed"
+                  aria-pressed="false"
+                >
+                  Passed
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  data-assertion-filter="pending"
+                  aria-pressed="false"
+                >
+                  Pending
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  data-assertion-filter="failed"
+                  aria-pressed="false"
+                >
+                  Failed
+                </button>
               </div>
               <div class="assertions-list" id="assertions-list">
                 <!-- Populated by app.js -->

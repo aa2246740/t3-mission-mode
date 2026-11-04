@@ -2,6 +2,7 @@ import { commandTransaction } from "./mission-transaction.mjs";
 import { MissionKernelError } from "./schema.mjs";
 import { loadState, saveState, appendProgressLog } from "./store.mjs";
 import { approveMissionPlan } from "./tools.mjs";
+import { startElapsedClock, stopElapsedClock } from "./elapsed.mjs";
 
 /** HUD commands change user gates only. The owner remains the sole T3 executor. */
 function applyAutopilotCommandImpl(missionDir, command) {
@@ -28,9 +29,10 @@ function applyAutopilotCommandImpl(missionDir, command) {
   const now = new Date().toISOString();
   state.status = status;
   if (command === "pause") {
+    stopElapsedClock(state, Date.parse(now));
     state.pausedAt = now;
     state.pauseEpoch = (state.pauseEpoch ?? 0) + 1;
-  }
+  } else startElapsedClock(state, now);
   if (state.activeWorker) {
     const update = (row) => ({ ...row, status, ...(command === "pause" ? { pausedAt: now } : {}) });
     state.activeWorker = update(state.activeWorker);

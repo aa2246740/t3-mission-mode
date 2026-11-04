@@ -251,6 +251,8 @@ test("Toy Mission: one approval, three features and two validators reach done wi
   const state = k.loadState(dir);
   assert.equal(state.activeWorker, null);
   assert.equal(state.status, "completed");
+  assert.equal(state.lastStartedAt, null);
+  assert.ok(state.elapsedMs > 0, "completion retains the measured active interval");
   assert.deepEqual(state.assertions[0].stageResults, {
     scrutiny: "passed",
     user_testing: "passed",
@@ -624,6 +626,8 @@ test("Manual integration only records approved exact commits and ends at awaitin
   );
   assert.equal(next.action.status, "awaiting_merge");
   assert.equal(k.loadState(dir).status, "awaiting_merge");
+  assert.equal(k.loadState(dir).lastStartedAt, null);
+  assert.ok(k.loadState(dir).elapsedMs > 0, "awaiting_merge retains the measured active interval");
   const before = snapshot(dir);
   await k.missionTick(dir);
   assert.deepEqual(snapshot(dir), before);

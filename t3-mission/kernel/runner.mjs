@@ -1,3 +1,4 @@
+import { startElapsedClock } from "./elapsed.mjs";
 import { hasAsciiControlCharacters } from "./text-validation.mjs";
 import { readController, saveController } from "./autopilot-store.mjs";
 import {
@@ -713,6 +714,7 @@ function selectFeatureForWorkerImpl(
     sessions: [...(state.sessions || []), { ...worker }],
     revision: (state.revision || 1) + 1,
   };
+  startElapsedClock(state, worker.startedAt);
   saveState(missionDir, state);
   appendProgressLog(missionDir, {
     timestamp: worker.startedAt,
@@ -956,7 +958,7 @@ function* startMissionRunSteps(missionDir, options = {}, dispatchAdapter = {}) {
 
     if (workerStillActive) {
       state.status = "running";
-      state.lastStartedAt = nowIso;
+      startElapsedClock(state, nowIso);
       state.revision = (state.revision || 1) + 1;
       state.activeWorker = {
         ...state.activeWorker,
@@ -1007,7 +1009,7 @@ function* startMissionRunSteps(missionDir, options = {}, dispatchAdapter = {}) {
     } else {
       if (state.status === "paused") {
         state.status = "running";
-        state.lastStartedAt = nowIso;
+        startElapsedClock(state, nowIso);
         state.revision = (state.revision || 1) + 1;
       }
       if (Object.keys(identity).length > 0 && Array.isArray(state.sessions)) {
@@ -1070,7 +1072,7 @@ function* startMissionRunSteps(missionDir, options = {}, dispatchAdapter = {}) {
     cleanupLocalWorkerDaemon(state.activeWorker, missionDir);
     state.activeWorker = null;
     state.status = "running";
-    state.lastStartedAt = nowIso;
+    startElapsedClock(state, nowIso);
     state.revision = (state.revision || 1) + 1;
     saveState(missionDir, state);
 
@@ -1091,7 +1093,7 @@ function* startMissionRunSteps(missionDir, options = {}, dispatchAdapter = {}) {
     }
     const nowIso = new Date().toISOString();
     state.status = "running";
-    state.lastStartedAt = nowIso;
+    startElapsedClock(state, nowIso);
     state.revision = (state.revision || 1) + 1;
     saveState(missionDir, state);
   }

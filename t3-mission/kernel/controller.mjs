@@ -1,3 +1,4 @@
+import { stopElapsedClock } from "./elapsed.mjs";
 import { hasAsciiControlCharacters } from "./text-validation.mjs";
 import {
   commandTransaction,
@@ -2134,7 +2135,7 @@ function* missionTickSteps(
     const status = state.integration?.auto === true ? "completed" : "awaiting_merge";
     if (state.status !== status) {
       state.status = status;
-      state.lastStartedAt = null;
+      stopElapsedClock(state);
       state.revision += 1;
       saveState(missionDir, state);
       appendProgressLog(missionDir, {

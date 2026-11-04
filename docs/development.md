@@ -89,6 +89,26 @@ API docs, writes checksums, and creates a GitHub release with generated notes.
 The release workflow extracts the final archive, rebuilds its native lock, and runs the packaged HTTP QA before publishing. Each recipient builds its native lock against local headers. No machine-specific
 binary is shipped in the npm archive.
 
+## Verify the Mission HUD redesign
+
+Run the focused behavior tests from the repository root:
+
+```sh
+node --import ./scripts/test-environment.mjs --test t3-mission/test/hud-redesign.test.mjs t3-mission/test/hud.test.mjs t3-mission/test/review-regressions.test.mjs
+```
+
+On the configured macOS host, run the browser verifier with the global Playwright 1.61.1 and Chromium Headless Shell 1228 pin:
+
+```sh
+node scripts/verify-hud-redesign.mjs
+```
+
+The verifier creates and removes its own Mission and loopback server. It checks plan feedback and draft retention, segmented views, contract filters, elapsed time, local readiness updates, observation streaming, thread messages, reduced motion, and widths from 320px through 1440px. It saves screenshots, rendered HTML, and `verification.json` under `reports/hud-redesign`. `T3_HUD_VISUAL_OUTPUT` changes that output path. The thread reader uses fixture messages, so this check does not prove a live T3 transport or provider execution. A missing or mismatched global browser runtime stops verification.
+
+The HUD reads stored Agent Readiness reports from `~/.local/state/agent-readiness` or `T3_MISSION_READINESS_STATE_DIR`. Reports must match the canonical repository path. `.mission/readiness.json` and embedded state metadata are fallbacks. The badge describes a stored assessment, and missing or low readiness never blocks Mission approval.
+
+`GET /api/mission/thread-feed?threadId=<id>&sessionId=<runId>` returns recent activity for a session bound to this Mission. Without a selector, it returns recent Mission activity. A configured T3 MCP bridge can add thread messages. Unavailable thread reads retain local observations and lifecycle events. The snapshot and SSE stream include `readiness`, `observations`, and `threadFeed`; observation files are read only.
+
 ## Run the same suite in an isolated Linux filesystem
 
 The repository-owned [Containerfile.test](../Containerfile.test) builds Node and the native lock for an explicit Linux platform. On macOS, use the required Apple Container engine. The test image keeps Mission fixtures inside its own Linux filesystem, with no host project bind mount or published ports.

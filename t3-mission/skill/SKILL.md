@@ -63,7 +63,7 @@ When any Validator (`gpt-6.1-sol`, `scrutiny-validator`, or `user-testing-valida
    - The HUD runs inside T3 Code's preview pane alongside T3's native chat thread.
    - There must be **NO** fake chat input box (`"Pause to send messages"`), **NO** fake `Autonomy ||` or `Connectors (1)` toolbar chips, **NO** `< Back to App` button, **NO** fake `USAGE 0%` bar, and **NO** hardcoded `Wu David` avatar.
 2. **At-a-Glance Progress Clarity**:
-   - Milestones (`#milestone-pipeline-bar`), Features (`#features-list`, `.feature-row[data-feature-id]` with their linked `VAL-*` assertion pills), and Validation Contract assertions (`#assertions-list`, `.assertion-row[data-assertion-id]`) must be displayed in full (**never** truncated to `.slice(0, 8)`).
+   - Milestones (`#milestone-pipeline-bar`), Features (`#features-list`, `.feature-row[data-feature-id]` with their linked `VAL-*` assertion pills), and Validation Contract assertions (`#assertions-list`, `.assertion-row[data-assertion-id]`) must be rendered in full in the DOM (**never** truncated to `.slice(0, 8)`). View tabs, filters, and completed-milestone drawers may change visibility without removing any feature or assertion rows.
    - Progress bars (`#metric-progress-bar`, `#metric-contract-bar`) must reflect real completion percentages (`0%` when `0/N`, never hardcoded `65%`).
 3. **Zero Log Spam / Duplication**:
    - Changing model slots or effort bars must **not** flood `#orchestrator-stream` in the center execution board with `model_slots_updated` cards, and consecutive `model_slots_updated` events in `#progress-log-list` are coalesced.
@@ -76,6 +76,12 @@ When any Validator (`gpt-6.1-sol`, `scrutiny-validator`, or `user-testing-valida
 ## Workflow A: Starting a New Mission (`/mission <需求>` or "开启 mission")
 
 When the user triggers `/mission <需求>` or asks to start a Mission ("开启 mission"):
+
+### Pre-mission: Check Agent Readiness
+
+Before or during `ProposeMission`, check the latest stored `$agent-readiness` evaluation for the target repository. Use the installed `agent-readiness` skill to locate its CLI and run `readiness.py show <repoPath> --json`, or read the repository-matched report under `~/.local/state/agent-readiness`. `T3_MISSION_READINESS_STATE_DIR` overrides that report directory for the HUD.
+
+If the repository is unevaluated or below Level 3, recommend `/agent-readiness` without blocking the Mission or running an assessment automatically. Higher readiness improves autonomous implementation and verification. The HUD displays the stored level and percentage, and shows a recommendation when no evaluation exists or the score is below 60%. A stored evaluation describes its assessed revision; it does not certify later source changes.
 
 ### Step 1: Optionally open the Mission HUD
 
