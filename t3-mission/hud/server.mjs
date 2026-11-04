@@ -71,6 +71,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
 const BRIDGE_CLI_PATH = path.resolve(__dirname, "../bridge/cli.mjs");
+const IS_CLI_MAIN = Boolean(
+  process.argv[1] && resolveRealOrAbsPath(process.argv[1]) === resolveRealOrAbsPath(__filename),
+);
+const LIVE_T3_ENV_CACHE_TTL_MS = 30_000;
+const liveT3McpEnvCache = new WeakMap();
 
 export const BUILTIN_MODEL_CATALOG = [
   {
@@ -989,9 +994,95 @@ function readHudTelemetry(paths, state, progressLog) {
   };
 }
 
+function liveT3EntrypointExists(node, entrypoint) {
+  if (fs.existsSync(entrypoint)) return true;
+  const archive = entrypoint.match(/^(.+?\.asar)\//)?.[1];
+  if (!archive || !fs.existsSync(archive)) return false;
+  try {
+    return (
+      cp
+        .execFileSync(
+          node,
+          [
+            "-e",
+            'process.stdout.write(require("node:fs").existsSync(process.argv[1]) ? "1" : "0")',
+            entrypoint,
+          ],
+          {
+            encoding: "utf8",
+            timeout: 1500,
+            maxBuffer: 1024,
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        )
+        .trim() === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function discoverLiveT3McpEnv() {
+  try {
+    const processes = cp.execFileSync("ps", ["eww", "-ax"], {
+      encoding: "utf8",
+      timeout: 1500,
+    });
+    for (const line of processes.split(/\r?\n/)) {
+      const command = line.match(
+        /^\s*\d+\s+\S+\s+\S+\s+\S+\s+(.+?)\s+(\/.+?\/bin\.mjs)\s+acp-mcp-bridge(?:\s|$)/,
+      );
+      const endpoint = line.match(/(?:^|\s)T3_ACP_MCP_ENDPOINT=([^\s]+)/);
+      const authorization = line.match(/(?:^|\s)T3_ACP_MCP_AUTHORIZATION=(Bearer [^\s]+)/);
+      if (!command || !endpoint || !authorization) continue;
+      if (!fs.existsSync(command[1]) || !liveT3EntrypointExists(command[1], command[2])) continue;
+      return {
+        T3_ACP_MCP_NODE: command[1],
+        T3_ACP_MCP_ENTRYPOINT: command[2],
+        T3_ACP_MCP_ENDPOINT: endpoint[1],
+        T3_ACP_MCP_AUTHORIZATION: authorization[1],
+      };
+    }
+  } catch {
+    // A missing bridge or unavailable process listing leaves the Mission feed usable.
+  }
+  return null;
+}
+
+export function resolveLiveT3McpEnv(baseEnv = process.env) {
+  if (baseEnv.T3_ACP_MCP_NODE && baseEnv.T3_ACP_MCP_ENTRYPOINT) return baseEnv;
+  const isTest =
+    baseEnv.NODE_ENV === "test" ||
+    process.env.NODE_ENV === "test" ||
+    process.execArgv.includes("--test") ||
+    Boolean(baseEnv.NODE_TEST_CONTEXT || process.env.NODE_TEST_CONTEXT);
+  if (
+    baseEnv.T3_DISABLE_BRIDGE_AUTODISCOVERY === "1" ||
+    (isTest && baseEnv.T3_ENABLE_BRIDGE_AUTODISCOVERY !== "1" && !IS_CLI_MAIN)
+  )
+    return null;
+  const now = Date.now();
+  let cached = liveT3McpEnvCache.get(baseEnv);
+  if (!cached || now - cached.at >= LIVE_T3_ENV_CACHE_TTL_MS) {
+    cached = { at: now, env: discoverLiveT3McpEnv() };
+    liveT3McpEnvCache.set(baseEnv, cached);
+  }
+  return cached.env ? { ...baseEnv, ...cached.env } : null;
+}
+
 async function readLiveThread(threadId) {
-  if (!process.env.T3_ACP_MCP_NODE || !process.env.T3_ACP_MCP_ENTRYPOINT) return null;
-  return callT3McpTool("t3_thread_read", { threadId }, { env: process.env, timeoutMs: 3000 });
+  const resolvedEnv = resolveLiveT3McpEnv();
+  if (!resolvedEnv) return null;
+  const normalizedThreadId = String(threadId).replace(
+    /^node:delegated-task:/,
+    "thread:delegated-task:",
+  );
+  return callT3McpTool(
+    "t3_thread_read",
+    { threadId: normalizedThreadId, view: "activity", limit: 40 },
+    { env: resolvedEnv, timeoutMs: 3000 },
+  );
 }
 
 export function createMissionHudServer({
@@ -3517,7 +3608,7 @@ function resolveRealOrAbsPath(targetPath) {
   }
 }
 
-if (process.argv[1] && resolveRealOrAbsPath(process.argv[1]) === resolveRealOrAbsPath(__filename)) {
+if (IS_CLI_MAIN) {
   runCli().catch((err) => {
     process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
     process.exit(1);

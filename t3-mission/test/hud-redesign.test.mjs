@@ -4,10 +4,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
-import { createMissionHudServer, inspectRepoAgentReadiness } from "../hud/server.mjs";
+import cp from "node:child_process";
+import {
+  createMissionHudServer,
+  inspectRepoAgentReadiness,
+  resolveLiveT3McpEnv,
+} from "../hud/server.mjs";
 import {
   readRecentObservations,
   buildThreadFeed,
+  normalizeFeedEvent,
   normalizeThreadMessages,
 } from "../hud/thread-feed.mjs";
 import { startElapsedClock, stopElapsedClock } from "../kernel/elapsed.mjs";
@@ -38,6 +44,18 @@ function temporary(t) {
 function writeJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(data));
+}
+
+function setTestEnv(t, values) {
+  const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
+  function apply(env) {
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  apply(values);
+  t.after(() => apply(previous));
 }
 
 function element() {
@@ -414,6 +432,129 @@ test("session inspector includes the current run's activity and escapes agent co
   assert.doesNotMatch(inspector, /Old attempt|model_slots_updated/);
 });
 
+test("overview merges the active thread activity and shows eight running events or three idle events", () => {
+  const ui = client();
+  const data = snapshot({
+    status: "running",
+    sessions: [
+      { runId: "r0", featureId: "f1", childThreadId: "old", status: "completed" },
+      { runId: "r1", featureId: "f1", childThreadId: "live", status: "running" },
+      { runId: "r2", featureId: "f2", childThreadId: "other", status: "completed" },
+    ],
+    activeWorker: { runId: "r1", featureId: "f1", childThreadId: "live", status: "running" },
+  });
+  data.threadFeed = [
+    { type: "run_started", message: "Run started", timestamp: "2026-11-04T00:00:00Z" },
+  ];
+  ui.context.data = data;
+  ui.context.events = Array.from({ length: 12 }, (_, index) => ({
+    type: index % 2 ? "command_execution" : "reasoning",
+    message: `Live event ${index}`,
+    timestamp: new Date(Date.parse("2026-11-04T00:00:00Z") + (index + 1) * 1000).toISOString(),
+  }));
+  ui.run(`hudState.threadFeeds.set("r1:live", {events});
+    hudState.threadFeeds.set("r0:old", {events:[{message:"Old attempt"}]});
+    hudState.threadFeeds.set("r2:other", {events:[{message:"Other thread"}]});`);
+  const compact = ui.run("renderActivityFeed(data)");
+  assert.equal((compact.match(/data-feed-type=/g) || []).length, 8);
+  assert.match(compact, /Live event 11/);
+  assert.doesNotMatch(compact, /Old attempt|Other thread|Run started|Live event 3/);
+  ui.run("hudState.streamExpanded = true");
+  const expanded = ui.run("renderActivityFeed(data)");
+  assert.match(expanded, /Compact \(8\)/);
+  assert.match(expanded, /Run started/);
+  assert.equal((expanded.match(/data-feed-type=/g) || []).length, 13);
+  ui.run(
+    'hudState.streamExpanded = false; data.state.status = "completed"; data.state.activeWorker = null',
+  );
+  const idle = ui.run("renderActivityFeed(data)");
+  assert.match(idle, /Other thread/);
+  ui.run("data.state.sessions.pop()");
+  const recent = ui.run("renderActivityFeed(data)");
+  assert.equal((recent.match(/data-feed-type=/g) || []).length, 3);
+  assert.doesNotMatch(recent, /Run started|Live event 8/);
+  assert.match(recent, /Live event 9/);
+  ui.run("hudState.streamExpanded = true");
+  assert.match(ui.run("renderActivityFeed(data)"), /Compact \(3\)/);
+});
+
+for (const selectedSessionId of ["orchestrator", "r1"]) {
+  test(`${selectedSessionId} selection fetches live activity and updates its visible feed`, async () => {
+    const ui = client();
+    ui.context.data = snapshot({
+      status: "running",
+      planAccepted: true,
+      activeWorker: { runId: "r1", featureId: "f1", childThreadId: "live", status: "running" },
+    });
+    ui.context.selection = selectedSessionId;
+    ui.run("hudState.snapshot = data; hudState.selectedSessionId = selection");
+    const card = element();
+    const toggle = element();
+    ui.elements.get("orchestrator-stream").querySelector = (selector) =>
+      selector === ".live-agent-feed-card"
+        ? card
+        : selector === "#btn-toggle-stream"
+          ? toggle
+          : null;
+    ui.elements.set("session-live-activity", card);
+    const calls = [];
+    ui.context.fetch = async (url) => {
+      calls.push(url);
+      return {
+        ok: true,
+        json: async () => ({ events: [{ type: "reasoning", message: "Inspecting <changes>" }] }),
+      };
+    };
+    await ui.run("refreshSelectedThread()");
+    assert.equal(calls.length, 1);
+    const params = new URL(calls[0], "http://localhost").searchParams;
+    assert.equal(params.get("threadId"), "live");
+    assert.equal(params.get("sessionId"), "r1");
+    assert.match(card.outerHTML, /Inspecting &lt;changes&gt;/);
+    assert.equal(ui.run('hudState.threadFeeds.get("r1:live").events.length'), 1);
+    if (selectedSessionId === "orchestrator") {
+      assert.equal(typeof toggle.listeners.click, "function");
+      toggle.listeners.click();
+      assert.equal(ui.run("hudState.streamExpanded"), true);
+    }
+  });
+}
+
+for (const [name, state, expectedReads] of [
+  ["running", { status: "running" }, 1],
+  ["orchestrator turn", { status: "orchestrator_turn" }, 1],
+  ["bound worker", { status: "paused", activeWorker: { childThreadId: "live" } }, 1],
+  ["idle", { status: "completed" }, 0],
+]) {
+  test(`elapsed ticker polls ${name} activity after two seconds without a new snapshot`, async () => {
+    const ui = client();
+    ui.context.data = snapshot({
+      ...state,
+      sessions: [{ runId: "r1", featureId: "f1", childThreadId: "live", status: "running" }],
+    });
+    ui.run(
+      "hudState.snapshot = data; bindStaticListeners = () => {}; connectSseStream = () => {};",
+    );
+    const intervals = [];
+    ui.context.setInterval = (callback, delay) => intervals.push({ callback, delay });
+    const reads = [];
+    ui.context.fetch = async (url) => {
+      if (url === "/api/mission/state") return { ok: false };
+      reads.push(url);
+      return { ok: true, json: async () => ({ events: [] }) };
+    };
+    await ui.run("initHud()");
+    const tick = intervals.find((timer) => timer.delay === 1000).callback;
+    tick();
+    assert.equal(reads.length, 0);
+    ui.advance(1000);
+    tick();
+    assert.equal(reads.length, expectedReads);
+    assert.match(ui.elements.get("metric-time").textContent, /^\d{2}:\d{2}:\d{2}$/);
+    await ui.run("Promise.resolve()");
+  });
+}
+
 test("thread jump links support session URIs and the Mission owner, with escaped attributes", () => {
   const ui = client();
   ui.context.data = snapshot({
@@ -556,6 +697,403 @@ test("thread messages normalize supported bridge response envelopes", () => {
   assert.equal(events[0].threadId, "t1");
   assert.equal(events[0].message, "Running checks");
 });
+
+test("live reasoning and commands keep update times and meaningful roles", () => {
+  const updatedAt = "2026-11-04T00:00:05Z";
+  const events = normalizeThreadMessages(
+    {
+      items: [
+        {
+          type: "reasoning",
+          text: "Inspecting state",
+          updatedAt,
+          createdAt: "2026-11-04T00:00:00Z",
+        },
+        { type: "command_execution", command: "npm test", updatedAt },
+        { type: "reasoning", role: "Validator", text: "Independent check", updatedAt },
+      ],
+    },
+    "live",
+  );
+  assert.deepEqual(
+    events.map(({ role, timestamp, threadId }) => ({ role, timestamp, threadId })),
+    [
+      { role: "Worker · Thinking", timestamp: updatedAt, threadId: "live" },
+      { role: "Worker · Command", timestamp: updatedAt, threadId: "live" },
+      { role: "Validator", timestamp: updatedAt, threadId: "live" },
+    ],
+  );
+  assert.equal(
+    normalizeFeedEvent({ type: "reasoning", text: "Thinking", updatedAt }, { role: "Agent" }).role,
+    "Worker · Thinking",
+  );
+  assert.equal(
+    normalizeFeedEvent({ text: "Explicit", timestamp: "first", updatedAt }).timestamp,
+    "first",
+  );
+});
+
+test("activity items take priority and omit only the initial prompt when other activity exists", () => {
+  const prompt = { type: "user_message", role: "user", text: "Task instructions\n".repeat(200) };
+  const events = normalizeThreadMessages(
+    {
+      structuredContent: {
+        items: [
+          prompt,
+          { role: "user", text: "Additional prompt" },
+          { type: "reasoning", text: "Live thought" },
+        ],
+        messages: [{ role: "assistant", text: "Finalized output" }],
+      },
+    },
+    "live",
+  );
+  assert.deepEqual(
+    events.map((event) => event.message),
+    ["Additional prompt", "Live thought"],
+  );
+  assert.equal(normalizeThreadMessages({ items: [prompt] }, "live").length, 1);
+});
+
+test("activity items preserve user steering after reasoning", () => {
+  const events = normalizeThreadMessages(
+    {
+      items: [
+        { type: "user_message", text: "Initial prompt" },
+        { type: "reasoning", text: "Thinking" },
+        { role: "user", text: "Stop deployment" },
+      ],
+    },
+    "live",
+  );
+  assert.deepEqual(
+    events.map(({ type, role, message }) => ({ type, role, message })),
+    [
+      { type: "reasoning", role: "Worker · Thinking", message: "Thinking" },
+      { type: "message", role: "user", message: "Stop deployment" },
+    ],
+  );
+});
+
+test("partial activity slices preserve the first user steering message", () => {
+  const items = [
+    { position: 80, type: "user_message", text: "Stop deployment" },
+    { position: 81, type: "reasoning", text: "Stopping..." },
+  ];
+  for (const metadata of [{}, { hasMoreBefore: true, thread: { itemCount: 100 } }]) {
+    const events = normalizeThreadMessages({ items, ...metadata }, "live");
+    assert.deepEqual(
+      events.map((event) => event.message),
+      ["Stop deployment", "Stopping..."],
+    );
+  }
+});
+
+test("unpositioned activity slices use pagination metadata to preserve user steering", () => {
+  const items = [
+    { type: "user_message", text: "Stop deployment" },
+    { type: "reasoning", text: "Stopping..." },
+  ];
+  for (const metadata of [{ hasMoreBefore: true }, { thread: { itemCount: 100 } }]) {
+    const events = normalizeThreadMessages({ items, ...metadata }, "live");
+    assert.deepEqual(
+      events.map((event) => event.message),
+      ["Stop deployment", "Stopping..."],
+    );
+  }
+});
+
+test("confirmed thread-start positions identify the initial prompt despite pagination metadata", () => {
+  for (const position of [0, 1]) {
+    const events = normalizeThreadMessages(
+      {
+        hasMoreBefore: true,
+        thread: { itemCount: 100 },
+        items: [
+          { position, type: "user_message", text: "Initial prompt" },
+          { type: "reasoning", text: "Thinking" },
+        ],
+      },
+      "live",
+    );
+    assert.deepEqual(
+      events.map((event) => event.message),
+      ["Thinking"],
+    );
+  }
+});
+
+test("user-only activity items preserve every user message", () => {
+  const events = normalizeThreadMessages(
+    {
+      items: [
+        { type: "user_message", text: "First" },
+        { role: "user", text: "Second" },
+      ],
+    },
+    "live",
+  );
+  assert.deepEqual(
+    events.map((event) => event.message),
+    ["First", "Second"],
+  );
+});
+
+for (const envelope of ["messages", "thread.messages"]) {
+  test(`legacy ${envelope} preserve the initial prompt and user steering`, () => {
+    const messages = [
+      { role: "user", text: "Initial prompt" },
+      { role: "assistant", text: "Thinking" },
+      { role: "user", text: "Stop deployment" },
+    ];
+    const response = envelope === "messages" ? { messages } : { thread: { messages } };
+    assert.deepEqual(
+      normalizeThreadMessages(response, "live").map((event) => event.message),
+      ["Initial prompt", "Thinking", "Stop deployment"],
+    );
+  });
+}
+
+for (const [mode, threadId, normalizedThreadId] of [
+  ["configured", "node:delegated-task:live", "thread:delegated-task:live"],
+  ["configured", "ordinary-thread", "ordinary-thread"],
+  ["discovered", "node:delegated-task:live", "thread:delegated-task:live"],
+]) {
+  test(`default live reader uses the ${mode} bridge for ${threadId} and requests bounded activity`, async (t) => {
+    const repo = temporary(t);
+    const entrypoint = path.join(repo, "bin.mjs");
+    fs.writeFileSync(
+      entrypoint,
+      `
+    const [command, tool, payload] = process.argv.slice(2);
+    const transportConfigured = process.env.T3_ACP_MCP_ENDPOINT === "http://127.0.0.1:1234/mcp" && process.env.T3_ACP_MCP_AUTHORIZATION === "Bearer fixture-token";
+    console.log(JSON.stringify({items:[{type:"assistant_message", text:JSON.stringify({command,tool,args:JSON.parse(payload),transportConfigured})}]}));
+  `,
+    );
+    setTestEnv(t, {
+      T3_ACP_MCP_NODE: mode === "configured" ? process.execPath : undefined,
+      T3_ACP_MCP_ENTRYPOINT: mode === "configured" ? entrypoint : undefined,
+      T3_ACP_MCP_ENDPOINT: mode === "configured" ? "http://127.0.0.1:1234/mcp" : undefined,
+      T3_ACP_MCP_AUTHORIZATION: mode === "configured" ? "Bearer fixture-token" : undefined,
+      T3_ENABLE_BRIDGE_AUTODISCOVERY: mode === "discovered" ? "1" : undefined,
+      T3_DISABLE_BRIDGE_AUTODISCOVERY: undefined,
+    });
+    const ps = t.mock.method(cp, "execFileSync", () => bridgeProcess(process.execPath, entrypoint));
+    const mission = path.join(repo, ".mission");
+    writeJson(path.join(mission, "state.json"), {
+      missionId: "default-reader",
+      repoPath: repo,
+      sessions: [{ runId: "r1", childThreadId: threadId, status: "running" }],
+    });
+    const hud = await createMissionHudServer({ missionDir: mission });
+    t.after(() => hud.close());
+    const feed = await (
+      await fetch(
+        `${hud.url}/api/mission/thread-feed?${new URLSearchParams({ threadId, sessionId: "r1" })}`,
+      )
+    ).json();
+    assert.equal(feed.source, "thread+mission");
+    assert.deepEqual(
+      JSON.parse(feed.events.find((event) => event.type === "assistant_message").message),
+      {
+        command: "acp-mcp-call",
+        tool: "t3_thread_read",
+        args: { threadId: normalizedThreadId, view: "activity", limit: 40 },
+        transportConfigured: true,
+      },
+    );
+    assert.equal(ps.mock.callCount(), mode === "discovered" ? 1 : 0);
+  });
+}
+
+test("default live reader never discovers a real bridge during unit tests", async (t) => {
+  setTestEnv(t, {
+    T3_ACP_MCP_NODE: undefined,
+    T3_ACP_MCP_ENTRYPOINT: undefined,
+    T3_ENABLE_BRIDGE_AUTODISCOVERY: undefined,
+    T3_DISABLE_BRIDGE_AUTODISCOVERY: undefined,
+  });
+  const ps = t.mock.method(cp, "execFileSync", () => {
+    throw new Error("Unexpected process scan");
+  });
+  const repo = temporary(t),
+    mission = path.join(repo, ".mission");
+  writeJson(path.join(mission, "state.json"), {
+    missionId: "no-discovery",
+    repoPath: repo,
+    sessions: [{ runId: "r1", childThreadId: "live", status: "running" }],
+  });
+  const hud = await createMissionHudServer({ missionDir: mission });
+  t.after(() => hud.close());
+  const feed = await (
+    await fetch(`${hud.url}/api/mission/thread-feed?threadId=live&sessionId=r1`)
+  ).json();
+  assert.equal(ps.mock.callCount(), 0);
+  assert.equal(feed.source, "mission");
+  assert.equal(feed.unavailable, false);
+});
+
+function bridgeProcess(node, entrypoint, endpoint = "http://127.0.0.1:1234/mcp") {
+  return `123 ?? S 0:00.01 ${node} ${entrypoint} acp-mcp-bridge T3_ACP_MCP_ENDPOINT=${endpoint} T3_ACP_MCP_AUTHORIZATION=Bearer fixture-token`;
+}
+
+function bridgeFiles(t, name = "T3 Code") {
+  const repo = temporary(t);
+  const node = path.join(repo, `${name}.app`, "Contents", "MacOS", name);
+  const entrypoint = path.join(repo, "T3 Resources", "bin.mjs");
+  fs.mkdirSync(path.dirname(node), { recursive: true });
+  fs.mkdirSync(path.dirname(entrypoint), { recursive: true });
+  fs.writeFileSync(node, "");
+  fs.writeFileSync(entrypoint, "");
+  return { node, entrypoint };
+}
+
+test("explicit bridge configuration bypasses discovery without changing the environment", (t) => {
+  const env = { T3_ACP_MCP_NODE: "configured-node", T3_ACP_MCP_ENTRYPOINT: "configured-entry" };
+  const ps = t.mock.method(cp, "execFileSync", () => {
+    throw new Error("Unexpected process scan");
+  });
+  assert.equal(resolveLiveT3McpEnv(env), env);
+  assert.equal(ps.mock.callCount(), 0);
+});
+
+for (const name of ["T3 Code", "T3 Code (Nightly)"]) {
+  test(`bridge discovery extracts ${name} paths with spaces and a complete transport environment`, (t) => {
+    const { node, entrypoint } = bridgeFiles(t, name);
+    const ps = t.mock.method(cp, "execFileSync", (command, args, options) => {
+      assert.equal(command, "ps");
+      assert.deepEqual(args, ["eww", "-ax"]);
+      assert.equal(options.encoding, "utf8");
+      assert.equal(options.timeout, 1500);
+      return [
+        "PID TT STAT TIME COMMAND",
+        bridgeProcess("/missing-node", entrypoint),
+        bridgeProcess(node, entrypoint),
+      ].join("\n");
+    });
+    const env = {
+      T3_ENABLE_BRIDGE_AUTODISCOVERY: "1",
+      T3_ACP_MCP_NODE: "incomplete-node",
+      PATH: "/fixture",
+    };
+    assert.deepEqual(resolveLiveT3McpEnv(env), {
+      ...env,
+      T3_ACP_MCP_NODE: node,
+      T3_ACP_MCP_ENTRYPOINT: entrypoint,
+      T3_ACP_MCP_ENDPOINT: "http://127.0.0.1:1234/mcp",
+      T3_ACP_MCP_AUTHORIZATION: "Bearer fixture-token",
+    });
+    assert.equal(env.T3_ACP_MCP_NODE, "incomplete-node");
+    assert.equal(ps.mock.callCount(), 1);
+  });
+}
+
+for (const outcome of [
+  "exists",
+  "missing",
+  "invalid response",
+  "probe failure",
+  "missing archive",
+]) {
+  test(`ASAR bridge entrypoints require Electron filesystem confirmation: ${outcome}`, (t) => {
+    const { node, entrypoint } = bridgeFiles(t);
+    const archive = path.join(path.dirname(entrypoint), "app.asar");
+    const asarEntrypoint = path.join(archive, "bin.mjs");
+    if (outcome !== "missing archive") fs.writeFileSync(archive, "fixture archive");
+    const ps = t.mock.method(cp, "execFileSync", (command, args, options) => {
+      if (command === "ps") return bridgeProcess(node, asarEntrypoint);
+      assert.equal(command, node);
+      assert.equal(args[0], "-e");
+      assert.equal(args[2], asarEntrypoint);
+      assert.equal(options.env.ELECTRON_RUN_AS_NODE, "1");
+      assert.equal(options.timeout, 1500);
+      assert.deepEqual(options.stdio, ["ignore", "pipe", "pipe"]);
+      if (outcome === "probe failure") throw new Error("Electron unavailable");
+      return outcome === "exists" ? "1\n" : outcome === "missing" ? "0" : "unconfirmed";
+    });
+    const env = { T3_ENABLE_BRIDGE_AUTODISCOVERY: "1" };
+    const resolved = resolveLiveT3McpEnv(env);
+    if (outcome === "exists") assert.equal(resolved.T3_ACP_MCP_ENTRYPOINT, asarEntrypoint);
+    else assert.equal(resolved, null);
+    assert.equal(ps.mock.callCount(), outcome === "missing archive" ? 1 : 2);
+    assert.deepEqual(resolveLiveT3McpEnv(env), resolved);
+    assert.equal(ps.mock.callCount(), outcome === "missing archive" ? 1 : 2);
+  });
+}
+
+for (const found of [true, false]) {
+  test(`bridge discovery caches ${found ? "a match" : "a missing bridge"} for thirty seconds`, (t) => {
+    const { node, entrypoint } = bridgeFiles(t);
+    let now = 100_000;
+    t.mock.method(Date, "now", () => now);
+    let processLine = found ? bridgeProcess(node, entrypoint) : "No bridge";
+    const ps = t.mock.method(cp, "execFileSync", () => processLine);
+    const env = { T3_ENABLE_BRIDGE_AUTODISCOVERY: "1" };
+    const first = resolveLiveT3McpEnv(env);
+    assert.equal(first?.T3_ACP_MCP_NODE ?? null, found ? node : null);
+    processLine = bridgeProcess(node, entrypoint, "http://127.0.0.1:5678/mcp");
+    now += 29_999;
+    assert.deepEqual(resolveLiveT3McpEnv(env), first);
+    assert.equal(ps.mock.callCount(), 1);
+    now += 1;
+    assert.equal(resolveLiveT3McpEnv(env).T3_ACP_MCP_ENDPOINT, "http://127.0.0.1:5678/mcp");
+    assert.equal(ps.mock.callCount(), 2);
+    assert.equal(env.T3_ACP_MCP_ENDPOINT, undefined);
+  });
+}
+
+test("bridge discovery is disabled in tests unless enabled, and the disable switch takes precedence", (t) => {
+  const ps = t.mock.method(cp, "execFileSync", () => {
+    throw new Error("Unexpected process scan");
+  });
+  assert.equal(resolveLiveT3McpEnv({ NODE_ENV: "test" }), null);
+  assert.equal(
+    resolveLiveT3McpEnv({
+      T3_ENABLE_BRIDGE_AUTODISCOVERY: "1",
+      T3_DISABLE_BRIDGE_AUTODISCOVERY: "1",
+    }),
+    null,
+  );
+  assert.equal(ps.mock.callCount(), 0);
+});
+
+test("agent-shell environments discover a bridge without an opt-in outside the test runner", (t) => {
+  const { node, entrypoint } = bridgeFiles(t);
+  const ps = t.mock.method(cp, "execFileSync", () => bridgeProcess(node, entrypoint));
+  setTestEnv(t, { NODE_ENV: undefined, NODE_TEST_CONTEXT: undefined });
+  const execArgv = process.execArgv;
+  process.execArgv = [];
+  t.after(() => {
+    process.execArgv = execArgv;
+  });
+  assert.equal(resolveLiveT3McpEnv({}).T3_ACP_MCP_NODE, node);
+  assert.equal(ps.mock.callCount(), 1);
+});
+
+for (const fault of [
+  "ps failure",
+  "missing executable",
+  "missing entrypoint",
+  "missing authorization",
+  "missing endpoint",
+]) {
+  test(`bridge discovery safely returns null on ${fault}`, (t) => {
+    const { node, entrypoint } = bridgeFiles(t);
+    const ps = t.mock.method(cp, "execFileSync", () => {
+      if (fault === "ps failure") throw new Error("Process listing unavailable");
+      if (fault === "missing executable") return bridgeProcess("/missing-node", entrypoint);
+      if (fault === "missing entrypoint") return bridgeProcess(node, "/missing/bin.mjs");
+      return bridgeProcess(node, entrypoint).replace(
+        fault === "missing authorization"
+          ? / T3_ACP_MCP_AUTHORIZATION=.*/
+          : / T3_ACP_MCP_ENDPOINT=\S+/,
+        "",
+      );
+    });
+    assert.equal(resolveLiveT3McpEnv({ T3_ENABLE_BRIDGE_AUTODISCOVERY: "1" }), null);
+    assert.equal(ps.mock.callCount(), 1);
+  });
+}
 
 async function nextSnapshot(reader, match) {
   let buffer = "";

@@ -612,14 +612,34 @@ function mergeActivityEvents(local, remote = []) {
     .slice(-50);
 }
 
+function resolveOverviewFeedSession(snapshot) {
+  const sessions = synthesizeSessions(snapshot.state, snapshot.features);
+  const activeWorker = snapshot.state?.activeWorker;
+  if (!activeWorker) return sessions.findLast((session) => session.childThreadId) || null;
+  return (
+    (activeWorker.runId && sessions.find((session) => session.runId === activeWorker.runId)) ||
+    (activeWorker.childThreadId &&
+      sessions.findLast((session) => session.childThreadId === activeWorker.childThreadId)) ||
+    (activeWorker.featureId &&
+      sessions.findLast((session) => session.featureId === activeWorker.featureId)) ||
+    null
+  );
+}
+
 function renderActivityFeed(snapshot) {
   const expanded = hudState.streamExpanded || hudState.boardTab === "stream";
-  const events = activityEvents(snapshot).slice(expanded ? -50 : -3);
+  const activeSession = resolveOverviewFeedSession(snapshot);
+  const remote = activeSession ? hudState.threadFeeds.get(sessionFeedKey(activeSession)) : null;
+  const allEvents = mergeActivityEvents(activityEvents(snapshot), remote?.events);
+  const isRunning =
+    snapshot.state?.status === "running" || snapshot.state?.activeWorker?.status === "running";
+  const compactLimit = isRunning ? 8 : 3;
+  const events = allEvents.slice(expanded ? -50 : -compactLimit);
   const worker = snapshot.state.activeWorker;
   return `<section class="stream-card live-agent-feed-card">
     <div class="stream-card-header">
       <span class="stream-tag">Live Agent &amp; Orchestrator Activity</span>
-      <button type="button" class="strip-btn" id="btn-toggle-stream" aria-expanded="${expanded}" aria-controls="overview-live-feed">${expanded ? "Compact (3)" : "Expand Stream"}</button>
+      <button type="button" class="strip-btn" id="btn-toggle-stream" aria-expanded="${expanded}" aria-controls="overview-live-feed">${expanded ? `Compact (${compactLimit})` : "Expand Stream"}</button>
     </div>
     ${worker ? `<div class="task-brief"><span class="feed-role">Task brief</span><p>${escapeHtml(taskBrief(snapshot, worker))}</p></div>` : ""}
     <div class="live-agent-feed ${expanded ? "is-expanded" : ""}" id="overview-live-feed">${feedRowsHtml(events)}</div>
@@ -664,11 +684,13 @@ function bindStreamToggle(streamEl) {
 
 async function refreshSelectedThread() {
   const snapshot = hudState.snapshot;
-  if (!snapshot || hudState.selectedSessionId === "orchestrator" || hudState.threadFeedPending)
-    return;
-  const session = synthesizeSessions(snapshot.state, snapshot.features).find(
-    (row) => row.id === hudState.selectedSessionId,
-  );
+  if (!snapshot || hudState.threadFeedPending) return;
+  const session =
+    hudState.selectedSessionId === "orchestrator"
+      ? resolveOverviewFeedSession(snapshot)
+      : synthesizeSessions(snapshot.state, snapshot.features).find(
+          (row) => row.id === hudState.selectedSessionId,
+        );
   if (!session?.childThreadId) return;
   const key = sessionFeedKey(session);
   hudState.threadFeedPending = true;
@@ -681,7 +703,12 @@ async function refreshSelectedThread() {
     if (!response.ok) return;
     const feed = await response.json();
     hudState.threadFeeds.set(key, feed);
-    if (hudState.selectedSessionId === session.id) {
+    if (hudState.selectedSessionId === "orchestrator") {
+      const stream = document.getElementById("orchestrator-stream");
+      const panel = stream?.querySelector(".live-agent-feed-card");
+      if (panel) panel.outerHTML = renderActivityFeed(hudState.snapshot);
+      bindStreamToggle(stream);
+    } else if (hudState.selectedSessionId === session.id) {
       const panel = document.getElementById("session-live-activity");
       if (panel) panel.outerHTML = renderSessionActivity(hudState.snapshot, session);
     }
@@ -2043,6 +2070,27 @@ function connectSseStream() {
   });
 }
 
+function startLiveElapsedTicker() {
+  let ticks = 0;
+  setInterval(() => {
+    ticks += 1;
+    const snapshot = hudState.snapshot;
+    if (snapshot?.state) {
+      const timeEl = document.getElementById("metric-time");
+      if (timeEl) {
+        timeEl.textContent = formatDurationHms(computeLiveElapsedMs(snapshot.state));
+      }
+      if (
+        ticks % 2 === 0 &&
+        (snapshot.state.status === "running" ||
+          snapshot.state.status === "orchestrator_turn" ||
+          snapshot.state.activeWorker?.childThreadId)
+      )
+        void refreshSelectedThread();
+    }
+  }, 1000);
+}
+
 async function initHud() {
   bindStaticListeners();
   try {
@@ -2056,15 +2104,7 @@ async function initHud() {
   }
 
   connectSseStream();
-
-  setInterval(() => {
-    if (hudState.snapshot?.state) {
-      const timeEl = document.getElementById("metric-time");
-      if (timeEl) {
-        timeEl.textContent = formatDurationHms(computeLiveElapsedMs(hudState.snapshot.state));
-      }
-    }
-  }, 1000);
+  startLiveElapsedTicker();
   setInterval(refreshSelectedThread, 4000);
 }
 

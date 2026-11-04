@@ -8,7 +8,9 @@ if (process.argv[1]?.endsWith(".test.mjs")) {
   const supplied = process.env.R9_EVIDENCE_DIR;
   const parent = process.env.T3_TEST_EVIDENCE_ROOT || supplied || os.tmpdir();
   fs.mkdirSync(parent, { recursive: true });
-  const directory = fs.mkdtempSync(path.join(parent, path.basename(process.argv[1], ".mjs") + "-"));
+  const directory = fs.realpathSync(
+    fs.mkdtempSync(path.join(parent, path.basename(process.argv[1], ".mjs") + "-")),
+  );
   process.env.R9_EVIDENCE_DIR = directory;
   process.env.TMPDIR = directory;
   process.on("exit", (code) => {

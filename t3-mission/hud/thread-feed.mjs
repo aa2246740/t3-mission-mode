@@ -114,6 +114,12 @@ function eventText(event) {
   );
 }
 
+function feedRole(row, explicitRole) {
+  if (!explicitRole && row.type === "reasoning") return "Worker · Thinking";
+  if (!explicitRole && row.type === "command_execution") return "Worker · Command";
+  return String(row.role || row.source || "Orchestrator");
+}
+
 export function normalizeFeedEvent(raw, defaults = {}) {
   const event = typeof raw === "string" ? { message: raw } : raw;
   if (!event || typeof event !== "object" || event.type === "model_slots_updated") return null;
@@ -122,9 +128,9 @@ export function normalizeFeedEvent(raw, defaults = {}) {
   const row = { ...defaults, ...event };
   return {
     type: String(row.type || "message"),
-    role: String(row.role || row.source || "Orchestrator"),
+    role: feedRole(row, event.role),
     message: String(message).slice(0, 6000),
-    timestamp: row.timestamp || row.createdAt || row.startedAt || null,
+    timestamp: row.timestamp || row.updatedAt || row.createdAt || row.startedAt || null,
     threadId: row.childThreadId || row.threadId || null,
     sessionId: row.sessionId || null,
     runId: row.runId || null,
@@ -191,11 +197,29 @@ export function matchesFeedSession(event, session) {
   return Boolean(event.featureId && event.featureId === session.featureId && !session.runId);
 }
 
+function isUserMessage(item) {
+  return item?.type === "user_message" || item?.role === "user";
+}
+
+function isInitialTaskPrompt(item, index, data) {
+  if (index !== 0 || !isUserMessage(item)) return false;
+  if (item.position === 0 || item.position === 1) return true;
+  const list = data?.items ?? [];
+  return (
+    item.position == null &&
+    data?.hasMoreBefore !== true &&
+    !(typeof data?.thread?.itemCount === "number" && data.thread.itemCount > list.length)
+  );
+}
+
 export function normalizeThreadMessages(response, threadId) {
   const data = response?.structuredContent ?? response;
-  const messages = data?.messages ?? data?.thread?.messages ?? data?.items ?? data?.content ?? [];
-  return (Array.isArray(messages) ? messages : [])
+  const messages = data?.items ?? data?.messages ?? data?.thread?.messages ?? data?.content ?? [];
+  const list = Array.isArray(messages) ? messages : [];
+  const omitInitialPrompt = Array.isArray(data?.items) && list.some((item) => !isUserMessage(item));
+  return list
+    .filter((item, index) => !(omitInitialPrompt && isInitialTaskPrompt(item, index, data)))
     .slice(-MAX_EVENTS)
-    .map((row) => normalizeFeedEvent(row, { threadId, role: row.role || "Agent" }))
+    .map((row) => normalizeFeedEvent(row, { threadId, role: row?.role || "Agent" }))
     .filter(Boolean);
 }
