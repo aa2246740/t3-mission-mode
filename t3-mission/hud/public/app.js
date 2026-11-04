@@ -418,7 +418,7 @@ function synthesizeSessions(state, features) {
       id,
       sessionId: h.sessionId,
       threadUri: sessionThreadUri({ ...h, ...f }),
-      runId: h.runId || null,
+      runId: f.runId || h.runId || null,
       role,
       workerNumber: number,
       milestoneId: f.milestoneId || "m1",

@@ -222,6 +222,20 @@ test("feature-only inspector sessions remain steerable without targeting stale h
   );
 });
 
+test("historical sessions with a thread in their handoff can be steered by the inspector selectors", async (t) => {
+  const f = await fixture(t);
+  f.state.sessions[0].handoff = { childThreadId: "t0" };
+  delete f.state.sessions[0].childThreadId;
+  fs.writeFileSync(f.stateFile, JSON.stringify(f.state));
+  const result = await f.hud.post("steer", {
+    runId: "r0",
+    childThreadId: "t0",
+    message: "Explain the handoff.",
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.threadId, "t0");
+});
+
 test("steering command replay does not send twice", async (t) => {
   const sends = [];
   const f = await fixture(t, {

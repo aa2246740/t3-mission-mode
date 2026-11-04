@@ -435,6 +435,31 @@ test("thread jump links support session URIs and the Mission owner, with escaped
   assert.equal(ui.run('sessionThreadUri({link:"javascript:alert(1)"})'), null);
 });
 
+test("feature-only sessions retain their run identity so steering instructions appear in the inspector", () => {
+  const ui = client();
+  const data = snapshot({ status: "paused", planAccepted: true });
+  data.features = [
+    { id: "legacy", runId: "legacy-run", childThreadId: "legacy-thread", status: "paused" },
+  ];
+  data.threadFeed = [
+    {
+      type: "session_steered",
+      runId: "legacy-run",
+      threadId: "legacy-thread",
+      message: "Inspect rollback.",
+    },
+  ];
+  ui.context.data = data;
+  ui.run(
+    'hudState.snapshot = data; hudState.selectedSessionId = "session-legacy"; renderCenterColumn(data)',
+  );
+  assert.match(ui.elements.get("session-handoff-view").innerHTML, /Inspect rollback\./);
+  assert.match(
+    ui.elements.get("session-handoff-view").innerHTML,
+    /href="t3-thread:\/\/v1\/legacy-thread"/,
+  );
+});
+
 test("session steering retains drafts across snapshots and reports recorded, sent and failed submissions", async () => {
   const ui = client();
   ui.context.data = snapshot({

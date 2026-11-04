@@ -17,7 +17,15 @@ export function validateSteeringRequest(body) {
 }
 
 export function sessionThreadId(session) {
-  for (const value of [session.childThreadId, session.threadId, session.threadUri, session.link]) {
+  const handoff = session.handoff || {};
+  for (const value of [
+    session.childThreadId,
+    session.threadId,
+    session.threadUri,
+    session.link,
+    handoff.childThreadId,
+    handoff.link,
+  ]) {
     if (typeof value !== "string" || !value) continue;
     const uri = /^t3-thread:\/\/v1\/([^/?#\s]+)(?:[?#].*)?$/.exec(value);
     if (uri) return uri[1];
